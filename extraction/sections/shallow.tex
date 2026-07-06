@@ -1,0 +1,106 @@
+\section{Shallowness}
+\label{sec:shallow}
+
+Shallowness is the design constraint that shaped every clause of
+\cref{sec:translation}; this section makes it precise and verifies it.
+The operational argument is the one articulated for the core embedding in
+\cite[\S 1.1]{Czajka2018}: first-order ATPs are heavily optimised for the
+primitives of first-order logic --- clausification, resolution,
+superposition with term indexing, E-matching --- so a translation is
+efficient to the extent that the logical structure of the source arrives
+at the prover \emph{as} first-order structure.  A \emph{deep} embedding,
+in which a source proposition $\tau$ becomes a first-order \emph{term}
+$\compf(\tau)$ related to its proofs by an inhabitation predicate
+$\mathsf{T}(x, \compf(\tau))$, forces every logical inference of the
+object logic to be simulated by instantiations of bridge axioms, and
+conjectures become existence statements ($\exists y.\,\mathsf{T}(y,
+\compf(\tau'))$) that require the prover to synthesise a term standing
+for a proof --- both dramatically hostile to first-order proof search
+\cite[\S 1.1]{Czajka2018}.
+
+Concretely, we verify the following properties of the translation of
+\cref{sec:translation}.
+
+\begin{description}[leftmargin=2em]
+\item[S1 (Native logical structure).]  $\Ff$ maps every connective and
+  quantifier of a shallow proposition to the corresponding first-order
+  connective or (guarded) quantifier, and source equality to first-order
+  equality $\feq$, \emph{at translation time} (\cref{def:guard-F}).  No
+  logical structure of a shallow proposition is reified into a term.
+  Consequence: the clausal form of $\F{\varphi}$ is the clausal form one
+  would write by hand for $\varphi$.
+
+\item[S2 (No inhabitation predicate).]  $\SigFOL$ contains no binary
+  ``has-type'' predicate and no term encoding of types
+  (\cref{def:signature}).  The only typing-flavoured atoms are the unary
+  guards $\Ihat{I}(u)$, occurring exactly at atomic-type leaves of
+  $\guardf$ --- the soft-typing base case, structurally the device used
+  by Mizar's type predicates \cite{Wiedijk2007} and by the type guards
+  of HOL hammers \cite{MengPaulson2008,BlanchetteEtAl2016}.
+
+\item[S3 (Per-occurrence payload expansion).]  The
+  propositional content of a refinement type is expanded inline at every
+  occurrence, in both polarities --- as a premise under $\forall$
+  (negative position) and as a conjunct under $\exists$ and in
+  conclusions (positive position) ---
+  licensed by the fact that \cref{lem:coincidence} is an equivalence,
+  not an implication.  There is no $\mathsf{sig}$ symbol, no boxing
+  constructor, no projection function and no unfolding axiom in the
+  output: nothing is left for the ATP to unfold.  This is the clause
+  that repairs the local relapse into deep embedding identified in
+  \cref{sec:intro} --- compare the specification axiom of \cref{ex:h}
+  with the opaque $\mathsf{HasType}(h, \mathsf{sig}(\dots))$ atom it
+  replaces.
+
+\item[S4 (Proofs never become terms).]  Erasure drops proof arguments
+  and abstractions entirely (\cref{def:erasure}); the specification
+  clause $\guard{\varphi \to \tau}{u} = \F{\varphi} \to \guard{\tau}{u}$
+  keeps the first-order term $u$ unapplied across a propositional
+  premise, in lock-step with the pruned arity of the extracted program.
+  The prover consequently never constructs, matches or instantiates any
+  term standing for a proof.  (The dead-code constant $\prfc$ can occur,
+  but never as an argument at a pruned position --- only as the image of
+  $\bot$-elimination.)
+
+\item[S5 (Definitions as oriented computation).]  The definitional
+  content of the environment arrives as per-constructor pattern
+  equations (\cref{def:compile}) --- orientable unit or near-unit
+  equations forming an orthogonal rewrite system
+  (\cref{rem:eq-shape}) --- rather than as guarded disjunctions
+  (\cref{sec:casesplit-cnf}).  Case analysis (a search operation) is
+  segregated into the per-datatype inversion axioms, so provers pay for
+  splitting only when the proof actually requires it.
+\end{description}
+
+Two further points delimit what shallowness can and cannot mean here.
+
+\paragraph{The residue.}  Full first-order structure cannot always be
+achieved: partial applications go through the application operator
+$\fapp$ and pointer constants (\cref{def:compC}) --- the standard
+arity-optimisation residue of every HOL-to-FOL translation
+\cite{MengPaulson2008} --- and anonymous $\lambda$-abstractions, matches
+and fixpoints inside formulas are lifted to fresh symbols with defining
+axioms, which is unavoidable in a language without binders.  Both
+mechanisms are local: they affect the translation of \emph{terms}, never
+the logical skeleton of a proposition.  Propositions outside $\Sfrag$
+(predicate quantification) have no shallow first-order image at all and
+are excluded rather than encoded; the implemented tool falls back to
+opaque atoms for them, a fallback whose soundness is a separate
+(deep-embedding) question not treated here.
+
+\paragraph{Shallowness versus soundness.}  The two requirements pull in
+the same direction in this design.  The inline expansion of refinement
+payloads (S3) is justified by the model equivalence of
+\cref{lem:coincidence}; the guard-free equations (S5) are not merely
+sound but strictly stronger than their guarded counterparts
+(\cref{prop:interderivable}) while remaining valid in $\ML$
+(\cref{prop:split-valid}).  Where a guard is genuinely load-bearing ---
+exhaustiveness in inversion axioms (\cref{prop:disj-guard}) --- the
+translation keeps it.  The soundness proof thus doubles as a shallowness
+audit: every remaining non-native atom ($\Ihat{I}$ guards, lifted
+symbols, $\fapp$) is one the model construction shows to be necessary
+for the statement it protects, and every removable layer of indirection
+has been removed at translation time, which is the design maxim shared
+with the instantiation-level optimisations of the implemented tool: work
+done at translation time is work the ATP does not repeat at search time,
+once per relevant inference.

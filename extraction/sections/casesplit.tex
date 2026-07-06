@@ -1,0 +1,232 @@
+\section{Per-constructor equations versus guarded disjunctive case axioms}
+\label{sec:casesplit}
+
+The translation of \cref{sec:translation} renders a pattern-matching
+definition as per-constructor equations.  The translation of
+\cite[\S 5.2]{CzajkaKaliszyk2018} renders the same definition as a single
+\emph{guarded disjunctive axiom}.  This section compares the two forms
+inside the framework just built: the model $\ML$ arbitrates which guards
+are semantically necessary, and first-order derivations settle the
+logical relationship.  Fix a definition by a case split on a variable,
+\[
+  c \defeq \lambda x{:}I.\ \tcase{x}{z.\tau}{\{\wcns{c}_i(\tup{y}_i)
+  \Rightarrow b_i\}_i} \;:\; \Pi x{:}I.\,\tau ,
+\]
+and abbreviate $R_i \defeq \compf(\erase{b_i})$ (over the variables
+$\tup{y}_i$).  Our translation emits the \emph{split form}
+\begin{equation}
+  \tag{$\mathrm{Eq}_c$}
+  \forall \tup{y}_i.\ \Ihat{c}(\Ihat{\wcns{c}}_i(\tup{y}_i)) \feq R_i
+  \qquad \text{(one axiom per constructor $i$),}
+\end{equation}
+whereas the disjunctive rendering is
+\begin{equation}
+  \tag{$\mathrm{Disj}_c$}
+  \forall x.\ \Ihat{I}(x) \to \bigvee_i \exists \tup{y}_i.\
+    {\textstyle\bigwedge_j} \guard{\sigma_{ij}}{y_{ij}} \wedge
+    x \feq \Ihat{\wcns{c}}_i(\tup{y}_i) \wedge \Ihat{c}(x) \feq R_i ,
+\end{equation}
+and we write $\mathrm{Disj}^-_c$ for the variant with the guard
+$\Ihat{I}(x)$ omitted.
+
+\subsection{Semantic status}
+\label{sec:casesplit-semantic}
+
+\begin{proposition}[The split form needs no guards]
+\label{prop:split-valid}
+$\ML \vDash \mathrm{Eq}_c$, with the universally quantified variables
+$\tup{y}_i$ ranging over the \emph{entire} domain $\Dom$ --- junk
+included.  Moreover $\ML \vDash \mathrm{Disj}_c$.
+\end{proposition}
+
+\begin{proof}
+The first claim is an instance of \cref{lem:compile-sound}: the emitted
+equations are valid in $\ML$ under \emph{every} assignment; concretely,
+for arbitrary $\tup{d} \in \Dom$,
+$\Ihat{c}^{\ML}(\Ihat{\wcns{c}}_i^{\ML}(\tup{d})) =
+\cls{c\ \wcns{c}_i(\tup{e})} \lconv \cls{\erase{b_i}^{[\tup{y}_i \mapsto
+\tup{d}]}}$ by a $\delta$-, $\beta$- and $\iota$-step --- the reduction
+fires syntactically, with no typing side condition.  For the second
+claim: given $d \in \Ihat{I}^{\ML}$, inversion validity
+(\cref{thm:env-validity}) yields a disjunct $i$ and witnesses with $d =
+\Ihat{\wcns{c}}_i^{\ML}(\tup{e})$, and $\mathrm{Eq}_c$ supplies
+$\Ihat{c}^{\ML}(d) = $ the corresponding $R_i$-value.
+\end{proof}
+
+\begin{proposition}[The disjunctive form's guard is mandatory]
+\label{prop:disj-guard}
+Let $\Env$ contain $\nat$ and the definition $\mathsf{mypred}$ of
+\cref{ex:compile}.  Then $\ML \nvDash \mathrm{Disj}^-_{\mathsf{mypred}}$.
+Moreover, guard omission in the disjunctive form is not merely false in
+$\ML$ but \emph{absolutely} unsound: for a single-constructor datatype
+$U$ with $\wcns{u} : ()$ and any definition $c_0$ by a (trivial) case on
+$U$, the theory $\{\mathrm{Disj}^-_{c_0}\} \cup \{\text{discrimination
+for } \bool\}$ is inconsistent.
+\end{proposition}
+
+\begin{proof}
+For the first claim, take the junk element $d = \cls{\csO\,\csO} \in
+\Dom$ (the constructor constant $\csO$ applied to itself).  By
+\cref{cor:discrimination}(2), $d$ is not convertible to any constructor
+form, so both disjuncts of $\mathrm{Disj}^-_{\mathsf{mypred}}$ fail at $x
+\defeq d$: $d \neq \cls{\csO}$ and $d \neq \cls{\csS(e)}$ for every $e$.
+(The guarded form is unaffected: $d \notin \semr{\nat}{} =
+\Ihat{\nat}^{\ML}$, again by \cref{cor:discrimination}(2) and stage
+induction.)
+
+For the second claim, $\mathrm{Disj}^-_{c_0}$ has the single disjunct
+$\forall x.\ x \feq \Ihat{\wcns{u}} \wedge \cdots$, which entails
+$\forall x\,y.\ x \feq y$; instantiating with
+$\Ihat{\cstrue}$ and $\Ihat{\csfalse}$ contradicts discrimination.
+This reproduces, inside our framework, the counterexample that makes the
+guard on the matched term's variables mandatory in
+\cite[\S 5.6]{CzajkaKaliszyk2018}.
+\end{proof}
+
+The two propositions isolate the semantic content of the design change.
+The disjunctive axiom asserts \emph{exhaustiveness}: every domain element
+(in the guarded version, every element satisfying the guard) is of
+constructor form.  Exhaustiveness is a property of the \emph{type}, is
+false at junk, and therefore requires the guard.  The equations assert
+only \emph{computation}: they are silent off their patterns, hold at
+every point of the model, and need no guard --- neither on the matched
+term nor on the constructor-argument variables $\tup{y}_i$.  In the
+factored architecture this is no accident: exhaustiveness belongs to
+specification extraction and is emitted once per datatype (the inversion
+axiom, guarded), while the program's equations carry no typing content at
+all.  The guard class that \cite[\S 5.6]{CzajkaKaliszyk2018} identifies
+as impossible to omit is thereby not omitted but \emph{dissolved}.
+
+\begin{remark}[Guard policy for constructor arguments]
+\label{rem:guard-policy}
+In the split form, guards on the fresh constructor-argument variables
+$\tup{y}_i$ would also be sound (weakening a valid formula), and
+correspond to the optional closure-variable guards of lambda-lifting
+(\texttt{opt\_closure\_guards} in the implementation); by
+\cref{prop:split-valid} they are unnecessary, uniformly with the
+treatment of lambda-lifted closure variables --- but here this is a
+theorem about $\ML$ rather than a conjecture.
+\end{remark}
+
+\subsection{Logical relationship}
+\label{sec:casesplit-derive}
+
+\begin{proposition}[Interderivability relative to structural axioms]
+\label{prop:interderivable}
+Let $\mathrm{Str}_I$ denote the structural axioms of $I$ emitted by
+\cref{def:theory} (constructor typing, inversion, injectivity,
+discrimination).  Then, in classical first-order logic with equality:
+\begin{enumerate}[leftmargin=2em]
+\item $\mathrm{Eq}_c \cup \{\text{inversion}\} \provesfol
+  \mathrm{Disj}_c$;
+\item $\{\mathrm{Disj}_c\} \cup \mathrm{Str}_I \provesfol$ the
+  \emph{guarded} equations
+  $\forall \tup{y}_i.\ \bigwedge_j \guard{\sigma_{ij}}{y_{ij}} \to
+  \Ihat{c}(\Ihat{\wcns{c}}_i(\tup{y}_i)) \feq R_i$ \ for each $i$.
+\end{enumerate}
+The unguarded equations $\mathrm{Eq}_c$ are strictly stronger than
+$\{\mathrm{Disj}_c\} \cup \mathrm{Str}_I$: they are not derivable from
+it.
+\end{proposition}
+
+\begin{proof}
+(1) Assume $\Ihat{I}(x)$.  The inversion axiom yields a disjunct $i$ with
+witnesses $\tup{y}_i$, their guards, and $x \feq
+\Ihat{\wcns{c}}_i(\tup{y}_i)$; rewriting with this equation in
+$\Ihat{c}(x)$ and applying the $i$-th equation of $\mathrm{Eq}_c$
+produces $\Ihat{c}(x) \feq R_i$, completing the $i$-th disjunct of
+$\mathrm{Disj}_c$.
+
+(2) Fix $i$ and assume the guards of $\tup{y}_i$.  By constructor
+typing, $\Ihat{I}(\Ihat{\wcns{c}}_i(\tup{y}_i))$; instantiate
+$\mathrm{Disj}_c$ at $x \defeq \Ihat{\wcns{c}}_i(\tup{y}_i)$.  In the
+resulting disjunction, every disjunct $i' \neq i$ contains
+$\Ihat{\wcns{c}}_i(\tup{y}_i) \feq \Ihat{\wcns{c}}_{i'}(\tup{y}'_{i'})$,
+refuted by discrimination.  The remaining disjunct yields witnesses
+$\tup{y}'_i$ with $\Ihat{\wcns{c}}_i(\tup{y}_i) \feq
+\Ihat{\wcns{c}}_i(\tup{y}'_i)$ and $\Ihat{c}(\dots) \feq
+R_i[\tup{y}'_i]$; injectivity gives $y_{ij} \feq y'_{ij}$, and rewriting
+$R_i[\tup{y}'_i]$ back along these equations gives the guarded equation.
+
+For strictness, note that all axioms of $\{\mathrm{Disj}_c\} \cup
+\mathrm{Str}_I$ hold in the modification $\ML'$ of $\ML$ that
+reinterprets $\Ihat{c}$ arbitrarily at arguments outside
+$\semr{I}{}$-constructor forms with junk components --- e.g.\ setting
+$\Ihat{c}^{\ML'}(\cls{\wcns{c}_i(\tup{e})}) \defeq \cls{\bx}$ whenever
+some non-recursive $\cls{e_j}$ lies outside its argument-type
+interpretation --- because every axiom of that set constrains
+$\Ihat{c}$ only under guards.  The unguarded equation $\mathrm{Eq}_c$
+fails in $\ML'$ at such a point whenever $R_i$'s value there differs
+from $\cls{\bx}$, which is the case already for $\mathsf{mypred}$
+(where $R_2 = y$): take $y \defeq \cls{\csO\,\csO} \neq \cls{\bx}$
+(\cref{cor:discrimination}).
+\end{proof}
+
+Thus nothing is lost logically by splitting --- the disjunctive content
+is recoverable with one inversion inference --- and something is gained:
+the unguarded equations are strictly stronger, yet still sound
+(\cref{prop:split-valid}).  The remaining difference is operational.
+
+\subsection{Clause shapes and prover mechanics}
+\label{sec:casesplit-cnf}
+
+Consider $\mathsf{mypred}$ (\cref{ex:compile}).  Clausifying
+$\mathrm{Disj}_{\mathsf{mypred}}$ requires a Skolem function $f$ for the
+existential and distribution over the disjunction, yielding six
+three-literal non-Horn clauses:
+\[
+\small
+\begin{array}{ll}
+  \neg \nat(x) \vee x \feq \csO \vee x \feq \csS(f(x)) &
+  \neg \nat(x) \vee F(x) \feq \csO \vee x \feq \csS(f(x)) \\
+  \neg \nat(x) \vee x \feq \csO \vee \nat(f(x)) &
+  \neg \nat(x) \vee F(x) \feq \csO \vee \nat(f(x)) \\
+  \neg \nat(x) \vee x \feq \csO \vee F(x) \feq f(x) &
+  \neg \nat(x) \vee F(x) \feq \csO \vee F(x) \feq f(x)
+\end{array}
+\]
+(writing $F$ for $\Ihat{\mathsf{mypred}}$), with two positive equality
+literals per clause and the function's value expressed only through the
+Skolem term.  Nested matches compound this multiplicatively.  A
+superposition prover can use such clauses only through case-splitting
+search: no clause is an orientable rewrite rule.  The split form
+clausifies to
+\[
+  F(\csO) \feq \csO, \qquad F(\csS(y)) \feq y :
+\]
+two unit equations, orientable left-to-right under any simplification
+ordering with the standard precedence heuristics, hence usable by
+Vampire~\cite{KovacsVoronkov2013} and E~\cite{Schulz2002} as
+\emph{demodulators} --- the prover evaluates $\mathsf{mypred}$ inside
+terms at simplification cost, with no search, no Skolem functions and no
+case splits.  For SMT solvers (CVC4/CVC5~\cite{BarrettEtAl2011},
+Z3~\cite{deMouraBjorner2008}) the equations are ideal trigger material
+for E-matching, whereas the disjunctive clauses produce case splits per
+instantiation.  For recursive definitions the effect compounds: the
+$\mathrm{Eq}$-form of $\mathsf{add}$ (\cref{ex:compile}) is exactly the
+rewrite system a human would write, and equations of this shape are
+well established as among the most valuable premises in the practice of
+HOL-based hammers, where definitional packages export precisely the
+per-constructor \texttt{simps} equations
+\cite{Krauss2010,BlanchetteEtAl2016qed}, and dependently-typed frontends
+export equational lemmas rather than raw match trees
+\cite{QianEtAl2025}.
+
+The one capability the disjunctive axiom packages more cheaply is a
+\emph{case split on the scrutinee}: an ATP that has derived $\nat(t)$
+obtains ``$t \feq \csO$ or $t \feq \csS(y)$'' together with the
+corresponding value of $F$ in a single clause set.  In the split form
+this requires chaining the (always emitted) inversion axiom with the
+equations --- one extra inference, at the cost of deriving the guard
+atom.  The exchange is measurable empirically; the a priori analysis
+favours the split form on equational and computational goals and is
+neutral on inversion-style goals, since inversion axioms are emitted
+either way.
+
+\begin{remark}[Reconstruction signal]
+Since each split axiom is attached to one constructor, an ATP proof
+that uses it reveals not only which match was relevant but which
+\emph{branch} --- strictly more information for the reconstruction
+backend (which maps used axioms back to case analyses) than the single
+disjunctive axiom's name.
+\end{remark}

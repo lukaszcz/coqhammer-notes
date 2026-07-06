@@ -1,0 +1,553 @@
+\section{Heuristic monomorphisation}
+\label{sec:mono}
+
+Monomorphisation replaces (or supplements) premises that quantify
+over types by finitely many \emph{instances} at ground types.  We
+formulate it as an operation on $\CICm$ propositions --- instantiate,
+normalise, retranslate --- rather than as an operation on the
+generated first-order formulas.  The choice matters: after
+instantiation, $\beta\iota\delta$-redexes disappear
+(\cref{ex:mono-beta}), the type-directed translation re-runs on the
+instance and produces structurally better formulas, and the
+soundness argument is a two-line application of the semantics.  A
+purely first-order instantiation of the translated generic formula
+would have to reproduce these effects through bridging axioms, which
+the design constraint of a \emph{shallow} translation --- every
+transformation is a per-occurrence formula manipulation, with no
+mediating axiomatic theory --- rules out.
+
+Throughout this section, fix an admissible environment $\Env$ and a
+standard model $\MM$.
+
+\subsection{Instances of premises}
+
+\begin{definition}[Prefix; instantiation]
+\label{def:instantiation}
+Let $\varphi$ be a closed proposition in $\beta\iota\delta$-normal
+form, written with maximal product prefix
+\[
+  \varphi \;=\; \Pi x_1{:}B_1.\ \cdots\ \Pi x_n{:}B_n.\ \psi
+  \qquad (\psi \text{ not a product}).
+\]
+An \emph{instantiation} of $\varphi$ is a partial function $\theta$
+on $\{x_1, \ldots, x_n\}$ such that, processing positions in order,
+each $x_i \in \dom\theta$ is mapped to a \emph{closed}
+$\beta\iota\delta$-normal term $\theta(x_i)$ with $\vdash \theta(x_i)
+: B_i\theta^{<i}$, where $\theta^{<i}$ denotes the simultaneous
+substitution of the already-processed values.  The \emph{instance}
+is
+\[
+  \inst{\varphi}{\theta} \;\coloneqq\;
+  \mathrm{nf}\Bigl( \Pi_{\,i \notin \dom\theta}\, x_i :
+  B_i\theta.\ \psi\theta \Bigr),
+\]
+the $\beta\iota\delta$-normal form of the result of deleting the
+instantiated binders and substituting throughout (no capture can
+occur: the substituted terms are closed).  We call $\theta$ a
+\emph{type instantiation} if every $\theta(x_i)$ is a data type
+(then necessarily $B_i\theta^{<i} = \STypeI$); the general case
+additionally instantiates data and kind-level binders by closed
+terms and is used for higher-order instance generation
+(\cref{rem:tier2}).  A closed proposition is \emph{monomorphic} if
+$\STypeI$ does not occur in it.
+\end{definition}
+
+\begin{lemma}[Instances are well-formed]
+\label{lem:inst-typed}
+$\inst{\varphi}{\theta}$ is a closed proposition, i.e.\
+$\vdash \inst{\varphi}{\theta} : \SProp$.
+\end{lemma}
+
+\begin{proof}
+By induction on $n$.  If $x_1 \notin \dom\theta$, apply the
+induction hypothesis to $\psi' = \Pi x_2 \ldots \psi$ in the context
+$x_1{:}B_1$ (the definition and the claim relativise to a context of
+uninstantiated binders in the obvious way) and rebuild the product
+with the rule that formed it.  If $x_1 \in \dom\theta$ with value
+$\tau$: by generation, $x_1{:}B_1 \vdash \Pi x_2 \ldots \psi :
+\SProp$; by the substitution property \cref{prop:metatheory}(2)
+(in the form of \cref{lem:sort-invariance} when $B_1 = \STypeI$;
+in general by \cref{prop:metatheory}(2) directly), $\vdash (\Pi x_2
+\ldots \psi)[\tau/x_1] : \SProp$, and we proceed by the induction
+hypothesis.  Normalisation preserves typing by subject reduction
+\cref{prop:metatheory}(3), and the normal form exists and is unique
+by \cref{prop:metatheory}(1),(5).
+\end{proof}
+
+\begin{lemma}[Semantic instantiation]
+\label{lem:inst-valid}
+If $\varphi$ is valid in $\MM$ then so is $\inst{\varphi}{\theta}$.
+\end{lemma}
+
+\begin{proof}
+By induction on $n$; we show the stronger contextual statement: if
+$\Gamma$-proposition $\Pi x{:}B.\,\chi$ has
+$\semr{\Pi x{:}B.\,\chi}{\rho} = \holds$ and $\vdash \tau : B$ is
+closed, then $\semr{\chi[\tau/x]}{\rho} = \holds$; and if $x$ is not
+instantiated, validity passes to all $\semr{\chi}{\rho[x \mapsto
+a]}$, $a \in \semr{B}{\rho}$, and is recovered for the rebuilt
+product.  Both parts are immediate from \ref{M:pi}: validity of the
+product means $\semr{\chi}{\rho[x \mapsto a]} = \holds$ for
+\emph{every} $a \in \semr{B}{\rho}$; for the instantiated case take
+$a = \sem{\tau}$, which lies in $\semr{B}{\rho}$ by \ref{M:typing},
+and use \ref{M:subst} to identify
+$\semr{\chi[\tau/x]}{\rho} = \semr{\chi}{\rho[x \mapsto
+\sem{\tau}]}$.  Finally, normalisation does not change denotations
+by \ref{M:conv}.
+\end{proof}
+
+Instances are also \emph{derivable} from their premises inside the
+type theory, which matters for the reconstruction phase: any proof
+using an instance can be replayed from the original premise.
+
+\begin{proposition}[Syntactic instantiation]
+\label{prop:inst-derivable}
+If $\vdash p : \varphi$ then there is a term $p^{\theta}$ with
+$\vdash p^{\theta} : \inst{\varphi}{\theta}$.
+\end{proposition}
+
+\begin{proof}
+By induction on the prefix, define $p^{\theta}$: for $x_1 \in
+\dom\theta$ take $(p\,\theta(x_1))^{\theta'}$ (application rule,
+then the induction hypothesis for the substituted suffix); for $x_1
+\notin \dom\theta$ take $\lambda x_1{:}B_1\theta.\ (p\,x_1)^{\theta}$
+(abstraction rule).  The resulting type is convertible to
+$\inst{\varphi}{\theta}$, and the conversion rule concludes.
+\end{proof}
+
+\subsection{Monomorphisation of problems}
+
+\begin{definition}[Monomorphisation]
+\label{def:mono-op}
+Let $(P, \varphi_G)$ be a problem (\cref{def:transl-problem}).
+Recall that the emitted inductive axioms (D3) are the
+$\mathsf{F}$-translations of closed $\CICm$ propositions; we treat
+these propositions as (implicit, valid) premises, so that
+instantiation applies to them uniformly.  A \emph{monomorphisation}
+is a family $\Theta = (\Theta_p)_{p}$ assigning to each premise $p$
+(explicit or implicit) a finite set of instantiations of its
+statement $\varphi_p$.  It induces two premise sets:
+\begin{align*}
+  \Mono^{\mathrm{keep}}_{\Theta}(P) &\;=\;
+    P \;\cup\; \setof{\inst{\varphi_p}{\theta}}{p, \ \theta \in \Theta_p},\\
+  \Mono^{\mathrm{drop}}_{\Theta}(P) &\;=\;
+    \setof{\inst{\varphi_p}{\theta}}{p, \ \theta \in \Theta_p,\
+      \inst{\varphi_p}{\theta} \text{ monomorphic}}
+    \;\cup\; \setof{\varphi_p}{p, \ \varphi_p \text{ monomorphic}}.
+\end{align*}
+The monomorphised problems are $\mathrm{Transl}(\Mono_\Theta(P),
+\varphi_G)$ for either policy.
+\end{definition}
+
+\begin{theorem}[Soundness of monomorphisation]
+\label{thm:mono-sound}
+For every monomorphisation $\Theta$ and either policy, the
+monomorphised problem is $\MM$-sound (\cref{def:si}).  Consequently,
+if the ATP proves the translated goal from the monomorphised
+premises, the goal is valid in $\MM$.
+\end{theorem}
+
+\begin{proof}
+Every element of $\Mono_\Theta(P)$ is either a premise statement or
+an instance of one, hence valid in $\MM$ by hypothesis and
+\cref{lem:inst-valid}; the implicit (D3) premises are valid by
+\ref{M:ind} as in \cref{thm:truth}.  \Cref{thm:base-soundness}
+applied to the premise set $\Mono_\Theta(P)$ gives the claim.  (The
+axiom store grows --- translating instances lifts new subterms ---
+but \cref{thm:truth} covers all emitted axioms.)
+\end{proof}
+
+Note what this theorem does \emph{not} depend on: how $\Theta$ was
+found.  Any instance-selection heuristic whatsoever --- including an
+unsound-looking syntactic matcher --- yields a sound pipeline,
+because soundness is carried entirely by
+\cref{lem:inst-valid,lem:inst-typed}.  Heuristics affect only
+effectiveness.  This modularity is the main payoff of formulating
+monomorphisation at the $\CICm$ level.
+
+\begin{proposition}[Conservativity of \emph{keep}]
+\label{prop:mono-conservative}
+Every first-order proof available before monomorphisation remains
+available after $\Mono^{\mathrm{keep}}_{\Theta}$: if
+$\mathrm{Transl}(P, \varphi_G) = (\Phi, \gamma)$ proves $\gamma$,
+then the keep-policy problem $(\Phi', \gamma)$ also proves
+$\gamma$.
+\end{proposition}
+
+\begin{proof}
+Translation is monotone in the premise set and idempotent on the
+axiom store (lifted constants and their axioms are indexed by
+$\alpha$-classes, \cref{def:lifted}), so $\Phi \subseteq \Phi'$, and
+classical provability is monotone.
+\end{proof}
+
+\begin{proposition}[Incompleteness of \emph{drop}]
+\label{prop:drop-incomplete}
+There is a problem $(P, \varphi_G)$ and a monomorphisation $\Theta$
+such that $\mathrm{Transl}(P, \varphi_G)$ proves its conjecture but
+the drop-policy problem does not.
+\end{proposition}
+
+\begin{proof}
+Let $\Env$ declare data types $\sigma, \tau$ with closed inhabitants
+$a : \sigma$, and $f : \Pi A{:}\STypeI.\,A \to A$, and take the
+premise $\varphi_p = \Pi A{:}\STypeI.\,\Pi x{:}A.\ f\,A\,x \ceq_A
+x$ with goal $\varphi_G = f\,\sigma\,a \ceq_\sigma a$, and
+$\Theta_p = \{[A \mapsto \tau]\}$.  The generic problem proves the
+goal (instantiate the guarded universal with $\hat\sigma$ and
+$\hat{a}$; the guards $\hastype(\hat\sigma, \lift{\STypeI})$ and
+$\hastype(\hat{a}, \hat\sigma)$ are typing atoms of the
+translation).  For the drop-policy problem, only the
+$\tau$-instance is present; a countermodel is obtained from
+$\FMstar$ by reinterpreting $\ap$ at the point
+$(\sem{f}, \sem{\sigma})$: replace $\sem{f}$'s value at $\sigma$
+by a non-identity function $g$ on $\sem{\sigma}$ with $g(\sem{a})
+\neq \sem{a}$ (possible whenever $|\sem{\sigma}| \geq 2$; formally,
+reinterpret the constant $\hat{f}$ by a graph agreeing with
+$\sem{f}$ except at argument $\sem{\sigma}$).  All axioms of the
+drop-policy problem mention $f$ only at $\tau$ or generically
+through typing atoms that remain true (the modified graph still
+maps $\sem{\sigma}$ into $\sem{\sigma} \to \sem{\sigma}$), while
+the conjecture is now false.
+\end{proof}
+
+\begin{example}[Why instances are built before translation]
+\label{ex:mono-beta}
+Consider the polymorphic inversion premise for the inductive
+predicate $\mathsf{Forall} : \Pi A{:}\STypeI.\,(A \to \SProp) \to
+\mathsf{list}\,A \to \SProp$:
+\[
+  \varphi \;=\; \forall A{:}\STypeI.\ \forall P{:}A \to \SProp.\
+  \forall l{:}\mathsf{list}\,A.\
+  \mathsf{Forall}\,A\,P\,l \leftrightarrow
+  \bigl( l \ceq \mathsf{nil}\,A \;\vee\; \cexists{x}{A}
+  \cexists{l'}{\mathsf{list}\,A}\, (P\,x \wedge \cdots) \bigr).
+\]
+Its translation contains the higher-order application pattern
+$\PR(P \app x)$ with $P$ a quantified variable, and guards
+$\hastype(P, \trCn{A \to \SProp})$ through a lifted type constant
+--- both notoriously hard for ATPs.  Suppose the goal concerns
+$\mathsf{Forall}\,\mathsf{nat}\,(\lambda x{:}\mathsf{nat}.\,
+\mathsf{lt}\,\mathsf{O}\,x)\,l$.  The occurrence yields the
+instantiation $\theta = [A \mapsto \mathsf{nat},\ P \mapsto \lambda
+x.\,\mathsf{lt}\,\mathsf{O}\,x]$ (a general instantiation in the
+sense of \cref{def:instantiation}); in
+$\inst{\varphi}{\theta}$ the redex $(\lambda
+x.\,\mathsf{lt}\,\mathsf{O}\,x)\,x$ is \emph{normalised away}, so
+the instance translates to a first-order formula whose corresponding
+subformula is the direct atom
+$\PR(\widehat{\mathsf{lt}} \app \hat{\mathsf{O}} \app x)$ ---
+first-order, guard-light, and after
+\cref{sec:specialization} simply $\mathsf{lt}(\mathsf{O}, x)$.  No
+first-order manipulation of the translated generic formula can
+achieve this: the $\beta$-step happens in the type theory.
+\end{example}
+
+\begin{remark}[Higher-order instances]
+\label{rem:tier2}
+\Cref{lem:inst-valid,lem:inst-typed,prop:inst-derivable} were
+deliberately proved for \emph{general} instantiations, not just type
+instantiations.  Instantiating a higher-order premise variable
+$P : A \to \SProp$ with a closed abstraction found at an occurrence
+(as in \cref{ex:mono-beta}) is therefore covered by the same
+soundness theorem.  The practical iteration scheme below applies
+unchanged; only the occurrence-matching heuristic differs.  This is
+the analogue of Lean-auto's instantiation of ``constant instances
+with dependent arguments'' \cite{QianEtAl2025}.
+\end{remark}
+
+\subsection{Instance discovery and bounds}
+\label{sec:saturation}
+
+Soundness being heuristic-independent, we specify the discovery
+algorithm only to the degree needed to state termination and cost
+bounds.  The scheme is the standard goal-seeded saturation of
+Sledgehammer \cite[\S7.1]{Blanchette2016}, transplanted to constant
+instances in the sense of \cref{def:instantiation}.
+
+\begin{definition}[Occurrence extraction; saturation]
+\label{def:saturation}
+For a normal term $t$, let $\TArgs(t)$ be the finite set of pairs
+$(c, \tup{\tau})$ such that an application $c\,\tau_1 \cdots \tau_j$
+occurs in $t$ where $c$ is a constant whose type has a product
+prefix beginning with $j$ binders of domain $\STypeI$ and each
+$\tau_i$ is closed and normal.  Given a problem $(P, \varphi_G)$ and
+parameters $K, \Delta_{\mathrm{tot}}, \Delta_c \in \mathbb{N}$, the
+saturation computes, for $r = 0, 1, \ldots, K$: the \emph{active
+instance pool} $W_r$ ($W_0 = \TArgs(\varphi_G)$), and for each
+generic premise $p$ the instantiations obtained by matching the
+type-variable prefix of $\varphi_p$ against elements of $W_r$
+occurring in $\varphi_p$'s own constant applications; the resulting
+instances contribute their $\TArgs$ to $W_{r+1}$.  Generation stops
+after round $K$, or as soon as the number of instances generated for
+one premise exceeds $\Delta_c$ or the total exceeds
+$\Delta_{\mathrm{tot}}$ (excess instances are discarded by a fixed
+fair strategy).
+\end{definition}
+
+\begin{proposition}
+\label{prop:saturation-bounds}
+The saturation terminates, produces at most
+$\Delta_{\mathrm{tot}}$ instances, and every produced $\theta$ is an
+instantiation in the sense of \cref{def:instantiation}; hence
+\cref{thm:mono-sound} applies.
+\end{proposition}
+
+\begin{proof}
+Termination and the cardinality bound are immediate from the caps.
+Well-formedness of the produced $\theta$: the matched type arguments
+are closed normal subterms of well-typed terms at $\STypeI$-typed
+positions, so each binding satisfies the typing requirement of
+\cref{def:instantiation} (formally: a subterm occurrence of a
+well-typed term is well-typed in its local context; a closed subterm
+at a position of type $\STypeI$ is a closed data type).
+\end{proof}
+
+Sledgehammer operates with $K = 3$ rounds and a total cap of $200$
+new formulas by default, values twice validated experimentally
+\cite{Blanchette2016,Desharnais2022}; Lean-auto uses a comparable
+global cap \cite{QianEtAl2025}.  We adopt them as defaults.
+
+\subsection{No complete instantiation strategy exists}
+\label{sec:undecidability}
+
+Heuristic monomorphisation with the \emph{drop} policy is
+incomplete (\cref{prop:drop-incomplete}); with the \emph{keep}
+policy it is conservative but the generic formulas remain a burden.
+One might hope for a clever computable strategy producing, for each
+problem, a finite instance set that is \emph{complete} --- one that
+loses nothing.  For polymorphic first-order logic,
+Bobot and Paskevich proved this hope vain
+\cite[Thm.~1]{BobotPaskevich2011}.  We now prove the analogous
+result for $\CICm$, adapting their reduction (from ground
+reducibility in combinatory logic, with combinator terms reflected
+at the type level) to the dependent-type-theoretic setting.  The
+notion of consequence is semantic, matching our soundness
+framework.
+
+\begin{definition}[Consequence]
+\label{def:consequence}
+Let $\Env$ be an environment and $P$ a finite set of closed
+propositions, $\varphi$ a closed proposition.  Write $P
+\folmodels_{\Env} \varphi$ if for every standard model $\MM$ of
+$\Env$ in which all members of $P$ are valid, $\varphi$ is valid in
+$\MM$.  (Standard models differ in their interpretation of
+parameter constants; \ref{M:ind} pins inductive types only up to
+the listed properties.)
+\end{definition}
+
+By \cref{lem:inst-valid}, instances are consequences:
+$\setof{\inst{\varphi_p}{\theta}}{\ldots} \folmodels_\Env \varphi$
+implies $P \folmodels_\Env \varphi$.  A \emph{complete instantiation
+strategy} would be a computable converse:
+
+\begin{theorem}[Undecidability of complete monomorphisation]
+\label{thm:undecidable}
+There is no algorithm that, given an environment $\Env$, a finite
+premise set $P$ and a closed goal $\varphi$, computes a finite
+monomorphisation $\Theta$ such that
+\[
+  P \folmodels_{\Env} \varphi
+  \quad\Longrightarrow\quad
+  \setof{\inst{\varphi_p}{\theta}}{p,\ \theta \in \Theta_p}
+  \folmodels_{\Env} \varphi .
+\]
+\end{theorem}
+
+\begin{proof}
+We construct a family of problems encoding weak reduction in
+combinatory logic (CL).  CL terms are $w \Coloneqq K \mid S \mid
+w\,w$; weak reduction is generated by $K\,x\,y \to x$,
+$S\,x\,y\,z \to x\,z\,(y\,z)$ and congruence, and $\to^{*}$ is its
+reflexive--transitive closure.  The relation $w \to^{*} w'$ between
+ground CL terms is undecidable: by combinatory completeness
+\cite{Barendregt1984} there is, for every partial recursive $f$, a
+CL term $F$ with $F\,\overline{n} \to^{*} \overline{f(n)}$ for all
+$n$ in the domain of $f$ (numerals $\overline{n}$ in normal form),
+and $F\,\overline{n} \to^{*} \overline{0}$ is then equivalent to
+$f(n) = 0$, which for suitable $f$ is $\Sigma_1$-complete.
+
+\emph{The environment $\Env_{\mathrm{CL}}$.}  Declare data
+inductives: $\mathsf{K}_0$ with one $0$-ary constructor
+$\mathsf{k}_0$; $\mathsf{S}_0$ with \emph{two} $0$-ary constructors
+$\mathsf{s}_0, \mathsf{s}_1$ (the second is a tag ensuring
+$\sem{\mathsf{K}_0} \neq \sem{\mathsf{S}_0}$ in every model, by
+\ref{M:ind}(b--d): one denotation is a singleton, the other a
+two-element set); and $\mathsf{A}$ with parameters $\alpha,
+\beta{:}\STypeI$ and one constructor $\mathsf{a}_0 : \Pi
+\alpha\beta{:}\STypeI.\ \alpha \to \beta \to
+\mathsf{A}\,\alpha\,\beta$.  Declare a parameter
+$R : \Pi \alpha\beta{:}\STypeI.\ \alpha \to \beta \to \SProp$.
+Reflect CL terms as closed types and canonical points:
+\begin{gather*}
+  \lift{K} = \mathsf{K}_0,\quad
+  \lift{S} = \mathsf{S}_0,\quad
+  \lift{w\,w'} = \mathsf{A}\,\lift{w}\,\lift{w'};\\
+  p_K = \mathsf{k}_0,\quad
+  p_S = \mathsf{s}_0,\quad
+  p_{w\,w'} = \mathsf{a}_0\,\lift{w}\,\lift{w'}\,p_w\,p_{w'} .
+\end{gather*}
+The premise set $P_{\mathrm{CL}}$ consists of the following closed
+propositions (all prefixes over $\STypeI$; element variables typed
+by the type variables):
+\begin{align}
+& \forall \alpha.\ \forall u{:}\alpha.\ R\,\alpha\,\alpha\,u\,u
+  \tag{refl}\\
+& \forall \alpha\beta\gamma.\ \forall u{:}\alpha\, v{:}\beta\,
+  w{:}\gamma.\ R\,\alpha\,\beta\,u\,v \to R\,\beta\,\gamma\,v\,w \to
+  R\,\alpha\,\gamma\,u\,w
+  \tag{trans}\\
+& \forall \alpha\beta\gamma.\ \forall u{:}\alpha\, v{:}\beta\,
+  w{:}\gamma.\ R\,\alpha\,\beta\,u\,v \to
+  R\,(\mathsf{A}\alpha\gamma)\,(\mathsf{A}\beta\gamma)\,
+    (\mathsf{a}_0\alpha\gamma\,u\,w)\,(\mathsf{a}_0\beta\gamma\,v\,w)
+  \tag{congL}\\
+& \forall \alpha\beta\gamma.\ \forall u{:}\alpha\, v{:}\beta\,
+  w{:}\gamma.\ R\,\alpha\,\beta\,u\,v \to
+  R\,(\mathsf{A}\gamma\alpha)\,(\mathsf{A}\gamma\beta)\,
+    (\mathsf{a}_0\gamma\alpha\,w\,u)\,(\mathsf{a}_0\gamma\beta\,w\,v)
+  \tag{congR}\\
+& \forall \alpha\beta.\ \forall u{:}\alpha\, v{:}\beta.\
+  R\,\bigl(\mathsf{A}(\mathsf{A}\mathsf{K}_0\alpha)\beta\bigr)\,
+    \alpha\,
+    \bigl(\mathsf{a}_0\,(\mathsf{A}\mathsf{K}_0\alpha)\,\beta\,
+      (\mathsf{a}_0\mathsf{K}_0\alpha\,\mathsf{k}_0\,u)\,v\bigr)\,
+    u
+  \tag{redK}\\
+& \forall \alpha\beta\gamma.\ \forall u{:}\alpha\, v{:}\beta\,
+  w{:}\gamma. \notag\\
+& \qquad
+  R\,\bigl(\mathsf{A}(\mathsf{A}(\mathsf{A}\mathsf{S}_0\alpha)\beta)\gamma\bigr)\,
+    \bigl(\mathsf{A}(\mathsf{A}\alpha\gamma)(\mathsf{A}\beta\gamma)\bigr)\,
+    t_S\; t'_S
+  \tag{redS}
+\end{align}
+where $t_S$ and $t'_S \coloneqq
+\mathsf{a}_0\,(\mathsf{A}\alpha\gamma)(\mathsf{A}\beta\gamma)\,
+(\mathsf{a}_0\alpha\gamma\,u\,w)\,(\mathsf{a}_0\beta\gamma\,v\,w)$
+are the evident points of the redex and reduct types (both built
+from $\mathsf{a}_0, \mathsf{s}_0, u, v, w$).  The goal for ground CL
+terms $w, w'$ is $g(w, w') \coloneqq
+R\,\lift{w}\,\lift{w'}\,p_w\,p_{w'}$.
+
+\emph{Claim 1: $P_{\mathrm{CL}} \folmodels_{\Env} g(w,w')$ iff
+$w \to^{*} w'$.}
+
+($\Leftarrow$)  Let $\MM$ be any standard model validating
+$P_{\mathrm{CL}}$.  By induction on the derivation of $w \to^{*}
+w'$: each single step and each closure rule corresponds to one
+premise; by \cref{lem:inst-valid} the premise may be semantically
+instantiated at the reflected types and canonical points of the
+terms involved, and validity of an implication together with
+validity of its antecedents yields validity of its consequent
+(\ref{M:pi}, \ref{M:conn}).  The base facts are (redK), (redS),
+(refl); the guards are satisfied because $\sem{p_v} \in
+\sem{\lift{v}}$ by \ref{M:typing}.
+
+($\Rightarrow$)  Suppose $w \not\to^{*} w'$; we exhibit a standard
+model validating $P_{\mathrm{CL}}$ but not $g(w,w')$.  Take the
+\emph{canonical tagged model}: constructor values are tuples tagged
+by the constructor name, e.g.\ $\sem{\mathsf{a}_0}(a, b)(x, y) =
+(\texttt{a0}, a, b, x, y)$ (with $\texttt{a0}$ a fixed set distinct
+from the other tags); then \ref{M:ind} holds, and for every set $d$
+we can define a syntax tree $\mathrm{tr}(d)$ over the alphabet
+$\{K, S\} \cup \{\text{atoms}\}$ by $\in$-recursion:
+$\mathrm{tr}(d) = K$ if $d = \sem{\mathsf{K}_0}$; $\mathrm{tr}(d) =
+S$ if $d = \sem{\mathsf{S}_0}$; $\mathrm{tr}(d) =
+\mathrm{tr}(a)\cdot\mathrm{tr}(b)$ if $d = \sem{\mathsf{A}}(a,b)$
+for (necessarily unique, by the tagging) $a, b$; and
+$\mathrm{tr}(d) = d$ (an atom) otherwise.  Uniqueness of the
+decomposition holds because $\sem{\mathsf{A}}(a,b)$ is the set of
+tagged tuples $(\texttt{a0},a,b,x,y)$ with $x \in a$, $y \in b$,
+from which $a$ and $b$ are recoverable when the set is nonempty, and
+which is empty iff $a$ or $b$ is empty --- in the degenerate empty
+cases let $\mathrm{tr}$ take the atom branch; reflected types
+$\lift{v}$ are nonempty (they contain $\sem{p_v}$) so
+$\mathrm{tr}(\sem{\lift{v}}) = v$ for all ground CL terms $v$, by
+induction (for the base cases: $\sem{\mathsf{K}_0}$ and
+$\sem{\mathsf{S}_0}$ are distinguishable by cardinality).  Extend
+weak reduction to trees with atoms (atoms are inert constants).
+Interpret
+\[
+  \sem{R}(a, b)(x, y) \;=\;
+  \begin{cases}
+    \holds & \text{if } \mathrm{tr}(a) \to^{*} \mathrm{tr}(b),\\
+    \emptyset & \text{otherwise}
+  \end{cases}
+\]
+(element arguments ignored).  All six premises are valid: (refl) and
+(trans) because $\to^{*}$ is a preorder on trees; (congL), (congR)
+because $\mathrm{tr}(\sem{\mathsf{A}}(a,b)) =
+\mathrm{tr}(a)\cdot\mathrm{tr}(b)$ whenever the guard-supplied
+elements witness nonemptiness of $a$ and $b$ (they do: the premise
+hypotheses provide $u \in a$ etc.); (redK), (redS) because
+$K\,x\,y \to x$ and $S\,x\,y\,z \to x z (y z)$ hold for arbitrary
+trees $x, y, z$.  The goal is not valid:
+$\mathrm{tr}(\sem{\lift{w}}) = w \not\to^{*} w' =
+\mathrm{tr}(\sem{\lift{w'}})$.
+
+\emph{Claim 2: for every finite monomorphisation $\Theta$ of
+$P_{\mathrm{CL}}$, the relation ``\,$\mathrm{Inst}_\Theta
+\folmodels_{\Env} g(w, w')$\,'' is decidable, uniformly in
+$(\Theta, w, w')$.}  Let $T_0$ be the finite set of closed types
+occurring in the instances of $\Theta$ together with $\lift{w},
+\lift{w'}$, closed under syntactic subterms.  Emptiness of the
+denotation of a closed data type is uniform across standard models
+and decidable (a type $\mathsf{A}\,\sigma\,\rho$ is inhabited iff
+both arguments are; $\mathsf{K}_0, \mathsf{S}_0$ are inhabited; in
+general, for our inductive scheme, inhabitation of closed instances
+is computed by the obvious fixed-point marking).  Consider
+\emph{element-uniform} interpretations of $R$: those with
+$\sem{R}(a,b)(x,y)$ independent of $(x,y)$.  Define $r_\Theta
+\subseteq T_0 \times T_0$ as the least relation closed under the
+rules read off the instances in $\Theta$: an instance of (trans) at
+types $(\sigma, \rho, \chi)$ contributes ``\,$(\sigma,\rho) \in r
+\wedge (\rho,\chi) \in r \Rightarrow (\sigma,\chi) \in r$\,''
+provided $\sigma, \rho, \chi$ are inhabited (otherwise the instance
+is vacuous), and similarly for the other premise schemes; this is a
+finite monotone system, so $r_\Theta$ is computable.  We show:
+$\mathrm{Inst}_\Theta \folmodels_\Env g(w,w')$ iff $(\lift{w},
+\lift{w'}) \in r_\Theta$.  If $(\lift{w}, \lift{w'}) \in r_\Theta$:
+by induction on the closure derivation, in \emph{every} model
+validating the instances, $\sem{R}$ relates the canonical points of
+the corresponding types (inhabitation supplies the element witnesses
+needed to apply the guarded instances, and the derivation supplies
+the antecedents), so the goal is valid.  If $(\lift{w}, \lift{w'})
+\notin r_\Theta$: take the canonical tagged model with the
+element-uniform interpretation $\sem{R}(a,b) = \holds$ iff $(\sigma,
+\rho) \in r_\Theta$ for some $\sigma, \rho \in T_0$ with
+$\sem{\sigma} = a$, $\sem{\rho} = b$ --- in the canonical tagged
+model distinct closed types in $T_0$ have distinct denotations
+(distinguishable by $\mathrm{tr}$ and cardinality as above), so this
+is well-defined --- and $\emptyset$ otherwise.  Every instance in
+$\Theta$ is then valid: its types lie in $T_0$, and $r_\Theta$ is
+closed under exactly the rule the instance expresses (vacuity
+matching the emptiness side conditions).  The goal fails since
+$(\lift{w}, \lift{w'}) \notin r_\Theta$.
+
+\emph{Conclusion.}  Suppose an algorithm as in the statement
+existed.  Given ground CL terms $w, w'$, compute $\Theta \coloneqq
+M(\Env_{\mathrm{CL}}, P_{\mathrm{CL}}, g(w,w'))$ and decide
+$\mathrm{Inst}_\Theta \folmodels g(w,w')$ by Claim~2.  If it holds,
+then (instances being consequences, \cref{lem:inst-valid})
+$P_{\mathrm{CL}} \folmodels g(w,w')$, so $w \to^{*} w'$ by Claim~1.
+If it fails, then by the assumed property of $M$ (contrapositive),
+$P_{\mathrm{CL}} \not\folmodels g(w,w')$, so $w \not\to^{*} w'$ by
+Claim~1.  This decides $w \to^{*} w'$ --- contradiction.
+\end{proof}
+
+\begin{remark}
+The theorem justifies the two design decisions of this section:
+instance selection must be heuristic and bounded
+(\cref{def:saturation}), and completeness should be recovered, when
+desired, by the \emph{keep} policy
+(\cref{prop:mono-conservative}) rather than by cleverer instance
+selection.  This mirrors the design of Bobot--Paskevich's
+\textsf{Dis} transformation, which keeps the polymorphic original
+alongside the instances and is complete for exactly that reason
+\cite{BobotPaskevich2011}, and Sledgehammer's heuristic
+monomorphisation, which drops generics and accepts incompleteness
+\cite[\S5.6]{Blanchette2016}.  The guard-erasure results of
+\cref{sec:erasure} apply to the \emph{drop} policy: erasability is a
+property of fully monomorphic problems.
+\end{remark}

@@ -1,0 +1,149 @@
+\section{Confluence of \texorpdfstring{$\lbox$}{lambda-box}}
+\label{sec:confluence}
+
+We prove \cref{thm:confluence} by the Tait--Martin-L{\"o}f method in
+Takahashi's formulation \cite{Takahashi1995}, extended to the $\iota$,
+$\mu$ and $\delta$ rules.  Recall that the $\delta$-rule unfolds a
+constant to the erasure of its body, $c \lred \erase{t_c}$, and that
+bodies mention only earlier constants; no property of this ordering is
+needed below beyond the fact that each constant has a \emph{fixed}
+unfolding.
+
+\begin{definition}[Parallel reduction]
+\label{def:parred}
+The relation $\Rightarrow$ on $\lbox$ terms is defined inductively:
+\begin{enumerate}[leftmargin=2em,itemsep=0.2ex]
+\item $x \Rightarrow x$, \quad $\bx \Rightarrow \bx$, \quad $c
+  \Rightarrow c$;
+\item $c \Rightarrow \erase{t_c}$ for a defined constant $c$;
+\item $\lambda x.e \Rightarrow \lambda x.e'$ if $e \Rightarrow e'$;
+\item $e_1\,e_2 \Rightarrow e_1'\,e_2'$ if $e_i \Rightarrow e_i'$;
+\item $\wcns{c}(\tup{e}) \Rightarrow \wcns{c}(\tup{e}')$ if $e_i
+  \Rightarrow e_i'$ componentwise;
+\item $\mathsf{case}(e; \tup{br}) \Rightarrow \mathsf{case}(e';
+  \tup{br}')$ if $e \Rightarrow e'$ and branch bodies reduce
+  componentwise;
+\item $\mathsf{fix}\,f.e \Rightarrow \mathsf{fix}\,f.e'$ if $e
+  \Rightarrow e'$;
+\item $(\lambda x.e)\,a \Rightarrow \subst{e'}{a'}{x}$ if $e \Rightarrow
+  e'$ and $a \Rightarrow a'$;
+\item $\mathsf{case}(\wcns{c}_i(\tup{e}); \{\wcns{c}_j(\tup{x}_j)
+  \Rightarrow b_j\}_j) \Rightarrow \subst{b_i'}{\tup{e}'}{\tup{x}_i}$ if
+  $e_l \Rightarrow e_l'$ and $b_i \Rightarrow b_i'$;
+\item $\mathsf{fix}\,f.e \Rightarrow
+  \subst{e'}{\mathsf{fix}\,f.e'}{f}$ if $e \Rightarrow e'$.
+\end{enumerate}
+\end{definition}
+
+\begin{lemma}
+\label{lem:parred-basic}
+(i) $e \Rightarrow e$ for all $e$.\quad
+(ii) $\lred\; \subseteq\; \Rightarrow\; \subseteq\; \lreds$.\quad
+(iii) If $e \Rightarrow e'$ and $u \Rightarrow u'$ then
+$\subst{e}{u}{x} \Rightarrow \subst{e'}{u'}{x}$.
+\end{lemma}
+
+\begin{proof}
+(i) Induction on $e$ using clauses (1) and (3)--(7).  (ii) For the first
+inclusion, a one-step reduction is a root rule applied inside a context:
+the corresponding root clause (2), (8), (9) or (10) with reflexive
+subderivations, propagated by the congruence clauses.  For the second,
+induction on $e \Rightarrow e'$: each clause is realised by finitely
+many $\lred$-steps (congruence clauses by the induction hypothesis; the
+redex clauses by reducing inside first, then one root step).  (iii)
+Induction on the derivation of $e \Rightarrow e'$.  The variable clause
+$x \Rightarrow x$ becomes $u \Rightarrow u'$; clause (2) is unaffected
+because $\erase{t_c}$ is closed; the congruence clauses follow from the
+induction hypothesis; for the redex clauses one uses the standard
+substitution identities, e.g.\
+$\subst{(\subst{e'}{a'}{y})}{u'}{x} =
+\subst{(\subst{e'}{u'}{x})}{\subst{a'}{u'}{x}}{y}$ for $y \notin
+\fv{u'} \cup \{x\}$.
+\end{proof}
+
+\begin{definition}[Complete development]
+\label{def:development}
+The complete development $e^{\ast}$ is defined by recursion on $e$:
+\begin{align*}
+  x^{\ast} &= x, \qquad \bx^{\ast} = \bx, \qquad
+  c^{\ast} = \erase{t_c},\\
+  (\lambda x.e)^{\ast} &= \lambda x.e^{\ast}, \qquad
+  \wcns{c}(\tup{e})^{\ast} = \wcns{c}(\tup{e}^{\ast}), \qquad
+  (\mathsf{fix}\,f.e)^{\ast} =
+    \subst{e^{\ast}}{\mathsf{fix}\,f.e^{\ast}}{f},\\
+  ((\lambda x.e)\,a)^{\ast} &= \subst{e^{\ast}}{a^{\ast}}{x}, \qquad
+  (e_1\,e_2)^{\ast} = e_1^{\ast}\,e_2^{\ast} \quad (e_1 \text{ not a }
+    \lambda),\\
+  \mathsf{case}(\wcns{c}_i(\tup{e}); \tup{br})^{\ast} &=
+    \subst{b_i^{\ast}}{\tup{e}^{\ast}}{\tup{x}_i},\\
+  \mathsf{case}(e; \tup{br})^{\ast} &=
+    \mathsf{case}(e^{\ast}; \tup{br}^{\ast}) \quad (e \text{ not a
+    constructor form}).
+\end{align*}
+(For a constant, the development unfolds once and does not recurse into
+the unfolding; for a fix, the root $\mu$-redex is contracted once, its
+residuals in the contractum being new redexes that are not developed.)
+\end{definition}
+
+\begin{lemma}[Triangle property]
+\label{lem:triangle}
+If $e \Rightarrow e'$ then $e' \Rightarrow e^{\ast}$.
+\end{lemma}
+
+\begin{proof}
+Induction on the derivation of $e \Rightarrow e'$, with a case analysis
+on the last clause used.
+\begin{itemize}[leftmargin=2em]
+\item Clause (1): for variables and $\bx$ immediate; for $c \Rightarrow
+  c$ we need $c \Rightarrow c^{\ast} = \erase{t_c}$, which is clause
+  (2).
+\item Clause (2): $e' = \erase{t_c} = c^{\ast}$, and $e' \Rightarrow e'$
+  by \cref{lem:parred-basic}(i).
+\item Clause (3), (5), (7)-congruence, and clause (6) with non-constructor
+  scrutinee whose reduct is still handled uniformly: by the induction
+  hypothesis componentwise.  Two subtleties: for
+  $\mathsf{fix}\,f.e \Rightarrow \mathsf{fix}\,f.e'$ (clause (7)) the
+  target is $(\mathsf{fix}\,f.e)^{\ast} =
+  \subst{e^{\ast}}{\mathsf{fix}\,f.e^{\ast}}{f}$, reached from
+  $\mathsf{fix}\,f.e'$ by clause (10) with $e' \Rightarrow e^{\ast}$
+  (induction hypothesis).  For $\mathsf{case}(e; \tup{br})$ with $e$ not
+  a constructor form, the scrutinee's reduct $e''$ may or may not be a
+  constructor form, but the development $\mathsf{case}(e^{\ast};
+  \tup{br}^{\ast})$ is reached by clause (6) either way.
+\item Clause (4) with $e_1 = \lambda x.b$: then $e_1 \Rightarrow e_1'$
+  is by clause (3), $e_1' = \lambda x.b'$, and $e^{\ast} =
+  \subst{b^{\ast}}{a^{\ast}}{x}$; from $e' = (\lambda x.b')\,a'$ apply
+  clause (8) with $b' \Rightarrow b^{\ast}$, $a' \Rightarrow a^{\ast}$
+  (induction hypotheses).
+\item Clause (4) with $e_1$ not a $\lambda$: $e^{\ast} =
+  e_1^{\ast}\,e_2^{\ast}$; apply clause (4) with the induction
+  hypotheses.  (If $e_1' $ happens to be a $\lambda$ or a constant
+  unfolding, no root contraction is required of us.)
+\item Clause (8): $e = (\lambda x.b)\,a$, $e' = \subst{b'}{a'}{x}$; by
+  induction hypotheses $b' \Rightarrow b^{\ast}$ and $a' \Rightarrow
+  a^{\ast}$, so \cref{lem:parred-basic}(iii) gives $e' \Rightarrow
+  \subst{b^{\ast}}{a^{\ast}}{x} = e^{\ast}$.
+\item Clause (9): as clause (8), with the componentwise induction
+  hypotheses for the constructor arguments and the branch, and
+  \cref{lem:parred-basic}(iii) extended to simultaneous substitutions.
+  Note the scrutinee $\wcns{c}_i(\tup{e})$ can only have been reduced
+  componentwise (clause (5)), so the case analysis in
+  \cref{def:development} is stable.
+\item Clause (10): $e = \mathsf{fix}\,f.b$, $e' =
+  \subst{b'}{\mathsf{fix}\,f.b'}{f}$; by the induction hypothesis $b'
+  \Rightarrow b^{\ast}$, whence $\mathsf{fix}\,f.b' \Rightarrow
+  \mathsf{fix}\,f.b^{\ast}$ by clause (7), and
+  \cref{lem:parred-basic}(iii) gives $e' \Rightarrow
+  \subst{b^{\ast}}{\mathsf{fix}\,f.b^{\ast}}{f} = e^{\ast}$.
+\end{itemize}
+\end{proof}
+
+\begin{proof}[Proof of \cref{thm:confluence}]
+By \cref{lem:triangle}, $\Rightarrow$ has the diamond property: if $e
+\Rightarrow e_1$ and $e \Rightarrow e_2$ then $e_1 \Rightarrow e^{\ast}$
+and $e_2 \Rightarrow e^{\ast}$.  A relation with the diamond property
+has confluent reflexive--transitive closure (tiling), and by
+\cref{lem:parred-basic}(ii) the closure of $\Rightarrow$ is $\lreds$.
+The characterisation of $\lconv$ by common reducts follows by induction
+on the conversion zig-zag (Church--Rosser).
+\end{proof}

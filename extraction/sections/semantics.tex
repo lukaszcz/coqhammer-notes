@@ -1,0 +1,466 @@
+\section{Semantics}
+\label{sec:semantics}
+
+We now build the structures against which soundness is proved: a
+\emph{semantics of the source} --- proof-irrelevant, classical, and
+syntactic in the sense that individuals are $\lbox$ terms --- and a
+first-order structure $\ML$ over the same individuals interpreting the
+signature $\SigFOL$.  Throughout, $\Env$ is a fixed well-formed
+definitional environment with $\Sfrag$ declarations.
+
+\subsection{The domain}
+\label{sec:semantics-domain}
+
+\begin{definition}[Domain]
+\label{def:domain}
+Let $\Dom$ be the set of closed $\lbox$ terms modulo $\lconv$.  We write
+$\cls{e}$ for the class of $e$.  $\Dom$ is non-empty ($\cls{\bx} \in
+\Dom$) and carries an application operation $d \cdot d' \defeq
+\cls{e\,e'}$ for representatives $e \in d$, $e' \in d'$, well defined
+since $\lconv$ is a congruence.
+\end{definition}
+
+$\Dom$ deliberately contains \emph{junk}: classes such as
+$\cls{\csO\,\csO}$ (a constructor applied to a constructor) or
+$\cls{\mathsf{fix}\,f.f}$ that are the value of no source term of any
+type.  By \cref{cor:discrimination}, distinct constructor forms lie in
+distinct classes, and junk classes like $\cls{\csO\,\csO}$ lie outside
+every constructor form.  Junk is what makes the guard analysis of
+\cref{sec:casesplit} non-trivial, and keeping it in the model --- rather
+than quotienting it away --- is what lets the model arbitrate which
+axioms need guards.
+
+\begin{definition}[Valuations and term denotation]
+\label{def:valuation}
+A \emph{valuation} $\rho$ assigns to finitely many term variables elements
+of $\Dom$ and to finitely many predicate variables $q$ (of kind
+$(\sigma_1, \dots, \sigma_n) \to \Prop$) functions $\Dom^n \to \{0,1\}$.
+Proof variables are not assigned anything.  For a $\CICm$ term $t$ whose
+free term variables are assigned by $\rho$, the \emph{denotation} is
+\[
+  \sem{t}_\rho \defeq \cls{\erase{t}^\rho} \in \Dom,
+\]
+where $\erase{t}^\rho$ substitutes a representative of $\rho(x)$ for each
+free variable $x$ of $\erase{t}$.  This is well defined: free variables
+of $\erase{t}$ are free term variables of $t$ (proof and predicate
+variables do not survive erasure by \cref{def:erasure}), and the class is
+independent of the choice of representatives because $\lconv$ is a
+congruence.  For a $\lbox$ term $e$ we likewise write $\cls{e^\rho}$.
+\end{definition}
+
+\subsection{Interpretation of types, propositions and predicates}
+\label{sec:semantics-interp}
+
+\begin{definition}[Interpretations]
+\label{def:interp}
+By recursion on the position of declarations in $\Env$ and, within each
+declaration, on the structure of phrases, we define for every set type
+$\sigma$, proposition $\varphi$ and predicate expression $P$ over a prefix
+of $\Env$, and every valuation $\rho$ covering their free variables:
+\begin{itemize}[leftmargin=2em]
+\item a set $\semr{\sigma}{\rho} \subseteq \Dom$,
+\item a truth value $\pvr{\varphi}{\rho} \in \{0, 1\}$,
+\item a function $\kvr{P}{\rho} : \Dom^n \to \{0,1\}$ for $P$ of kind
+  $(\sigma_1, \dots, \sigma_n) \to \Prop$,
+\end{itemize}
+as follows.
+
+\emph{Datatypes.}  For a datatype $I$ with constructors $\wcns{c}_i :
+(\sigma_{i1}, \dots, \sigma_{ir_i})$, define stages $\stage{I}{m}
+\subseteq \Dom$ by $\stage{I}{0} = \emptyset$ and
+\begin{multline*}
+  \stage{I}{m+1} = \bigl\{\, \cls{\wcns{c}_i(e_1, \dots, e_{r_i})} \;\bigm|\;
+    i \leq \text{number of constructors},\\
+    \cls{e_j} \in \semr{\sigma_{ij}}{} \text{ for non-recursive } j,\quad
+    \cls{e_j} \in \stage{I}{m} \text{ for recursive } j \,\bigr\},
+\end{multline*}
+which is well defined because the non-recursive $\sigma_{ij}$ are closed
+types over the environment prefix preceding $I$.  The stages are
+increasing in $m$ (induction on $m$), and we set $\semr{I}{} =
+\bigcup_{m} \stage{I}{m}$ and define the \emph{rank}
+$\rank{I}{d}$ of $d \in \semr{I}{}$ as the least $m$ with $d \in
+\stage{I}{m}$.
+
+\emph{Set types.}
+\begin{align*}
+  \semr{\Pi x{:}\sigma.\tau}{\rho} &=
+    \{\, d \in \Dom \mid \forall e \in \semr{\sigma}{\rho}.\;
+      d \cdot e \in \semr{\tau}{\rho[x \mapsto e]} \,\}\\
+  \semr{\varphi \to \tau}{\rho} &=
+    \{\, d \in \Dom \mid \pvr{\varphi}{\rho} = 1 \implies d \in
+      \semr{\tau}{\rho} \,\}\\
+  \semr{\refty{x{:}\sigma}{\varphi}}{\rho} &=
+    \{\, d \in \semr{\sigma}{\rho} \mid \pvr{\varphi}{\rho[x \mapsto d]}
+      = 1 \,\}
+\end{align*}
+The clause for $\varphi \to \tau$ has no application: it mirrors the
+erasure of the proof argument (\cref{def:erasure}).
+
+\emph{Inductive predicates.}  For $J : (\sigma_1, \dots, \sigma_k) \to
+\Prop$ with clauses $\wcns{k}_j : \forall \tup{x}{:}\tup{\tau}_j.\
+\varphi_{j1} \to \dots \to \varphi_{j\ell_j} \to J(\tup{u}_j)$, define
+stages $\pv{J}^0 = \emptyset \subseteq \Dom^k$ and
+\begin{multline*}
+  \pv{J}^{m+1} = \Bigl\{\, \bigl(\sem{u_{j1}}_{\rho_0}, \dots,
+    \sem{u_{jk}}_{\rho_0}\bigr) \;\Bigm|\;
+    j,\ \rho_0 = [\tup{x} \mapsto \tup{d}\,],\
+    d_i \in \semr{\tau_{ji}}{\rho_0},\\
+    \pvr{\varphi}{\rho_0} = 1 \text{ for non-rec.\ premises},\
+    \tup{v}\text{-tuples} \in \pv{J}^m \text{ for rec.\ premises}
+  \,\Bigr\},
+\end{multline*}
+where a recursive premise $J(\tup{v})$ contributes the condition
+$(\sem{v_1}_{\rho_0}, \dots, \sem{v_k}_{\rho_0}) \in \pv{J}^m$.
+(Premises and index types mention only $J$-free material and earlier
+declarations, plus the telescope variables $\tup{x}$, so the right-hand
+side is well defined.)  Set $\pv{J} = \bigcup_m \pv{J}^m$, with ranks
+defined as for datatypes.
+
+\emph{Propositions.}
+\begin{align*}
+  \pvr{\top}{\rho} &= 1, \qquad \pvr{\bot}{\rho} = 0\\
+  \pvr{\varphi \wedge \psi}{\rho} &= \min(\pvr{\varphi}{\rho},
+    \pvr{\psi}{\rho}), \qquad
+  \pvr{\varphi \vee \psi}{\rho} = \max(\pvr{\varphi}{\rho},
+    \pvr{\psi}{\rho})\\
+  \pvr{\varphi \to \psi}{\rho} &= \max(1 - \pvr{\varphi}{\rho},
+    \pvr{\psi}{\rho})\\
+  \pvr{\forall x{:}\sigma.\varphi}{\rho} &=
+    \min_{d \in \semr{\sigma}{\rho}} \pvr{\varphi}{\rho[x \mapsto d]},
+  \qquad
+  \pvr{\exists x{:}\sigma.\varphi}{\rho} =
+    \max_{d \in \semr{\sigma}{\rho}} \pvr{\varphi}{\rho[x \mapsto d]}\\
+  \pvr{\forall q{:}K.\varphi}{\rho} &=
+    \min_{Q : \Dom^n \to \{0,1\}} \pvr{\varphi}{\rho[q \mapsto Q]}\\
+  \pvr{a =_\sigma b}{\rho} &= 1 \text{ iff } \sem{a}_\rho = \sem{b}_\rho\\
+  \pvr{J(\tup{a})}{\rho} &= 1 \text{ iff }
+    (\sem{a_1}_\rho, \dots, \sem{a_k}_\rho) \in \pv{J}\\
+  \pvr{q(\tup{a})}{\rho} &= \rho(q)(\sem{a_1}_\rho, \dots,
+    \sem{a_n}_\rho)
+\end{align*}
+(with $\min \emptyset = 1$, $\max \emptyset = 0$).
+
+\emph{Predicate expressions.}  $\kvr{q}{\rho} = \rho(q)$ and
+$\kvr{\lambda(\tup{x}{:}\tup{\sigma}).\varphi}{\rho}(\tup{d}) =
+\pvr{\varphi}{\rho[\tup{x} \mapsto \tup{d}\,]}$.
+\end{definition}
+
+The recursion is well founded: the datatype and predicate stages refer
+only to earlier declarations and to the (structurally smaller) phrases of
+their own declaration; all other clauses recurse on proper sub-phrases.
+The semantics is classical and \emph{proof-irrelevant} by construction:
+truth values do not depend on proofs, and $\sem{\cdot}$ ignores proof
+subterms.  Note also that the interpretation of equality is untyped ---
+$\pv{a =_\sigma b}$ compares classes in $\Dom$ and does not mention
+$\sigma$ --- which matches the translation clause $\F{a =_\sigma b} =
+\compf(\erase{a}) \feq \compf(\erase{b})$.
+
+\begin{lemma}[Elementary properties]
+\label{lem:sem-basic}
+\begin{enumerate}[leftmargin=2em]
+\item $\semr{\sigma}{\rho}$, $\pvr{\varphi}{\rho}$, $\kvr{P}{\rho}$
+  depend only on the restriction of $\rho$ to the free variables of the
+  phrase.
+\item (Weakening) They are unchanged by extending $\rho$ on fresh
+  variables.
+\item Every $d \in \semr{I}{}$ has a finite rank, and
+  $d \in \stage{I}{m}$ for all $m > \rank{I}{d}$; similarly for
+  $\pv{J}$.
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}
+(1), (2): routine induction on the phrase.  (3): by definition of the
+union and monotonicity of stages.
+\end{proof}
+
+\begin{lemma}[Semantic substitution]
+\label{lem:sem-subst}
+Let $a$ be a term, $\pi$ a proof and $P$ a predicate expression, with
+$\rho$ covering the relevant free variables.  Then:
+\begin{enumerate}[leftmargin=2em]
+\item $\sem{\subst{t}{a}{x}}_\rho = \sem{t}_{\rho[x \mapsto
+  \sem{a}_\rho]}$, and the analogous equations for the substituted
+  type $\subst{\sigma}{a}{x}$, proposition $\subst{\varphi}{a}{x}$ and
+  predicate expression $\subst{P}{a}{x}$.
+\item Substitution of proofs is invisible:
+  $\sem{\subst{t}{\pi}{p}}_\rho = \sem{t}_\rho$,
+  $\semr{\subst{\sigma}{\pi}{p}}{\rho} = \semr{\sigma}{\rho}$,
+  $\pvr{\subst{\varphi}{\pi}{p}}{\rho} = \pvr{\varphi}{\rho}$.
+\item $\pvr{\subst{\varphi}{P}{q}}{\rho} = \pvr{\varphi}{\rho[q \mapsto
+  \kvr{P}{\rho}]}$, and analogously for types and terms (on which the
+  substitution acts only through annotations and is invisible).
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}
+(1) For terms: $\erase{\subst{t}{a}{x}} =
+\subst{\erase{t}}{\erase{a}}{x}$ by \cref{lem:erase-subst}, and
+substituting a representative of $\sem{a}_\rho$ for $x$ yields a
+representative of the same class.  For types, propositions and
+predicates: induction on the phrase, with the term case as base; the
+binder cases use (2) of \cref{lem:sem-basic}; the predicate-application
+case $\subst{(q(\tup{a}))}{P}{q} = P \cdot \tup{a}$ in (3) unfolds
+$\kvr{P}{\rho}$ by definition.  (2) By \cref{lem:erase-subst}, erasure
+discards the substituted proof, and proofs do not occur in the semantic
+clauses.  (3) As in (1).
+\end{proof}
+
+\begin{lemma}[Conversion invariance]
+\label{lem:conv-inv}
+If $t \conv t'$ then $\sem{t}_\rho = \sem{t'}_\rho$.  If $\sigma \conv
+\sigma'$ (both well formed) then $\semr{\sigma}{\rho} =
+\semr{\sigma'}{\rho}$; if $\varphi \conv \varphi'$ then
+$\pvr{\varphi}{\rho} = \pvr{\varphi'}{\rho}$.
+\end{lemma}
+
+\begin{proof}
+For terms: by \cref{lem:erase-sim}, $t \conv t'$ implies $\erase{t}
+\lconv \erase{t'}$, hence $\erase{t}^\rho \lconv \erase{t'}^\rho$
+($\lconv$ is closed under substitution of representatives), i.e.\
+$\sem{t}_\rho = \sem{t'}_\rho$.
+
+For types and propositions, first consider a single step $\sigma \red
+\sigma'$.  By \cref{lem:rigid} (and its proof), the step occurs inside a
+term position (an equation side, a predicate-atom argument, an index) or
+inside a component type or proposition.  Proceed by induction on the
+structure of $\sigma$: in the first case the claim follows from the term
+statement, since the semantic clauses depend on embedded terms only
+through $\sem{\cdot}_\rho$; in the second, from the induction hypothesis
+applied to the component (for binders, at every extension $\rho[x
+\mapsto d]$, using that the same step relates the instantiated
+components).  The general claim follows by induction on the length of the
+conversion path.
+\end{proof}
+
+\subsection{The first-order structure \texorpdfstring{$\ML$}{M}}
+\label{sec:semantics-model}
+
+\begin{definition}[The structure $\ML$]
+\label{def:model}
+$\ML$ is the first-order $\SigFOL$-structure with universe $\Dom$ and:
+\begin{itemize}[leftmargin=2em]
+\item $\feq$ interpreted as identity of classes; $\fapp$ as $\cdot$;
+  $\prfc$ as $\cls{\bx}$;
+\item $\Ihat{I}^{\ML} = \semr{I}{}$ for each datatype $I$, and
+  $\Ihat{J}^{\ML} = \pv{J}$ for each inductive predicate $J$;
+\item $\Ihat{\wcns{c}}^{\ML}(d_1, \dots, d_r) = \cls{\wcns{c}(e_1, \dots,
+  e_r)}$ for representatives $e_i \in d_i$;
+\item for every symbol $f$ introduced by compilation with closure arity
+  $s$, extension arity $m$ and witness $e_f$ (a $\lbox$ term with free
+  variables $\tup{w} = w_1, \dots, w_s$; see
+  \cref{def:compC,def:compile}):
+  \[
+    f^{\ML}(d_1, \dots, d_s, d'_1, \dots, d'_m) =
+      \cls{\,\subst{e_f}{\tup{e}}{\tup{w}}\; e'_1 \cdots e'_m\,}
+  \]
+  for representatives $e_i \in d_i$, $e'_j \in d'_j$.  In particular
+  $\Ihat{c}^{\ML}(\tup{d}) = \cls{c\; \tup{e}}$ (the $\lbox$ constant $c$
+  applied) and $(\Ihat{c}^0)^{\ML} = \cls{c}$.
+\end{itemize}
+All interpretations are well defined on classes by congruence of
+$\lconv$.  We write $\den{u}{\rho}$ for the denotation in $\ML$ of a
+first-order term $u$ under an assignment $\rho$ of its variables, and
+$\ML, \rho \vDash \phi$ for satisfaction of a first-order formula, in the
+standard (classical, Tarskian) sense.
+\end{definition}
+
+Since source term variables double as first-order variables, a valuation
+$\rho$ (\cref{def:valuation}) restricted to term variables serves as a
+first-order assignment, and we use the same letter for both.
+
+\subsection{Adequacy of the term translation and of compilation}
+\label{sec:semantics-adequacy}
+
+\begin{definition}[Coherent template maps]
+\label{def:coherent}
+Let $\theta$ be a template map as in \cref{sec:translation-compile}, and
+$\sigma_\theta$ a substitution assigning to each $g \in \dom{\theta}$ a
+closed $\lbox$ term $\sigma_\theta(g)$.  Say $(\theta, \sigma_\theta)$ is
+\emph{coherent} for an assignment $\rho$ if for every $g$ with $\theta(g)
+= (f, \tup{w}, m)$ and all $d_1, \dots, d_m \in \Dom$ with
+representatives $e_i$,
+\[
+  f^{\ML}\bigl(\den{\tup{w}}{\rho},\, \tup{d}\bigr) =
+  \cls{\,\sigma_\theta(g)\;e_1 \cdots e_m\,}.
+\]
+\end{definition}
+
+\begin{lemma}[Adequacy of $\compf$]
+\label{lem:comp-adequacy}
+Let $e$ be a $\lbox$ term whose free variables are first-order variables
+assigned by $\rho$ or bound by $\theta$, and let $(\theta,
+\sigma_\theta)$ be coherent for $\rho$.  Then
+\[
+  \den{\compf_\theta(e)}{\rho} = \cls{\,e^{\rho, \sigma_\theta}\,},
+\]
+where $e^{\rho,\sigma_\theta}$ substitutes representatives of $\rho(x)$
+for the first-order variables and $\sigma_\theta(g)$ for the
+$\theta$-bound variables.
+\end{lemma}
+
+\begin{proof}
+By induction on $e$, following the clauses of \cref{def:compC}.
+Variables, $\bx$ and constructors are immediate.  For a spine $h\,e_1
+\cdots e_j$:
+\begin{itemize}[leftmargin=2em]
+\item $h = g$ $\theta$-bound: by coherence,
+  $f^{\ML}(\den{\tup{w}}{\rho}, \den{\compf_\theta(e_1)}{\rho}, \dots) =
+  \cls{\sigma_\theta(g)\, e_1^{\rho,\sigma_\theta} \cdots}$ using the
+  induction hypothesis on the $e_i$; the remaining arguments are appended
+  by $\fapp$, interpreted as $\cdot$.
+\item $h = c$: $\Ihat{c}^{\ML}$ applies the $\lbox$ constant $c$ to the
+  argument classes (\cref{def:model}), which is exactly
+  $\cls{(c\,e_1\cdots e_j)^{\rho,\sigma_\theta}}$, with the pointer case
+  identical via $(\Ihat{c}^0)^{\ML} = \cls{c}$ and $\fapp$.
+\item $h$ a variable: immediate.
+\item $h$ complex: by \cref{def:model} the head's value translation
+  denotes $\cls{h^{\rho,\sigma_\theta}}$ --- for a $\lambda$-lift,
+  $f^{\ML}(\den{\tup{w}}{\rho}) = \cls{e_f^{\,\rho,\sigma_\theta}}$ with
+  $e_f = h$, and similarly for case lifts ($g^{\ML}(\den{\compf(s)}{},
+  \dots) = \cls{(\lambda z.\mathsf{case}(z;\tup{br}))^{\dots}\,
+  s^{\dots}}$, which $\beta$-reduces to
+  $\cls{\mathsf{case}(s;\tup{br})^{\dots}}$, using the induction
+  hypothesis for $s$) and fix lifts (via the pointer's witness);
+  the spine arguments are then appended by $\cdot$.
+\end{itemize}
+Note the case for complex heads uses only the \emph{interpretation} of
+the lifted symbols, not the axioms emitted for them.
+\end{proof}
+
+\begin{lemma}[Soundness of compilation]
+\label{lem:compile-sound}
+Consider any invocation of the compilation procedure on the environment
+(or on a term embedded in the goal), and let
+$\mathrm{B}_\theta(L; e)$ range over the body-compilation calls it
+performs.  Then:
+\begin{enumerate}[leftmargin=2em]
+\item (\emph{Invariant}) For every such call there is a substitution
+  $\sigma_\theta$ such that for every assignment $\rho$ of the variables
+  of $L$, the pair $(\theta, \sigma_\theta)$ is coherent for $\rho$ and
+  $\den{L}{\rho} = \cls{e^{\rho, \sigma_\theta}}$.
+\item Every axiom emitted by the procedure holds in $\ML$.
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}
+By induction on the tree of procedure calls.  We first check the
+invariant at the roots, then that each rule preserves it and that each
+emission is valid given it.
+
+\emph{Roots.}  For a definition $c \defeq t : \tau$ with $\erase{t} =
+\lambda \tup{z}.e_0$ (no fix): $\den{\Ihat{c}(\tup{z})}{\rho} =
+\cls{c\,\tup{e}} = \cls{\erase{t}\,\tup{e}}$ (a $\delta$-step) $=
+\cls{e_0^{\rho}}$ (by $|\tup{z}|$ $\beta$-steps), with $\theta =
+\emptyset$.  For $\erase{t} = \mathsf{fix}\,g_0.\lambda\tup{z}.e_0$: set
+$\sigma_\theta(g_0) = \erase{t}$; coherence holds because
+$\Ihat{c}^{\ML}(\tup{d}) = \cls{c\,\tup{e}} =
+\cls{\erase{t}\,\tup{e}}$ by a $\delta$-step; and $\den{\Ihat{c}(\tup{z})}
+{\rho} = \cls{c\,\tup{e}} = \cls{\erase{t}\,\tup{e}} =
+\cls{(\lambda\tup{z}.e_0)[\erase{t}/g_0]\,\tup{e}} =
+\cls{e_0^{\rho,\sigma_\theta}}$ by a $\mu$-step and $\beta$-steps.  For a
+$\lambda$-lift of $h = \lambda x.e'$ (\cref{def:compC}), the call is
+$\mathrm{B}_\theta(f(\tup{w}); h)$ and $\den{f(\tup{w})}{\rho} =
+\cls{h^{\rho,\sigma_\theta}}$ holds by the definition of $f^{\ML}$
+(witness $h$); for a case lift, $\den{g(z, \tup{w}')}{\rho} =
+\cls{(\lambda z'.\mathsf{case}(z';\tup{br}))^{\dots}\, z^\rho}
+\lconv \cls{\mathsf{case}(z;\tup{br})^{\rho,\sigma_\theta}}$ by a
+$\beta$-step; for a fix lift $h = \mathsf{fix}\,g_0.\lambda
+\tup{z}.e_0$, extend $\sigma_\theta$ with $\sigma_\theta(g_0) =
+h^{\rho,\sigma_\theta}|_{\tup{w}}$ --- the closed instance of $h$ at the
+representatives of $\den{\tup{w}}{\rho}$; coherence for $g_0$ is the
+definition of $f^{\ML}$ via witness $h$, and the invariant for
+$\mathrm{B}_{\theta'}(f(\tup{w},\tup{z}); e_0)$ follows by one $\mu$-step
+and $\beta$-steps as in the definition-root case.
+
+\emph{Rule (1)} ($e = \lambda x.e'$): $\den{L \fapp x}{\rho} =
+\den{L}{\rho} \cdot \rho(x) = \cls{e^{\dots}\,x^\rho} \lconv
+\cls{e'^{\,\rho,\sigma_\theta}}$ by a $\beta$-step.
+
+\emph{Rule (2)} (pattern split): an assignment $\rho'$ of the refined
+left-hand side $\subst{L}{\Ihat{\wcns{c}}_i(\tup{z}_i)}{x}$ induces the
+assignment $\rho = \rho'[x \mapsto \cls{\wcns{c}_i(\tup{e})}]$ of $L$;
+then
+\[
+  \den{\subst{L}{\Ihat{\wcns{c}}_i(\tup{z}_i)}{x}}{\rho'} =
+  \den{L}{\rho} = \cls{\mathsf{case}(x;\dots)^{\rho,\sigma_\theta}},
+\]
+and a head $\iota$-step reduces the representative to
+$\cls{(\subst{b_i}{\wcns{c}_i(\tup{z}_i)}{x})^{\rho',\sigma_\theta}}$.
+
+\emph{Rule (3)} (flatten): the emitted axiom $L \feq
+g(\compf_\theta(s), \tup{w}')$ is valid: by the invariant and
+\cref{lem:comp-adequacy}, both sides denote
+$\cls{\mathsf{case}(s;\tup{br})^{\rho,\sigma_\theta}}$ (for the right
+side, $g^{\ML}$ applies its witness $\lambda z.\mathsf{case}(z;\tup{br})$
+to $\den{\compf_\theta(s)}{\rho} = \cls{s^{\rho,\sigma_\theta}}$ and one
+$\beta$-step concludes).  The recursive call's invariant is the root
+computation for case lifts above.
+
+\emph{Rule (4)} (inner fix): the emitted axiom $L \feq f^0(\tup{w})$ is
+valid since both sides denote $\cls{e^{\rho,\sigma_\theta}}$ (the right
+side by the definition of $(f^0)^{\ML}$ with witness $e$); the recursive
+compilation is covered by the fix-lift root case.
+
+\emph{Rule (5)}: the emitted axiom $L \feq \compf_\theta(e)$ is valid by
+the invariant and \cref{lem:comp-adequacy}.
+
+\emph{Pointer axioms}: $\forall \tup{z}.\ \Ihat{c}^0 \fapp z_1 \fapp
+\cdots \fapp z_{a_c} \feq \Ihat{c}(\tup{z})$ holds because both sides
+denote $\cls{c\,\tup{e}}$; similarly for fix-lift pointers.
+\end{proof}
+
+\subsection{Coincidence: the translation reflects the semantics}
+\label{sec:semantics-coincidence}
+
+\begin{lemma}[Coincidence]
+\label{lem:coincidence}
+Let $\sigma$ be a shallow set type and $\varphi$ a shallow proposition
+(over $\Env$ and a context of term variables), and let $\rho$ be a
+valuation of their free variables.  Then:
+\begin{enumerate}[leftmargin=2em]
+\item for every first-order term $u$ over the variables of $\rho$:\quad
+  $\ML, \rho \vDash \guard{\sigma}{u} \iff \den{u}{\rho} \in
+  \semr{\sigma}{\rho}$;
+\item $\ML, \rho \vDash \F{\varphi} \iff \pvr{\varphi}{\rho} = 1$.
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}
+Mutual induction on the structure of $\sigma$ and $\varphi$, following
+\cref{def:guard-F}.
+\begin{itemize}[leftmargin=2em]
+\item $\sigma = I$: $\guard{I}{u} = \Ihat{I}(u)$ and $\Ihat{I}^{\ML} =
+  \semr{I}{}$ by \cref{def:model}.
+\item $\sigma = \Pi x{:}\sigma'.\tau$: $\ML, \rho \vDash \forall x.\
+  \guard{\sigma'}{x} \to \guard{\tau}{u \fapp x}$ iff for all $d \in
+  \Dom$ with $d \in \semr{\sigma'}{\rho}$ (induction hypothesis (1) at the
+  variable $x$) we have $\den{u}{\rho} \cdot d \in \semr{\tau}{\rho[x
+  \mapsto d]}$ (induction hypothesis (1) for $\tau$, at the assignment
+  $\rho[x \mapsto d]$ and the term $u \fapp x$), which is the definition
+  of $\den{u}{\rho} \in \semr{\Pi x{:}\sigma'.\tau}{\rho}$.
+\item $\sigma = \varphi' \to \tau$ and $\sigma =
+  \refty{x{:}\sigma'}{\varphi'}$: as above, using induction hypothesis
+  (2) for $\varphi'$; the refinement case uses the standard first-order
+  substitution lemma, $\ML, \rho \vDash
+  \subst{\F{\varphi'}}{u}{x} \iff \ML, \rho[x \mapsto \den{u}{\rho}]
+  \vDash \F{\varphi'}$.
+\item Connectives, $\top$, $\bot$: the classical satisfaction clauses
+  match the truth-value clauses of \cref{def:interp} literally.
+\item $\F{\forall x{:}\sigma'.\varphi'} = \forall x.\guard{\sigma'}{x}
+  \to \F{\varphi'}$: satisfaction quantifies over all $d \in \Dom$ and
+  relativises by the guard, which by induction hypothesis (1) carves out
+  exactly $\semr{\sigma'}{\rho}$; this matches
+  $\min_{d \in \semr{\sigma'}{\rho}}$.  Dually for $\exists$.
+\item Equations: $\ML, \rho \vDash \compf(\erase{a}) \feq
+  \compf(\erase{b})$ iff $\den{\compf(\erase{a})}{\rho} =
+  \den{\compf(\erase{b})}{\rho}$ iff $\cls{\erase{a}^\rho} =
+  \cls{\erase{b}^\rho}$ (by \cref{lem:comp-adequacy} with $\theta =
+  \emptyset$) iff $\sem{a}_\rho = \sem{b}_\rho$, which is
+  $\pvr{a =_\sigma b}{\rho} = 1$.
+\item $J$-atoms: as for equations, using $\Ihat{J}^{\ML} = \pv{J}$.
+\end{itemize}
+Shallowness is used exactly here: predicate quantifiers and
+predicate-variable atoms have no translation, and all remaining formers
+are covered.
+\end{proof}

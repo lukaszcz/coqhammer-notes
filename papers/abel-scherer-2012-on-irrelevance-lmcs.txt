@@ -1,0 +1,2729 @@
+Logical Methods in Computer Science
+Vol. 8 (1:29) 2012, pp. 1–36
+www.lmcs-online.org
+
+Submitted
+Published
+
+Oct. 4, 2011
+Mar. 26, 2012
+
+ON IRRELEVANCE AND ALGORITHMIC EQUALITY IN
+PREDICATIVE TYPE THEORY ∗
+ANDREAS ABEL a AND GABRIEL SCHERER b
+a
+
+Department of Computer Science, Ludwig-Maximilians-University Munich
+e-mail address: andreas.abel@ifi.lmu.de
+
+b
+
+Gallium team, INRIA Paris-Rocquencourt
+e-mail address: gabriel.scherer@gmail.com
+Abstract. Dependently typed programs contain an excessive amount of static terms
+which are necessary to please the type checker but irrelevant for computation. To separate static and dynamic code, several static analyses and type systems have been put
+forward. We consider Pfenning’s type theory with irrelevant quantification which is compatible with a type-based notion of equality that respects η-laws. We extend Pfenning’s
+theory to universes and large eliminations and develop its meta-theory. Subject reduction,
+normalization and consistency are obtained by a Kripke model over the typed equality
+judgement. Finally, a type-directed equality algorithm is described whose completeness is
+proven by a second Kripke model.
+
+1. Introduction and Related Work
+Dependently typed programming languages such as Agda [BDN09], Coq [INR10], and Epigram [MM04] allow the programmer to express in one language programs, their types, rich
+invariants, and even proofs of these invariants. Besides code executed at run-time, dependently typed programs contain much code needed only to please the type checker, which is
+at the same time the verifier of the proofs woven into the program.
+Program extraction takes type-checked terms and discards parts that are irrelevant for
+execution. Augustsson’s dependently typed functional language Cayenne [Aug99] erases
+types using a universe-based analysis. Coq’s extraction procedure has been designed by
+Paulin-Mohring and Werner [PMW93] and Letouzey [Let02] and discards not only types
+but also proofs. The erasure rests on Coq’s universe-based separation between propositional
+(Prop) and computational parts (Set/Type). The rigid Prop/Set distinction has the drawback of code duplication: A structure which is sometimes used statically and sometimes
+dynamically needs to be coded twice, once in Prop and once in Set.
+An alternative to the fixed Prop/Set-distinction is to let the usage context decide
+whether a term is a proof or a program. Besides whole-program analyses such as data
+1998 ACM Subject Classification: F.4.1.
+Key words and phrases: dependent types, proof irrelevance, typed algorithm equality, logical relation,
+universal Kripke model.
+∗
+Revision and extension of FoSSaCS 2011 conference publication.
+
+l
+
+LOGICAL METHODS
+IN COMPUTER SCIENCE
+
+c
+DOI:10.2168/LMCS-8 (1:29) 2012
+
+CC
+
+A. Abel and G. Scherer
+Creative Commons
+
+2
+
+A. ABEL AND G. SCHERER
+
+flow, some type-based analyses have been put forward. One of them is Pfenning’s modal
+type theory of Intensionality, Extensionality, and Proof Irrelevance [Pfe01], later pursued
+by Reed [Ree03], which introduces functions with irrelevant arguments that play the role of
+proofs.1 Not only can these arguments be erased during extraction, they can also be disregarded in type conversion tests during type checking. This relieves the user of unnecessary
+proof burden (proving that two proofs are equal). Furthermore, proofs can not only be
+discarded during program extraction but directly after type checking, since they will never
+be looked at again during type checking subsequent definitions.
+In principle, we have to distinguish “post mortem” program extraction, let us call it
+external erasure, and proof disposal during type checking, let us call it internal erasure.
+External erasure deals with closed expressions, programs, whereas internal erasure deals
+with open expressions that can have free variables. Such free variables might be assumed
+proofs of (possibly false) equations and block type casts, or (possibly false) proofs of wellfoundedness and prevent recursive functions from unfolding indefinitely. For type checking
+to not go wrong or loop, those proofs can only be externally erased, thus, the Prop/Set
+distinction is not for internal erasure. In Pfenning’s type theory, proofs can never block
+computations even in open expressions (other than computations on proofs), thus, internal
+erasure is sound.
+Miquel’s Implicit Calculus of Constructions (ICC) [Miq01a] goes further than Pfenning
+and considers also parametric arguments as irrelevant. These are arguments which are irrelevant for function execution but relevant during type conversion checking. Such arguments
+may only be erased in function application but not in the associated type instantiation.
+Barras and Bernardo [BB08] and Mishra-Linger and Sheard [MLS08] have built decidable
+type systems on top of ICC, but both have not fully integrated inductive types and types
+defined by recursion (large eliminations). Barras and Bernardo, as Miquel, have inductive
+types only in the form of their impredicative encodings, Mishra-Linger [ML08] gives introduction and elimination principles for inductive types by example, but does not show
+normalization or consistency.
+While Pfenning’s type theory uses typed equality, ICC and its successors interpret typed
+expressions as untyped λ-terms up to untyped equality. In our experience, the implicit
+quantification of ICC, which allows irrelevant function arguments to appear unrestricted in
+the codomain type of the function, is incompatible with type-directed equality. Examples
+are given in Section 2.3. Therefore, we have chosen to scale Pfenning’s notion of proof
+irrelevance up to inductive types, and integrated it into Agda.
+In this article, we start with the “extensionality and proof irrelevance” fragment of
+Pfenning’s type theory in Reed’s version [Ree02, Ree03]. We extend it by a hierarchy of
+predicative universes, yielding Irrelevant Intensional Type Theory IITT (Sec. 2). After
+specifying a type-directed equality algorithm (Sec. 3), we construct a Kripke model for
+IITT (Sec. 4). It allows us to prove normalization, subject reduction, and consistency, in
+one go (Sec. 5). A second Kripke logical relation yields correctness of algorithmic equality
+and decidability of IITT (Sec. 6). Our models are ready for data types, large eliminations,
+types with extensionality principles, and internal erasure (Sec. 7).
+1 Awodey and Bauer [AB04] give a categorical treatment of proof irrelevance which is very similar to
+Pfenning and Reed’s. However, they work in the setting of Extensional Type Theory with undecidable type
+checking, we could not directly use their results for this work.
+
+IRRELEVANCE IN TYPE THEORY
+
+3
+
+Contribution and Related Work. We consider the design of our meta-theoretic argument as technical novelty, although it heavily relies on previous works to which we owe
+our inspiration. Allen [All87] describes a logical relation for Martin-Löf type theory with a
+countable universe hierarchy. The seminal work of Coquand [Coq91] describes an untyped
+equality check for the Logical Framework and justifies it by a logical relation for dependent
+types that establishes subject reduction, normalization, completeness of algorithmic equality, and injectivity of function types in one go. However, his approach cannot be easily
+extended to a typed algorithmic equality, due to problems with transitivity.
+Goguen introduces Typed Operational Semantics [Gog94] to construct a Kripke logical
+relation that simultaneously proves normalization, subject reduction, and confluence for a
+variant of the Calculus of Inductive Constructions. From his results one can derive an equality check based on reduction to normal form. Goguen also shows how to derive syntactic
+properties, such as closure of typing and equality under substitution, by a Kripke-logical
+relation [Gog00].
+Harper and Pfenning [HP05] popularize a type-directed equality check for the Logical
+Framework that scales to extensionality for unit types. They prove completeness of algorithmic equality by a Kripke model on simple types which are obtained by erasure from the
+dependent types. Erasure is necessary since algorithmic equality cannot be shown transitive
+before it is proven sound; yet soundness hinges on subject reduction which rests on function
+type injectivity which in turn is obtained from completeness of algorithmic equality—a vicious cycle. While erasure breaks the cycle, it also prevents types to be defined by recursion
+on values (so-called large eliminations), a common feature of proof assistants like Agda,
+Coq, and Epigram.
+Normalization by evaluation (NbE) has been successfully used to obtain a type-directed
+equality check based on evaluation in the context of dependent types with large eliminations
+[ACD07]. In previous work [ACD08], the first author applied NbE to justify a variant of
+Harper and Pfenning’s algorithmic equality without erasure. However, the meta-theoretic
+argument is long-winded, and there is an essential gap in the proof of transitivity of the
+Kripke logical relation.
+In this work, we explore a novel approach to justify type-directed algorithmic equality
+for dependent types with predicative universes. First, we show its soundness by a Kripke
+model built on top of definitional equality. The Kripke logical relation yields normalization,
+subject reduction, and type constructor injectivity, which also imply logical consistency of
+IITT. Further, it proves syntactic properties such as closure under substitution, following
+Goguen’s lead [Gog00]. The semantic proof of such syntactic properties relieves us from
+the deep lemma dependencies and abundant traps of syntactic meta-theory of dependent
+types [HP05, AC07]. Soundness of algorithmic equality entails transitivity (which is the
+stumbling stone), paving the way to show completeness of algorithmic equality by a second
+Kripke logical relation, much in the spirit of Coquand [Coq91] and Harper and Pfenning
+[HP05].
+This article is a revised and extended version of paper Irrelevance in Type Theory with
+a Heterogeneous Equality Judgement presented at the conference FoSSaCS 2011 [Abe11].
+Unfortunately, the conference version has inherited the above-mentioned gap [ACD08] in
+the proof of transitivity of the Kripke logical relation. This is fixed in the present article
+by an auxiliary Kripke model (Section 4). Further, we have dropped the heterogeneous
+approach to equality in favor of a standard homogeneous one. Heterogeneous equality is
+not necessary for the style of irrelevance we are embracing here.
+
+4
+
+A. ABEL AND G. SCHERER
+
+2. Irrelevant Intensional Type Theory
+In this section, we present Irrelevant Intensional Type Theory IITT which features two of
+Pfenning’s function spaces [Pfe01], the ordinary “extensional” (x : U ) → T and the proof
+irrelevant (x÷U ) → T . The main idea is that the argument of a (x÷U ) → T function is
+counted as a proof and can neither be returned nor eliminated on, it can only be passed
+as argument to another proof irrelevant function or data constructor. Technically, this is
+realized by annotating variables as relevant, x : U , or irrelevant, x÷U , in the typing context,
+to confine occurrences of irrelevant variables to irrelevant arguments.
+Expression and context syntax. We distinguish between relevant (t : u or simply t u) and
+irrelevant application (t ÷ u). Accordingly, we have relevant (λx : U. T ) and irrelevant abstraction (λx÷U. T ). Our choice of typed abstraction is not fundamental; a bidirectional
+type-checking algorithm [Coq96] can reconstruct type and relevance annotations at abstractions and applications.
+Var ∋ x, y, X, Y
+Sort ∋ s
+::= Setk (k ∈ N)
+Ann ∋ ⋆
+::= ÷ | :
+
+universes
+annotation: irrelevant, relevant
+
+s,s′
+
+Exp ∋ t, u, T, U ::= s | (x⋆U ) → T
+sort, (ir)relevant function type
+⋆
+| x | λx⋆U. t | t u lambda-calculus
+Cxt ∋ Γ, ∆
+::= ⋄ | Γ. x⋆T
+empty, (ir)relevant extension
+Expressions are considered modulo α-equality, we write t ≡ t′ when we want to stress that t
+and t′ identical (up to α). Similarly, we consider variables bound in a context to be distinct,
+and when opening a term binder we will implicitly use α-conversion to add a fresh variable
+in the context.
+For technical reasons, namely, to prove transitivity (Lemma 4.3) of the Kripke logical
+s,s′
+
+relation in Section 4, we explicitly annotate function types (x⋆U ) → T with the sorts
+s of domain U and s′ of codomain T . We may omit the annotation if it is inessential or
+determined by the context of discourse. In case T does not mention x, we may write U → T
+for (x : U ) → T .
+Sorts. IITT is a pure type system (PTS) with infinite hierarchy of predicative universes
+Set0 : Set1 : .... The universes are not cumulative. We have the PTS axioms Axiom =
+{(Seti , Seti+1 ) | i ∈ N} and the rules Rule = {(Seti , Setj , Setmax(i,j) ) | i, j ∈ N}. As
+is customary, we will write the side condition (s, s′ ) ∈ Axiom just as (s, s′ ) and likewise
+(s1 , s2 , s3 ) ∈ Rule just as (s1 , s2 , s3 ). IITT is a full and functional PTS, which means that
+for all s1 , s2 there is exactly one s3 such that (s1 , s2 , s3 ). There is no subtyping, so that
+types—and thus, sorts—are unique up to equality. A proof of sort unicity might relieve us
+from the sort annotation in function types, however, we obtain sort discrimination too late
+in our technical development (Lemma 5.10).
+Substitutions. Substitutions σ are maps from variables to expressions. We require that the
+domain dom(σ) = {x | σ(x) 6= x} is finite. We write id for the identity substitution and [u/x]
+for the singleton substitution σ such that σ(x) := u and σ(y) := y for y 6= x. Substitution
+extension (σ, u/x) is formally defined as σ ⊎ [u/x]. Capture avoiding parallel substitution
+of σ in t is written as juxtaposition tσ.
+
+IRRELEVANCE IN TYPE THEORY
+
+5
+
+Contexts. Contexts Γ feature two kinds of bindings, relevant (x : U ) and irrelevant (x ÷ U )
+ones. The intuition, implemented by the typing rules below, is that only relevant variables
+are in scope in an expression. Resurrection Γ÷ turns all irrelevant bindings (x ÷ T ) into the
+corresponding relevant ones (x : T ) [Pfe01]. It is the tool to make irrelevant variables, also
+called proof variables, available in proofs. The generalization Γ⋆ shall mean Γ÷ if ⋆ = ÷,
+and just Γ otherwise. We write Γ.∆ for the concatenation of Γ and ∆; herein, we suppose
+dom(Γ) ∩ dom(∆) = ∅.
+Primitive judgements of IITT. The following three judgements are mutually inductively
+defined by the rules given below and in Figure 1.
+⊢Γ
+Γ ⊢t:T
+Γ ⊢ t = t′ : T
+
+Context Γ is well-formed.
+In context Γ, expression t has type T .
+In context Γ, t and t′ are equal expressions of type T .
+
+Derived judgements. To simplify notation, we introduce the following four abbreviations:
+Γ ⊢t÷T
+Γ ⊢ t = t′ ÷ T
+Γ ⊢T
+Γ ⊢ T = T′
+
+iff
+iff
+iff
+iff
+
+Γ÷ ⊢ t : T,
+Γ ⊢ t ÷ T and Γ ⊢ t′ ÷ T,
+Γ ⊢ T : s for some s,
+Γ ⊢ T = T ′ : s for some s.
+
+Γ ⊢ t ⋆ T may mean Γ ⊢ t : T or Γ ⊢ t ÷ T , depending on the value of placeholder ⋆;
+same for Γ ⊢ t = t′ ⋆ T . We sometimes write Γ ⊢ t, t′ ⋆ T to abbreviate the conjunction of
+Γ ⊢ t ⋆ T and Γ ⊢ t′ ⋆ T . The notation Γ ⊢ T, T ′ is to be understood similarly.
+2.1. Rules. Our rules for well-typed terms Γ ⊢ t : T extend Reed’s rules [Ree02] to PTS
+style. There are only 6 rules; we shall introduce them one-by-one.
+Variable rule. Only relevant variables can be extracted from the context.
+⊢Γ
+
+(x : U ) ∈ Γ
+Γ ⊢x:U
+There is no variable rule for irrelevant bindings (x ÷ U ) ∈ Γ, in particular, the judgement
+x÷U ⊢ x : U is not derivable. This essentially forbids proofs to appear in relevant positions.
+Abstraction rule. Relevant and irrelevant functions are introduced analogously.
+Γ. x⋆U ⊢ t : T
+
+s,s′
+
+Γ ⊢ (x⋆U ) → T
+s,s′
+
+Γ ⊢ λx⋆U. t : (x⋆U ) → T
+To check a relevant function λx : U. t, we introduce a relevant binding x : U into the context
+and continue checking the function body t. In case of an irrelevant function λx÷U. t, we
+proceed with an irrelevant binding x ÷ U . This means that an irrelevant function cannot
+computationally depend on its argument—it is essentially a constant function. In particular,
+λx÷U. x is never well-typed.
+s,s′
+
+As a side condition, we also need to check that the introduced function type (x⋆U ) → T
+is well-sorted; the rule is given below.
+
+6
+
+A. ABEL AND G. SCHERER
+
+Application rule.
+Γ ⊢ t : (x⋆U ) → T
+Γ ⊢u⋆U
+⋆
+Γ ⊢ t u : T [u/x]
+This rule uses our overloaded notations for bindings ⋆, that can be specialized into two
+different instances for relevant and irrelevant applications.
+For relevant functions, we get the ordinary dependently-typed application rule:
+Γ ⊢ t : (x : U ) → T
+Γ ⊢u:U
+Γ ⊢ t u : T [u/x]
+When applying an irrelevant function, we resurrect the context before checking the function
+argument.
+Γ ⊢ t : (x÷U ) → T
+Γ÷ ⊢ u : U
+Γ ⊢ t ÷ u : T [u/x]
+This means that irrelevant variables become relevant and can be used in u. The intuition is
+that the application t ÷ u does not computationally depend on u, thus, u may refer to any
+variable, even the “forbidden ones”. One may think of u as a proof which may refer to both
+ordinary and proof variables.
+For example, let Γ = f : (y÷U ) → U . Then the irrelevant η-expansion λx÷U. f ÷ x is
+well-typed in Γ, with the following derivation:
+Γ. x ÷ U ⊢ f : (y÷U ) → U
+
+Γ. x : U ⊢ x : U
+
+Γ. x ÷ U ⊢ f ÷ x : U
+Γ ⊢ λx ÷ U. f ÷ x : (x÷U ) → U
+Observe how the status of x changes for irrelevant to relevant when we check the argument
+of f .
+Sorting rules. These are the “Axioms” and the “Rules” of PTSs to form types.
+⊢Γ
+(s, s′ )
+Γ ⊢ s : s′
+
+Γ ⊢ U : s1
+
+Γ. x⋆U ⊢ T : s2
+s1 ,s2
+
+Γ ⊢ (x⋆U ) → T : s3
+
+(s1 , s2 , s3 )
+
+The rule for irrelevant function type formation follows Reed [Ree02].
+Γ ⊢ U : s1
+
+Γ. x÷U ⊢ T : s2
+
+Γ ⊢ U : s1
+
+Γ. x : U ⊢ T : s2
+
+(s1 , s2 , s3 )
+s1 ,s2
+Γ ⊢ (x÷U ) → T : s3
+It states that the codomain of an irrelevant function cannot depend relevantly on the function argument. This fact is crucial for the construction of our semantics in Section 4. Note
+that it rules out polymorphism in the sense of Barras and Bernado’s Implicit Calculus of
+Constructions ICC∗ [BB08] and Mishra-Linger and Sheard’s Erasure Pure Type Systems
+EPTS [MLS08]; the type (X÷Set0 ) → (x : X) → X is ill-formed in IITT, but not in ICC∗
+or EPTS. In EPTS, there is the following rule:
+(s1 , s2 , s3 )
+s1 ,s2
+Γ ⊢ (x÷U ) → T : s3
+It allows the codomain T of an irrelevant function to arbitrarily depend on the function
+argument x. This is fine in an erasure semantics, but incompatible with our typed semantics
+in the presence of large eliminations; we will detail the issues in examples 2.3 and 2.8.
+
+IRRELEVANCE IN TYPE THEORY
+
+7
+
+Another variant is Pfenning’s rule for irrelevant function type formation [Pfe01].
+Γ ⊢ U ÷ s1
+
+Γ. x÷U ⊢ T : s2
+
+(s1 , s2 , s3 )
+s1 ,s2
+Γ ⊢ (x÷U ) → T : s3
+It allows the domain of an irrelevant function to make use of irrelevant variables in scope.
+It does not give polymorphism, e. g., (X÷Set0 ) → (x : X) → X is still ill-formed. However,
+(X÷Set0 ) → (x÷X) → X would be well-formed. It is unclear how the equality rule for
+irrelevant function types would look like—it is not given by Pfenning [Pfe01]. The rule
+Γ ⊢ U = U ′ ÷ s1
+
+Γ. x÷U ⊢ T = T ′ : s2
+
+(s1 , s2 , s3 )
+s1 ,s2
+s1 ,s2
+Γ ⊢ (x÷U ) → T = (x÷U ′ ) → T ′ : s3
+would mean that any two irrelevant function types are equal as long as their codomains are
+equal—their domains are irrelevant. This is not compatible with our typed semantics and
+seems a bit problematic in general.2
+Type conversion rule. We have typed conversion, thus, strictly speaking, IITT is not a PTS,
+but a Pure Type System with Judgemental Equality [Ada06].
+Γ ⊢t:T
+Γ ⊢ T = T′
+Γ′ ⊢ t : T ′
+Equality. Figure 1 recapitulates the typing rules and lists the rules to derive context wellformedness ⊢ Γ and equality Γ ⊢ t = t′ : T . Equality is the least congruence over the βand η-axioms. Since equality is typed we can extend IITT to include an extensional unit
+type (Section 7). Let us inspect the congruence rule for application:
+Γ ⊢ t = t′ : (x⋆U ) → T
+Γ ⊢ u = u′ ⋆ U
+Γ ⊢ t ⋆ u = t′ ⋆ u′ : T [u/x]
+In case of relevant functions (⋆ = :) we obtain the usual dependently-typed application rule
+of equality. Otherwise, we get:
+Γ ⊢ t = t′ : (x÷U ) → T
+Γ÷ ⊢ u : U
+Γ ⊢ t ÷ u = t′ ÷ u′ : T [u/x]
+
+Γ ÷ ⊢ u′ : U
+
+Note that the arguments u and u′ to the irrelevant functions need to be well-typed but not
+related to each other. This makes precise the intuition that t and t′ are constant functions.
+2.2. Simple properties of IITT. In the following, we prove two basic invariants of derivable IITT-judgements: The context is always well-formed, and judgements remain derivable
+under well-formed context extensions (weakening).
+Lemma 2.1 (Context well-formedness).
+(1) If ⊢ Γ. x : U. Γ′ then Γ ⊢ U .
+(2) If Γ ⊢ t : T or Γ ⊢ t = t′ : T then ⊢ Γ.
+Proof. By a simple induction on the derivations.
+2This is why Reed [Ree02] differs from Pfenning.
+
+
+
+8
+
+A. ABEL AND G. SCHERER
+
+⊢Γ
+
+Context well-formedness.
+⊢Γ
+Γ ⊢T
+⊢ Γ. x⋆T
+
+⊢⋄
+
+Γ ⊢t:T
+
+Typing.
+⊢Γ
+(s, s′ )
+Γ ⊢ s : s′
+⊢Γ
+
+Γ ⊢ U : s1
+
+Γ. x⋆U ⊢ T : s2
+
+(s1 , s2 , s3 )
+
+s1 ,s2
+
+Γ ⊢ (x⋆U ) → T : s3
+
+(x : U ) ∈ Γ
+Γ ⊢x:U
+
+s,s′
+
+Γ. x⋆U ⊢ t : T
+
+Γ ⊢ (x⋆U ) → T
+s,s′
+
+Γ ⊢ λx⋆U. t : (x⋆U ) → T
+
+Γ ⊢ t : (x⋆U ) → T
+Γ ⊢u⋆U
+⋆
+Γ ⊢ t u : T [u/x]
+
+Γ ⊢t:T
+Γ ⊢ T = T′
+Γ′ ⊢ t : T ′
+Γ ⊢ t = t′ : T
+
+Equality.
+Computation (β) and extensionality (η).
+Γ. x⋆U ⊢ t : T
+Γ ⊢u⋆U
+⋆
+Γ ⊢ (λx⋆U. t) u = t[u/x] : T [u/x]
+
+s,s′
+
+Γ ⊢ t : (x⋆U ) → T
+s,s′
+
+Γ ⊢ t = λx⋆U. t ⋆ x : (x⋆U ) → T
+
+Equivalence rules.
+Γ ⊢t:T
+Γ ⊢t=t:T
+Compatibility rules.
+
+Γ ⊢ t = t′ : T
+Γ ⊢ t′ = t : T
+
+Γ ⊢ U = U ′ : s1
+s1 ,s2
+
+Γ ⊢ t1 = t2 : T
+Γ ⊢ t2 = t3 : T
+Γ ⊢ t1 = t3 : T
+
+Γ. x⋆U ⊢ T = T ′ : s2
+s1 ,s2
+
+Γ ⊢ (x⋆U ) → T = (x⋆U ′ ) → T ′ : s3
+Γ ⊢ U = U ′ : s1
+
+Γ. x⋆U ⊢ T : s2
+
+(s1 , s2 , s3 )
+
+Γ. x⋆U ⊢ t = t′ : T
+s1 ,s2
+
+Γ ⊢ λx⋆U. t = λx⋆U ′ . t′ : (x⋆U ) → T
+Γ ⊢ t = t′ : (x⋆U ) → T
+Γ ⊢ u = u′ ⋆ U
+Γ ⊢ t ⋆ u = t′ ⋆ u′ : T [u/x]
+Conversion rule.
+Γ ⊢ t = t′ : T
+Γ ⊢ T = T′
+Γ ⊢ t = t′ : T ′
+
+Figure 1: Rules of IITT
+
+IRRELEVANCE IN TYPE THEORY
+
+9
+
+It should be noted that we only prove the most basic well-formedness statements here.
+One would expect that Γ ⊢ t : T or Γ ⊢ t = t′ : T also implies Γ ⊢ T , or that Γ ⊢ t = t′ : T
+implies Γ ⊢ t : T . This is true—and we will refer to these implications as syntactic
+validity—but this cannot be proven without treatment of substitution, due to the typing
+rule for application, which requires substitution in the type, and due to the equality rule
+for a β-redex, which uses substitution in both term and type. Therefore, syntactic validity
+is delayed until Section 4 (Corollary 4.17), where substitution will be handled by semantic,
+rather than syntactic, methods.
+Weakening. We can weaken a context Γ by adding bindings or making irrelevant bindings
+relevant. Formally, we have an order on binding annotations, which is the order induced by
+: ≤ ÷, and we define weakening by monotonic extension.
+A well-formed context ⊢ ∆ extends a well-formed context ⊢ Γ, written ∆ ≤ Γ, if and
+only if:
+∀x ∈ dom(Γ), (x ⋆1 U ) ∈ Γ =⇒ (x ⋆2 U ) ∈ ∆ with ⋆1 ≤ ⋆2 .
+Note that this allows to insert new bindings or relax existing ones at any position in Γ, not
+just at the end.
+Lemma 2.2 (Weakening). Let ∆ ≤ Γ.
+(1) If ⊢ Γ.Γ′ and dom(∆) ∩ dom(Γ′ ) = ∅ then ⊢ ∆.Γ′ .
+(2) If Γ ⊢ t : T then ∆ ⊢ t : T .
+(3) If Γ ⊢ t = t′ : T ′ then ∆ ⊢ t = t′ : T .
+Proof. Simultaneously by induction on the derivation. Let us look at some cases:
+Case
+⊢Γ
+(s, s′ )
+Γ ⊢ s = s : s′
+By assumption ⊢ ∆, thus ∆ ⊢ s = s : s′ .
+Case
+(x : U ) ∈ Γ ⊢ Γ
+Γ ⊢x=x:U
+Since ∆ ≤ Γ we have (x : U ) ∈ ∆, thus ∆ ⊢ x = x : U .
+Case
+Γ ⊢ U = U ′ : s1
+Γ. x⋆U ⊢ T : s2
+Γ. x⋆U ⊢ t = t′ : T
+s1 ,s2
+
+Γ ⊢ λx⋆U. t = λx⋆U ′ . t′ : (x⋆U ) → T
+W. l. o. g., x 6∈ dom(∆). By (1) and definition of context weakening, ∆ ≤ Γ implies
+∆. x⋆U ≤ Γ. x⋆U , so all premises can be appropriately weakened by induction hypothesis.
+
+2.3. Examples.
+Example 2.3 (Relevance of types). 3 We can extend IITT by a unit type 1 with extensionality principle.
+⊢Γ
+Γ ⊢ 1 : Seti
+
+⊢Γ
+Γ ⊢ () : 1
+
+3Example suggested by a reviewer of this paper.
+
+Γ ⊢t:1
+Γ ⊢ t′ : 1
+Γ ⊢ t = t′ : 1
+
+10
+
+A. ABEL AND G. SCHERER
+
+Typed equality allows us to equate all inhabitants of the unit type. As a consequence, the
+Church numerals over the unit type all coincide, e. g.,
+Γ ⊢ λf : 1 → 1. λx : 1. x
+= λf : 1 → 1. λx : 1. f x : (1 → 1) → 1 → 1.
+In systems with untyped equality, like ICC∗ and EPTS, these terms erase to untyped
+Church-numerals λf λx.x and λf λx. f x and are necessarily distinguished.
+If we trade the unit type for Bool or any other type with more than one inhabitant, the
+two terms become different in IITT. This means that in IITT, types are relevant, and we
+need to reject irrelevant quantification over types like in (X÷Set0 ) → (X → X) → X → X.
+In IITT, the polymorphic types of Church numerals are (X : Seti ) → (X → X) → X → X.
+Example 2.4 (Σ-types). IITT can be readily extended by weak Σ-types.
+Γ ⊢ U : s1
+Γ. x⋆U ⊢ T : s2
+(s1 , s2 , s3 )
+Γ ⊢ (x⋆U ) × T : s3
+Γ ⊢ u⋆U
+
+Γ ⊢ t : T [u/x]
+Γ ⊢ (x⋆U ) × T
+Γ ⊢ (u, t) : (x⋆U ) × T
+
+Γ ⊢ p : (x⋆U ) × T
+Γ. x⋆U. y : T ⊢ v : V
+Γ ⊢ let (x, y) = p in v : V
+Γ ⊢u⋆U
+
+Γ ⊢ t : T [u/x]
+Γ. x⋆U. y : T ⊢ v : V
+Γ ⊢ (x⋆U ) × T
+Γ ⊢ (let (x, y) = (u, t) in v) = v[u/x][t/y] : V
+Additional laws for equality could be considered, like commuting conversions, or the identity
+(let (x, y) = p in (x, y)) = p. The relevant form (x : U ) × T admits a strong version with
+projections fst and snd and full extensionality p = (fst p, snd p) : (x : U ) × T . However,
+strong irrelevant Σ-types (x÷U ) × T are problematic because of the first projection:
+Γ ⊢ p : (x÷U ) × T
+Γ ⊢ fst p ÷ U
+With our definition of Γ ⊢ u ÷ U as Γ÷ ⊢ u : U , this rule is misbehaved: it allows us
+get hold of an irrelevant value in a relevant context. We could define a closed function
+π1 : (x÷U ) × 1 → U , and composing it with ( , ()) : (x÷U ) → (x÷U ) × 1 would give us
+an identity function of type (x÷U ) → U which magically makes irrelevant things relevant
+and IITT inconsistent. In this article, we will not further consider strong Σ-types with
+irrelevant components; we leave the in-depth investigation to future work.
+Example 2.5 (Squash type). The squash type ||T || was first introduced in the context
+of NuPRL [CAB+ 86]; it contains exactly one inhabitant iff T is inhabited. Semantically,
+one obtains ||T || from T by equating all of T ’s inhabitants. In IITT, we can define ||T || as
+internalization of the irrelevance modality, as already suggested by Pfenning [Pfe01]. The
+
+IRRELEVANCE IN TYPE THEORY
+
+11
+
+first alternative is via the weak irrelevant Σ-type.
+|| || :
+Seti → Seti
+||T || := ( ÷T ) × 1
+[]
+[x]
+
+:
+(x÷T ) → ||T ||
+:= (x, ())
+
+sqelim (T : Seti ) (P : ||T || → Setj ) (f : (x÷T ) → P [x]) (t : ||T ||)
+:
+Pt
+:= let (x, ) = t in f ÷ x
+It is not hard to see that || || is a monad. All canonical inhabitants of ||T || are definitionally
+equal:
+Γ ⊢ t, t′ ÷ T
+Γ ⊢ [t] = [t′ ] : ||T ||
+This is easily shown by expanding the definition of [ ] and using the congruence rule for
+pairs with an irrelevant first component.
+However, we cannot show that all inhabitants of ||T || are definitionally equal, because
+of the missing extensionality principles for weak Σ. Thus, the second alternative is to add
+the squash type to IITT via the rules:
+Γ ⊢ T : Seti
+Γ ⊢ ||T || : Seti
+
+Γ ⊢t÷T
+Γ ⊢ [t] : ||T ||
+
+Γ ⊢ t, t′ : ||T ||
+Γ ⊢ t = t′ : ||T ||
+
+Γ ⊢ t : ||T ||
+Γ. x÷T ⊢ v : V
+Γ ⊢ let [x] = t in v : V
+
+Γ ⊢t÷T
+Γ. x÷T ⊢ v : V
+Γ ⊢ (let [x] = [t] in v) = v[t/x] : V
+
+Our model (Section 4) is ready to interpret these rules, as well as normalization-by-evaluation
+inspired models [ACP11].
+Example 2.6 (Subset type). The subset type {x : U | T } is definable from Σ and squash
+as (x : U ) × ||T ||.
+To discuss the next example, we consider a further extension of IITT by Leibniz equality
+and natural numbers:
+a ≡ b : Seti
+for A : Seti and a, b : A
+refl
+: a ≡ a for A : Seti and a : A
+Nat
+: Seti
+0, 1, . . . : Nat
++, ∗
+: Nat → Nat → Nat.
+Example 2.7 (Composite). 4 Let the set of composite numbers {4, 6, 8, 9, 10, 12, 14, 15, . . . }
+be numbers that are the product of two natural numbers ≥ 2.
+Composite = {n : Nat | (k : Nat) × (l : Nat) × (n ≡ (k + 2) ∗ (l + 2))}
+Most composite numbers have several factorizations, and thanks to irrelevance the specific
+composition is ignored when handling composite numbers. For instance, 12 as product of 3
+and 4 is not distinguished from the 12 as product of 2 and 6.
+(12, [(1, (2, refl))]) = (12, [(0, (4, refl))]) : Composite.
+4Example suggested by reviewer.
+
+12
+
+A. ABEL AND G. SCHERER
+
+Example 2.8 (Large eliminations). 5 The ICC∗ [BB08] or EPTS [MLS08] irrelevant function type (x ÷ A) → B allows x to appear relevantly in B. This extra power raises some
+issues with large eliminations. Consider
+T
+: Bool → Set0
+T true = Bool → Bool
+T false = Bool
+t
+
+= λF : (b÷Bool) → (T b → T b) → Set0 .
+λg : (F ÷ false (λx : Bool. x)) → Bool.
+λa : F ÷ true (λx : Bool → Bool.λy : Bool. x y). g a.
+
+The term t is well-typed in ICC∗ + T because the domain type of g and the type of a are
+βη-equal after erasure (−)∗ of type annotations and irrelevant arguments:
+(F ÷ false (λx : Bool. x))∗ = F (λxx)
+=βη F (λxλy. x y) = (F ÷ true (λx : Bool → Bool.λy : Bool. x y))∗
+While a Curry view supports this, it is questionable whether identity functions at different
+types should be viewed as one. It is unclear how a type-directed equality algorithm (see
+Sec. 3) should proceed here; it needs to recognize that x : Bool is equal to λy : Bool. x y :
+Bool → Bool. This situation is amplified by a unit type 1 with extensional equality. When
+we change T true to 1 and the type of a to F ÷ true (λx : 1. ()) then t should still type-check,
+because λx. () is the identity function on 1. However, η-equality for 1 cannot be checked
+without types, and a type-directed algorithm would end up checking (successfully) x : Bool
+for equality with () : 1. This algorithmic equality cannot be transitive, because then any
+two booleans would be equal.
+Summarizing, we may conclude that the type of F bears trouble and needs to be
+rejected. IITT does this because it forbids the irrelevant b in relevant positions such as
+T b; ICC∗ lacks T altogether. Extensions of ICC∗ should at least make sure that b is never
+eliminated, such as in T b. Technically, T would have to be put in a separate class of recursive
+functions, those that actually compute with their argument. We leave the interaction of
+the three different function types to future research.
+3. Algorithmic Equality
+The algorithm for checking equality in IITT is inspired by Harper and Pfenning [HP05].
+Like theirs, it is type-directed, but we are using the full dependent type and not an erasure
+to simple types (which would anyway not work due to large eliminations). We give the
+algorithm in form of judgements and rules in direct correspondence to a functional program.
+Algorithmic equality is meant to be used as part of a type checking algorithm. It is
+the algorithmic counterpart of the definitional conversion rule; in particular, it will only be
+called on terms that are already know to be well-typed – in fact, types that are well-sorted.
+We rely on this precondition in the algorithmic formulation.
+Algorithmic equality consists of three interleaved judgements. A type equality test
+checks equality between two types, by inspecting their weak head normal forms. Terms
+found inside dependent types are reduced and the resulting neutral terms are compared by
+structural equality. The head variable of such neutrals provides type information that is
+5Inspired by discussions with Ulf Norell during the 11th Agda Implementers’ Meeting.
+
+IRRELEVANCE IN TYPE THEORY
+
+13
+
+then used to check the (non-normal) arguments using type-directed equality, by reasoning on
+the (normalized) type structure to perform η-expansions on product types. After enough
+expansions, a base type is reached, where structural equality is called again, or a sort, at
+which we use type equality.
+Informally, the interleaved reductions are the algorithmic counterparts of the β-equality
+axiom, the type and structural equalities account for the compatibility rules, and typedirected equality corresponds to the η-equality axiom. The remaining equivalence rules are
+emergent global properties of the algorithm.
+Weak head reduction. Weak head normal forms (whnfs) are given by the following grammar:
+Whnf ∋ a, b, f, A, B, F
+Wne ∋ n, N
+
+s,s′
+
+::= s | (x⋆U ) → T | λx⋆U. t | n
+::= x | n ⋆ u
+
+whnf
+neutral whnf
+
+Weak head evaluation t ց a and active application f @⋆ u ց a are functional relations
+given by the following rules.
+tցf
+
+f @⋆ u ց a
+t ⋆u ց a
+
+aցa
+
+t[u/x] ց a
+(λx⋆U. t) @⋆ u ց a
+
+n @⋆ u ց n ⋆ u
+
+Instead of writing the propositions t ց a and P [a] we will sometimes simply write P [↓t].
+Similarly, we might write P [f @⋆ u] instead of f @⋆ u ց a and P [a]. In rules, it is understood
+that the evaluation judgement is always an extra premise, never an extra conclusion.
+Algorithmic equality is given as type equality, structural equality, and type-directed
+equality, which are mutually recursive. The equality algorithm is only invoked on wellformed expressions of the correct type.
+Type equality. Type equality ∆ ⊢ A ⇐⇒ A′ , for weak head normal forms, and ∆ ⊢ T ⇐⇒
+b
+′
+T , for arbitrary well-formed types, checks that two given types are equal in their respective
+contexts.
+∆ ⊢ N ←→
+b N′ : T
+∆ ⊢ ↓T ⇐⇒ ↓T ′
+∆ ⊢ T ⇐⇒
+b T′
+∆ ⊢ N ⇐⇒ N ′
+∆ ⊢ U ⇐⇒
+b U′
+∆ ⊢ s ⇐⇒ s
+
+∆. x : U ⊢ T ⇐⇒
+b T′
+
+s,s′
+
+s,s′
+
+∆ ⊢ (x⋆U ) → T ⇐⇒ (x⋆U ′ ) → T ′
+
+Note that when invoking structural equality on neutral types N and N ′ , we do not care
+which type T is returned, since we know by well-formedness that N and N ′ must have the
+same sort.
+Structural equality. Structural equality ∆ ⊢ n ←→ n′ : A and ∆ ⊢ n ←→
+b n′ : T checks the
+neutral expressions n and n′ for equality and at the same time infers their type, which is
+returned as output.
+∆ ⊢ n ←→
+b n′ : T
+∆ ⊢ n ←→ n′ : ↓T
+
+(x : T ) ∈ ∆
+∆ ⊢ x ←→
+b x:T
+
+∆ ⊢ n ←→ n′ : (x : U ) → T
+∆ ⊢ u ⇐⇒
+b u′ : U
+∆ ⊢ n u ←→
+b n′ u′ : T [u/x]
+
+∆ ⊢ n ←→ n′ : (x÷U ) → T
+∆ ⊢ n ÷ u ←→
+b n′ ÷ u′ : T [u/x]
+
+14
+
+A. ABEL AND G. SCHERER
+
+Type-directed equality. Type-directed equality ∆ ⊢ t ⇐⇒ t′ : A and ∆ ⊢ t ⇐⇒
+b t′ : T checks
+′
+terms t and t for equality and proceeds by the structure of the supplied type, to account
+for η.
+∆ ⊢ t ⇐⇒ t′ : ↓T
+∆ ⊢ t ⇐⇒
+b t′ : T
+
+∆. x⋆U ⊢ t ⋆ x ⇐⇒
+b t′ ⋆ x : T
+∆ ⊢ t ⇐⇒ t′ : (x⋆U ) → T
+
+∆ ⊢ T ⇐⇒
+b T′
+∆ ⊢ ↓t ←→
+b ↓t′ : T
+∆ ⊢ T ⇐⇒ T ′ : s
+∆ ⊢ t ⇐⇒ t′ : N
+Note that in the but-last rule we do not check that the inferred type T of ↓t equals the
+ascribed type N . Since algorithmic equality is only invoked for well-typed t, we know that
+this must always be the case. Skipping this test is a conceptually important improvement
+over Harper and Pfenning [HP05].
+Due to dependent typing, it is not obvious that algorithmic equality is symmetric and
+transitive. For instance, consider symmetry in case of application: We have to show that
+∆ ⊢ n′ u′ ←→
+b n u : T [u/x], but using the induction hypothesis we obtain this equality only
+at type T [u′ /x]. To conclude, we need to convert types, which is only valid if we know
+that u and u′ are actually equal. Thus, we need soundness of algorithmic equality to show
+its transitivity. Soundness w. r. t. declarative equality requires subject reduction, which is
+not trivial, due to its dependency on function type injectivity. In the next section (4),
+we construct by a Kripke logical relation which gives us subject reduction and soundness
+of algorithmic equality (Section 5), and, finally, symmetry and transitivity of algorithmic
+equality.
+A simple fact about algorithmic equality is that the inferred types are unique up to
+syntactic equality (where we consider α-convertible expressions as identical). Also, they
+only depend on the left hand side neutral term n.
+Lemma 3.1 (Uniqueness of inferred types).
+(1) If ∆ ⊢ n ←→ n1 : A1 and ∆ ⊢ n ←→ n2 : A2 then A1 ≡ A2 .
+(2) If ∆ ⊢ n ←→
+b n1 : T1 and ∆ ⊢ n ←→
+b n2 : T2 then T1 ≡ T2 .
+Extending structural equality to irrelevance, we let
+∆÷ ⊢ n ←→ n : A
+∆÷ ⊢ n′ ←→ n′ : A
+∆ ⊢ n ←→ n′ ÷ A
+′
+and analogously for ∆ ⊢ n ←→
+b n ÷ T.
+4. A Kripke Logical Relation for Soundness
+In this section, we construct a Kripke logical relation in the spirit of Goguen [Gog00]
+and Vanderwaart and Crary [VC02] that proves weak head normalization, function type
+injectivity, and subject reduction plus syntactical properties like substitution in judgements
+and syntactical validity. As an important consequence, we obtain soundness of algorithmic
+equality w. r. t. definitional equality. This allows us to establish that algorithmic equality
+on well-typed terms is a partial equivalence relation.
+
+IRRELEVANCE IN TYPE THEORY
+
+15
+
+4.1. An Induction Measure. Following Goguen [Gog94] and previous work [ACD08], we
+first define a semantic universe hierarchy Ui whose sole purpose is to provide a measure for
+defining a logical relation and proving some of its properties. The limit Uω corresponds to
+the proof-theoretic strength or ordinal of IITT.
+We denote sets of expressions by A, B and functions from expressions to sets of expressions by F. Let Ab = {t | ↓t ∈ A} denote the closure of A by weak head expansion. The
+b f @ u ∈ F(u)}.
+dependent function space is defined as Π A F = {f ∈ Whnf | ∀u ∈ A.
+By recursion on i ∈ N we define inductively sets Ui ⊆ Whnf × P(Whnf) as follows
+[ACD08, Sec. 5.1]:
+(N, Wne) ∈ Ui
+
+(Setj , Seti ) ∈ Axiom
+
+(Setj , |Uj |) ∈ Ui
+
+cj
+b (T [u/x], F(u)) ∈ U
+(U, A) ∈ Ubi
+∀u ∈ A.
+(Seti , Setj , Setk ) ∈ Rule
+((x⋆U ) → T, Π A F) ∈ Uk
+Herein, Ubi = {(T, A) | (↓T, A) ∈ Ui } and |Uj | = {A | (A, A) ∈ Uj for some A}. Only
+interested in computational strength, we treat relevant and irrelevant function spaces alike—
+at the level of predicates A, irrelevance is anyhow not observable, only by relations as given
+later.
+The induction measure A ∈ Seti shall now mean the minimum height of a derivation of
+(A, A) ∈ Ui for some A. Note that due to universe stratification, A ∈ Seti is smaller than
+Seti ∈ Setj .
+4.2. A Kripke Logical Relation. Let ∆ ⊢ t :=: t′ ⋆ T stand for the conjunction of the
+propositions
+• ∆ ⊢ t ⋆ T and ∆ ⊢ t′ ⋆ T , and
+• ∆ ⊢ t = t′ ⋆ T .
+By induction on A ∈ s we define two Kripke relations
+∆ ⊢ A s A′ : s
+∆ ⊢ a s a′ : A.
+b and the generalization to ⋆. For better readability,
+together with their respective closures s
+the clauses are given in rule form meaning that the conclusion is defined as the conjunction
+of the premises. ∀ and =⇒ are meta-level quantification and implication, respectively.
+∆ ⊢ N :=: N ′ : s
+∆ ⊢ N s N′ : s
+
+∆ ⊢ n :=: n′ : N
+∆ ⊢ n s n′ : N
+
+⊢∆
+(s, s′ )
+∆ ⊢ s s s : s′
+
+b U ′ : s1
+∆ ⊢U s
+b u′ ⋆ U =⇒ Γ ⊢ T [u/x] s
+b T ′ [u′ /x] : s2
+∀Γ ≤ ∆, Γ ⊢ u s
+s1 ,s2
+s
+,s
+1 2
+∆ ⊢ (x⋆U ) → T :=: (x⋆U ′ ) → T ′ : s3
+s1 ,s2
+
+s1 ,s2
+
+∆ ⊢ (x⋆U ) → T s (x⋆U ′ ) → T ′ : s3
+
+(s1 , s2 , s3 )
+
+b u′ ⋆ U =⇒ Γ ⊢ f ⋆ u s
+b f ′ ⋆ u′ : T [u/x]
+∀Γ ≤ ∆, Γ ⊢ u s
+s,s′
+
+∆ ⊢ f :=: f ′ : (x⋆U ) → T
+s,s′
+
+∆ ⊢ f s f ′ : (x⋆U ) → T
+
+16
+
+A. ABEL AND G. SCHERER
+
+tցa
+
+T ցA
+∆ ⊢T =A
+∆ ⊢t=a:A
+∆ ⊢ t′ = a′ : A
+∆ ⊢ a s a′ : A
+∆ ⊢ t :=: t′ : T
+b t′ : T
+∆ ⊢ts
+
+∆÷ ⊢ a s a : A
+∆÷ ⊢ a′ s a′ : A
+∆ ⊢ a s a′ ÷ A
+
+b t:T
+∆÷ ⊢ t s
+
+t ′ ց a′
+
+b t′ : T
+∆ ÷ ⊢ t′ s
+
+b t′ ÷ T
+∆ ⊢ts
+It is immediate that the logical relation contains only well-typed and definitionally equal
+terms. We will demonstrate that it is also closed under weakening and conversion, symmetric
+and transitive.
+Lemma 4.1 (Weakening).
+(1) If ∆ ⊢ a s a′ : A and Γ ≤ ∆ then there exists a derivation of Γ ⊢ a s a′ : A with the
+same height.
+b t′ : T .
+(2) Analogously for ∆ ⊢ t s
+Proof. By induction on A ∈ s and T ∈ s, resp.
+
+
+
+Lemma 4.2 (Type conversion).
+(1) If Γ ⊢ A s A′ : s then Γ ⊢ a s a′ : A iff Γ ⊢ a s a′ : A′ .
+b T ′ : s then Γ ⊢ t s
+b t′ : T iff Γ ⊢ t s
+b t′ : T ′ .
+(2) If Γ ⊢ T s
+Proof. Simultaneously induction in A ∈ s and T ∈ s, resp. We show the “if” direction, the
+“only if” follows analogously. The interesting case is the one of functions.
+Case
+b U ′ : s1
+∆ ⊢U s
+b u′ ⋆ U =⇒ Γ ⊢ T [u/x] s
+b T ′ [u′ /x] : s2
+∀Γ ≤ ∆, Γ ⊢ u s
+s1 ,s2
+s1 ,s2
+∆ ⊢ (x⋆U ) → T :=: (x⋆U ′ ) → T ′ : s3
+s1 ,s2
+
+s1 ,s2
+
+∆ ⊢ (x⋆U ) → T s (x⋆U ′ ) → T ′ : s3
+b u′ ⋆ U =⇒ Γ ⊢ f ⋆ u s
+b f ′ ⋆ u′ : T [u/x]
+∀Γ ≤ ∆, Γ ⊢ u s
+s,s′
+
+∆ ⊢ f :=: f ′ : (x⋆U ) → T
+s,s′
+
+∆ ⊢ f s f ′ : (x⋆U ) → T
+s,s′
+
+First, ∆ ⊢ f :=: f ′ : (x⋆U ′ ) → T ′ , holds because of the conversion rule for typing and
+b u′ ⋆ U ′ and show Γ ⊢ f ⋆ u s
+b
+equality. Now assume arbitrary Γ ≤ ∆ and Γ ⊢ u s
+′
+⋆
+′
+′
+′
+b u ⋆ U , thus,
+f u : T [u/x]. By induction hypothesis on U ∈ s1 we have Γ ⊢ u s
+⋆
+′
+⋆
+′
+b
+Γ ⊢ f u s f u : T [u/x] by assumption. By induction hypothesis on T [u/x] ∈ s2 we
+b f ′ ⋆ u′ : T ′ [u/x].
+obtain Γ ⊢ f ⋆ u s
+
+b T : s.
+Lemma 4.3 (Symmetry and Transitivity). Let ∆ ⊢ T s
+b t′ : T then ∆ ⊢ t′ s
+b t : T.
+(1) If ∆ ⊢ t s
+b t2 : T and ∆ ⊢ t2 s
+b t3 : T then ∆ ⊢ t1 s
+b t3 : T .
+(2) If ∆ ⊢ t1 s
+
+IRRELEVANCE IN TYPE THEORY
+
+17
+
+Proof. We generalize the two statements to whnfs ∆ ⊢ A s A : s and prove all four
+statements simultaneously by induction in A ∈ s and T ∈ s, resp.
+Case Let us look at the case for functions.
+b U : s1
+∆ ⊢U s
+b u′ ⋆ U =⇒ Γ ⊢ T [u/x] s
+b T [u′ /x] : s2
+∀Γ ≤ ∆, Γ ⊢ u s
+s1 ,s2
+s1 ,s2
+∆ ⊢ (x⋆U ) → T :=: (x⋆U ) → T : s3
+s1 ,s2
+
+s1 ,s2
+
+∆ ⊢ (x⋆U ) → T s (x⋆U ) → T : s3
+Case Symmetry:
+b u′ ⋆ U =⇒ Γ ⊢ f ⋆ u s
+b f ′ ⋆ u′ : T [u/x]
+∀Γ ≤ ∆, Γ ⊢ u s
+′
+∆ ⊢ f :=: f : (x⋆U ) → T
+∆ ⊢ f s f ′ : (x⋆U ) → T
+b u⋆U
+To show ∆ ⊢ f ′ s f : (x⋆U ) → T , assume arbitrary Γ ≤ ∆ and Γ ⊢ u′ s
+′
+⋆
+′
+⋆
+′
+b
+and show Γ ⊢ f u s f u : T [u /x]. By induction hypothesis on U ∈ s2 , with
+b U : s1 , we have Γ ⊢ u s
+b u′ ⋆ U , thus, Γ ⊢ f ⋆ u s
+b f ′ ⋆ u′ : T [u/x]
+weakened Γ ⊢ U s
+b u ⋆ U,
+by assumption. Using symmetry and transitivity on U we obtain Γ ⊢ u s
+b
+thus, Γ ⊢ T [u/x] s T [u/x] : s2 . By induction hypothesis on T [u/x] ∈ s2 we apply
+b f ⋆ u : T [u/x], and since Γ ⊢ T [u/x] s
+b T [u′ /x] : s2
+symmetry to obtain Γ ⊢ f ′ ⋆ u′ s
+we conclude by type conversion (Lemma 4.2).
+Case Transitivity:
+b u′ ⋆ U =⇒ Γ ⊢ f1 ⋆ u s
+b f2 ⋆ u′ : T [u/x]
+∀Γ ≤ ∆, Γ ⊢ u s
+s,s′
+
+∆ ⊢ f1 :=: f2 : (x⋆U ) → T
+s,s′
+
+∆ ⊢ f1 s f2 : (x⋆U ) → T
+b u′ ⋆ U =⇒ Γ ⊢ f2 ⋆ u s
+b f3 ⋆ u′ : T [u/x]
+∀Γ ≤ ∆, Γ ⊢ u s
+s,s′
+
+∆ ⊢ f2 :=: f3 : (x⋆U ) → T
+s,s′
+
+∆ ⊢ f2 s f3 : (x⋆U ) → T
+s,s′
+
+s,s′
+
+We wish to prove that ∆ ⊢ f1 s f3 : (x⋆U ) → T . We get ∆ ⊢ f1 :=: f3 : (x⋆U ) → T
+b u′ ⋆ U ,
+immediately by transitivity of definitional equality. Given Γ ≤ ∆ and Γ ⊢ u s
+b f3 ⋆ u′ : T [u/x].
+we need to show that Γ ⊢ f1 ⋆ u s
+b u ⋆ U , which
+b : U is a PER by induction hypothesis, we have Γ ⊢ u s
+As Γ ⊢ s
+⋆
+⋆
+′
+b
+b
+b f 3 ⋆ u′ :
+entails f1 u s f2 u : T [u/x]. From Γ ⊢ u s u ⋆ U also have Γ ⊢ f2 ⋆ u s
+b f3 ⋆ u′ : T [u/x] by transitivity at T [u/x].
+T [u/x], which allows to conclude Γ ⊢ f1 ⋆ u s
+Case Now, we consider function spaces:
+
+18
+
+A. ABEL AND G. SCHERER
+
+Case Transitivity:
+b U2 : s 1
+∆ ⊢ U1 s
+b u′ ⋆ U1 =⇒ Γ ⊢ T1 [u/x] s
+b T2 [u′ /x] : s2
+∀Γ ≤ ∆, Γ ⊢ u s
+s1 ,s2
+s1 ,s2
+∆ ⊢ (x⋆U1 ) → T1 :=: (x⋆U2 ) → T2 : s3
+s1 ,s2
+
+s1 ,s2
+
+∆ ⊢ (x⋆U1 ) → T1 s (x⋆U2 ) → T2 : s3
+b U3 : s 1
+∆ ⊢ U2 s
+b u′ ⋆ U2 =⇒ Γ ⊢ T2 [u/x] s
+b T3 [u′ /x] : s2
+∀Γ ≤ ∆, Γ ⊢ u s
+s1 ,s2
+s1 ,s2
+∆ ⊢ (x⋆U2 ) → T2 :=: (x⋆U3 ) → T3 : s3
+s1 ,s2
+
+s1 ,s2
+
+∆ ⊢ (x⋆U2 ) → T2 s (x⋆U3 ) → T3 : s3
+b U3 : s1
+By transitivity we have ∆ ⊢ (x⋆U1 ) → T1 :=: (x⋆U3 ) → T3 : s3 and ∆ ⊢ U1 s
+by induction hypothesis on s1 .
+Note that this is where the arrow sort annotations are useful. Without them we would
+b U2 : s1
+not know that the sorts in both derivations are equal. We could have ∆ ⊢ U1 s
+′
+′
+b
+and ∆ ⊢ U2 s U3 : s1 for apparently unrelated s1 and s1 , and would therefore be
+unable to use transitivity.
+b u′ ⋆ U1 , we need to show that Γ ⊢ T1 [u/x] s
+b T3 [u′ /x] : s3 .
+Given Γ ≤ ∆ and Γ ⊢ u s
+b at type U is a PER by induction hypothesis, we have Γ ⊢ u s
+b u⋆U1 , from which
+As s
+b
+b U2 : s1 –
+we can deduce Γ ⊢ T1 [u/x] s T2 [u/x] : s2 . By conversion using ∆ ⊢ U1 s
+′
+b u ⋆ U2 , which implies Γ ⊢ T2 [u/x] s
+b T3 [u′ /x] : s2 .
+weakened at Γ – we have Γ ⊢ u s
+This allows us to conclude by transitivity at type s2 .
+
+In the following we show that the variables are in the logical relation, i. e., ∆ ⊢ x s x :
+∆(x) for well-formed contexts ∆. As usual, this statement has to be generalized to neutrals
+n to be proven inductively.
+b n′ ⋆T .
+Lemma 4.4 (Into the logical relation). Let T ∈ s. If ∆ ⊢ n :=: n′ ⋆T then ∆ ⊢ n s
+Proof. By induction on T ∈ s.
+Case N ∈ s and ∆ ⊢ n :=: n′ ⋆ N . Then ∆ ⊢ n s n′ ⋆ N by cases on ⋆, unfolding
+definitions.
+Case s ∈ s′ and ∆ ⊢ N :=: N ′ ⋆ s. Then ∆ ⊢ N s N ′ ⋆ s by cases on ⋆.
+Case (x⋆U ) → T ∈ s3 and ∆ ⊢ n :=: n′ ⋆0 (x⋆U ) → T .
+First, the case for ⋆0 = :. We have ∆ ⊢ n :=: n′ : (x⋆U ) → T . Assume arbitrary
+b u′ ⋆ U , which yields Γ ⊢ u :=: u′ ⋆ U and Γ ⊢ T [u/x] s
+b T [u/x] : s2 .
+Γ ≤ ∆ and Γ ⊢ u s
+⋆
+′
+⋆
+′
+By weakening, Γ ⊢ n u :=: n u : T [u/x], thus, by induction hypothesis, Γ ⊢ n ⋆ u s
+n′ ⋆ u′ : T [u/x], q.e.d.
+The case for ⋆0 = ÷ proceeds analogously.
+
+
+IRRELEVANCE IN TYPE THEORY
+
+19
+
+b to substitutions, by
+4.3. Validity in the Model. We now extend our logical relation s
+induction on the destination context.
+b σ′ : Γ
+b σ ′ (x) ⋆ U σ
+∆ ⊢σs
+∆ ⊢ σ(x) s
+b σ′ : ⋄
+b σ ′ : Γ. x⋆U
+∆ ⊢σs
+∆ ⊢σs
+b for terms.
+This relation inherits weakening from s
+We then define the context ( Γ), type (Γ T = T ′ ) and term (Γ
+relations, by induction on the length of contexts.
+Γ
+⋄
+Γ
+
+Γ U
+Γ. x⋆U
+
+Γ
+
+T = T′ : s
+Γ T = T′
+
+Γ
+
+t = t′ : T ) validity
+
+T =T
+Γ T
+
+(Γ
+
+T unless T = s)
+b t′ σ ′ : T σ
+=⇒ ∆ ⊢ tσ s
+Γ t=t:T
+′
+Γ t=t :T
+Γ t:T
+Because of its asymmetric definition, the logical relation on substitutions may not be a PER
+in general, but it is for valid contexts.
+b : Γ is symmetric
+Lemma 4.5 (Substitution relation is a PER). If
+Γ, then ∆ ⊢ s
+and transitive.
+b σ′ : Γ
+∀∆, σ, σ ′ , ∆ ⊢ σ s
+
+Proof. By induction on Γ. We demonstrate symmetry for the case
+b σ′ : Γ
+b σ ′ (x) ⋆ U σ
+∆ ⊢σs
+∆ ⊢ σ(x) s
+
+Γ. x⋆U .
+
+b σ ′ : Γ. x⋆U
+∆ ⊢σs
+b σ : Γ, and by symmetry of s
+b for terms (Lemma 4.3),
+By induction hypothesis, ∆ ⊢ σ ′ s
+′
+b σ(x) ⋆ U σ. We instantiate Γ
+b U σ ′ : s and conclude
+∆ ⊢ σ (x) s
+U to ∆ ⊢ U σ s
+b σ(x) ⋆ U σ ′ by conversion (Lemma 4.2).
+∆ ⊢ σ ′ (x) s
+
+= : T is symmetric and transitive.
+Lemma 4.6 (Validity is a PER). The relation Γ
+b for substitutions and conversion with ∆ ⊢ T σ s
+b
+Proof. Symmetry requires symmetry of s
+′
+′
+T σ : s , similar as in Lemma 4.5.
+We demonstrate transitivity in detail. Given Γ t1 = t2 : T and Γ t2 = t3 : T we
+show Γ t1 = t3 : T . Clearly,
+Γ and Γ T or T = s by one of our two assumptions.
+b σ ′ : Γ and show ∆ ⊢ t1 σ s
+b t3 σ ′ : T σ. By Lemma 4.5,
+Assume arbitrary ∆ ⊢ σ s
+b σ : Γ, thus ∆ ⊢ t1 σ s
+b t2 σ : T σ. Also, ∆ ⊢ t2 σ s
+b t3 σ ′ : T σ which entails our goal
+∆ ⊢σs
+b
+by transitivity of s (Lemma 4.3).
+
+s1 ,s2
+
+s′ ,s′
+
+1 2
+Lemma 4.7 (Function type injectivity is valid). If Γ
+(x⋆U ) → T = (x⋆U ′ ) →
+T′
+′
+′
+′
+′
+′
+T = T : s2 .
+then s1 = s1 and s2 = s2 and Γ U = U : s1 and Γ. x⋆U
+′
+
+′
+
+1 ,s2
+1 ,s2
+b σ ′ : Γ. We have ∆ ⊢ (x⋆U σ) s→
+b (x⋆U ′ σ ′ ) s→
+Proof. Assume arbitrary ∆ ⊢ σ s
+Tσ s
+b U σ : s1 —note that sorts
+T ′ σ ′ : s3 , thus by definition s1 = s′1 and s2 = s′2 and ∆ ⊢ U ′ σ ′ s
+b and since ∆, σ, σ ′
+are closed and therefore invariant by substitution. By symmetry of s,
+′
+were arbitrary, we have Γ U = U : s1 .
+b u′ ⋆ U ′ σ and let ρ = (σ, u/x) and ρ′ = (σ ′ , u′ /x).
+Further, assume arbitrary ∆ ⊢ u s
+b ρ′ : Γ. x⋆U ′ . We have
+Note that w. l. o. g., x 6∈ dom(Γ) and x 6∈ FV(U ′ ) and ∆ ⊢ ρ s
+b T ′ ρ′ : s2 and since ρ, ρ′ were arbitrary, Γ. x⋆U ′ T = T ′ : s2 .
+∆ ⊢ Tρ s
+
+
+20
+
+A. ABEL AND G. SCHERER
+
+b id : Γ.
+Γ then ⊢ Γ and Γ ⊢ id s
+
+Lemma 4.8 (Context satisfiable). If
+
+Proof. By induction on Γ. The ⋄ case is immediate. In the Γ. x⋆U case, given
+Γ
+
+Γ U
+Γ. x⋆U
+
+we can use inference
+b id : Γ
+Γ. x⋆U ⊢ id s
+
+b id(x) ⋆ U id
+Γ. x⋆U ⊢ id(x) s
+.
+b id : Γ. x⋆U
+Γ. x⋆U ⊢ id s
+
+b id : Γ, we obtain the first premise by weakening
+From the induction hypothesis Γ ⊢ id s
+b It also yields Γ ⊢ U id : sid for some s by definition of Γ
+of s.
+U . Using induction
+hypothesis, ⊢ Γ, this entails ⊢ Γ. x⋆U . Further, Γ. x⋆U ⊢ x = x ⋆ U , and since trivially
+b x⋆U , by the Lemma 4.4. This concludes
+Γ. x⋆U ⊢ x ←→ x⋆U , we can derive Γ. x⋆U ⊢ x s
+b id(x) ⋆ U id.
+the second premise Γ. x⋆U ⊢ id(x) s
+
+We can now show that every equation valid in the model is derivable in IITT.
+Theorem 4.9 (Completeness of IITT rules). If Γ
+t = t′ : T then both Γ ⊢ t : T and
+′
+′
+Γ ⊢ t : T and Γ ⊢ t = t : T and Γ ⊢ T .
+b t′ : T , which entails Γ ⊢ t, t′ : T and Γ ⊢ t =
+Proof. Using Lemma 4.8 we obtain Γ ⊢ t s
+′
+t : T . Analogously, since our assumption entails Γ T by definition, we get Γ ⊢ T .
+
+4.4. Fundamental theorem. We prove a series of lemmata which constitute parts of the
+fundamental theorem for the Kripke logical relation.
+Lemma 4.10 (Resurrection). If
+b σ ′ : Γ÷ .
+∆÷ ⊢ σ ′ s
+
+b σ ′ : Γ then ∆÷ ⊢ σ s
+b σ : Γ÷ and
+Γ and ∆ ⊢ σ s
+
+Proof. By induction on Γ, the interesting case being
+b σ′ : Γ
+b σ ′ (x) ⋆ U σ
+∆ ⊢σs
+∆ ⊢ σ(x) s
+b σ ′ : Γ. x⋆U
+∆ ⊢σs
+
+.
+
+b σ : (Γ÷ . x : U ). By induction hypothesis ∆÷ ⊢ σ s
+b σ : Γ÷ , and
+First, we show ∆÷ ⊢ σ s
+÷
+b σ(x) : U σ. This immediately entails our goal.
+by definition, ∆ ⊢ σ(x) s
+b σ ′ : (Γ÷ . x : U ), observe that Γ U , hence ∆ ⊢ U σ s
+b
+For the second goal ∆÷ ⊢ σ ′ s
+b σ ′ (x) : U σ to U σ ′
+U σ ′ : s for some sort s. Thus, we can cast our hypothesis ∆ ⊢ σ ′ (x) s
+and conclude analogously.
+
+Corollary 4.11. If Γ⋆
+
+b σ ′ : Γ then ∆ ⊢ uσ s
+b uσ ′ ⋆ U σ.
+u : U and ∆ ⊢ σ s
+
+b
+Proof. In case ⋆ = : it holds by definition, but we need resurrection for ⋆ = ÷. If ∆ ⊢ σ s
+′
+÷
+÷
+÷
+b σ : Γ , so from Γ
+σ : Γ, then by resurrection (Lemma 4.10) we have ∆ ⊢ σ s
+u:U
+÷
+÷
+′
+′
+′
+b
+b
+we deduce ∆ ⊢ uσ s uσ : U σ. Analogously we get ∆ ⊢ uσ s uσ : U σ which we cast
+b uσ ′ : U σ.
+to ∆÷ ⊢ uσ ′ s
+
+Lemma 4.12 (Validity of β-reduction).
+Γ. x⋆U t : T
+Γ⋆ u : U
+Γ (λx⋆U. t) ⋆ u = t[u/x] : T [u/x]
+
+IRRELEVANCE IN TYPE THEORY
+
+21
+
+b ρ′ : Γ
+Proof.
+Γ is contained in the first hypothesis Γ
+u ⋆ U . Then, given ∆ ⊢ ρ s
+⋆
+′
+′
+b t(ρ , uρ /x) : T (ρ, uρ/x) and also ∆ ⊢ T [u/x]ρ s
+b
+we need to show ∆ ⊢ (λx⋆U. t)ρ uρ s
+′
+T [u/x]ρ : s for some s (the latter to get Γ T [u/x]).
+Let σ = (ρ, uρ/x) and σ ′ = (ρ′ , uρ′ /x). From the second hypothesis and Cor. 4.11 we get
+b uρ′ ⋆ U ρ, which gives ∆ ⊢ σ s
+b σ ′ : Γ. x⋆U . By instantiating the first hypothesis
+∆ ⊢ uρ s
+b tσ ′ : T σ, and also (from the premise Γ. x⋆U T ) ∆ ⊢ T σ = T σ ′ , which
+we get ∆ ⊢ tσ s
+gives Γ T [u/x].
+b tσ ′ we get the desired ∆ ⊢ (λx⋆U. t)ρ ⋆ uρ s
+b tσ ′ : T σ, as s
+b is
+Finally, from ∆ ⊢ tσ s
+⋆
+closed by weak head expansion to well-typed ∆ ⊢ (λx⋆U. t)ρ uρ : T σ.
+
+Lemma 4.13 (Validity of η).
+Γ
+
+Γ t : (x⋆U ) → T
+t = λx⋆U. t ⋆ x : (x⋆U ) → T
+
+b
+Proof.
+Γ and Γ (x⋆U ) → T are direct consequences of our hypothesis. Given ∆ ⊢ ρ s
+′
+⋆
+′
+b
+ρ : Γ, we need to show ∆ ⊢ tρ s (λx⋆U. t x)ρ : ((x⋆U ) → T )ρ. W. l. o. g., x is not free in
+the domain nor range of substitutions ρ and ρ′ , thus with t′ := tρ, t′′ := tρ′ , U ′ := U ρ, U ′′ :=
+b λx⋆U ′′ . t′′ ⋆ x : (x⋆U ′ ) → T ′ .
+U ρ′ , T ′ := T ρ and T ′′ := T ρ′ it is sufficient to show ∆ ⊢ t′ s
+′
+′
+′
+′
+b u′ ⋆ U ′ , we show ∆′ ⊢ t′ ⋆ u s
+b
+First, given (∆ , u, u ) such that ∆ ≤ ∆ and ∆ ⊢ u s
+′′
+′′
+⋆
+⋆
+′
+′
+′
+b
+(λx⋆U . t x) u : T [u/x]. Our hypothesis Γ
+t : (x⋆U ) → T entails ∆ ⊢ tρ s tρ :
+′
+′′
+b
+((x⋆U ) → T )ρ, that is to say ∆ ⊢ t s t : (x⋆U ′ ) → T ′ . This logical relation at a
+b t′′ ⋆ u′ : T ′ [u/x], which
+function type, when instantiated to (∆′ , u, u′ ), gives us ∆′ ⊢ t′ ⋆ u s
+weak-head expands to the desired goal.
+Second, we show ∆ ⊢ t′ :=: λx⋆U ′′ . t′′ ⋆ x : (x⋆U ′ ) → T ′ .
+• Γ ⊢ t′ : (x⋆U ′ ) → T ′ is a simple consequence of our hypothesis Γ t : (x⋆U ) → T .
+• Γ ⊢ λx⋆U ′′ . t′′ ⋆ x : (x⋆U ′ ) → T ′ has the following proof:
+Γ t : (x⋆U ) → T
+=====′′======′′======′′
+∆ ⊢ t : (x⋆U ) → T
+∆. x⋆U ′′ ⊢ t′′ : (x⋆U ′′ ) → T ′′
+
+weak
+
+(∆. x⋆U ′′ )⋆ ⊢ x : U ′′
+
+var
+
+∆. x⋆U ′′ ⊢ t′′ ⋆ x : T ′′
+
+Γ (x⋆U ) → T
+========′′======′′
+∆ ⊢ (x⋆U ) → T
+
+∆ ⊢ λx⋆U ′′ . t′′ ⋆ x : (x⋆U ′′ ) → T ′′
+∆ ⊢ λx⋆U ′′ . t′′ ⋆ x : (x⋆U ′ ) → T ′
+
+conv
+
+• ∆ ⊢ t′ = λx⋆U ′′ . t′′ ⋆ x : (x⋆U ′ ) → T ′ . The η-rule of definitional equality gives us
+∆ ⊢ t′′ = λx⋆U ′′ . t′′ ⋆ x : (x⋆U ′′ ) → T ′′ . From Γ (x⋆U ) → T we can convert it
+to the type (x⋆U ′ ) → T ′ , and then conclude by transitivity using ∆ ⊢ t′ = t′′ :
+(x⋆U ′ ) → T ′ , which is a direct consequence of Γ t : (x⋆U ) → T .
+
+Lemma 4.14 (Validity of function equality).
+Γ
+Γ
+
+U = U′
+Γ. x⋆U t = t′ : T
+(λx⋆U. t) = (λx⋆U ′ . t′ ) : (x⋆U ) → T
+
+Proof. Again
+Γ and Γ (x⋆U ) → T are simple consequences of our hypotheses. Given
+′
+b
+∆ ⊢ ρ s ρ : Γ (w. l. o. g., x is not free in ρ, ρ′ domain or range), we need to show
+
+22
+
+A. ABEL AND G. SCHERER
+
+b (λx⋆U ′ ρ′ . t′ ρ′ ) : ((x⋆U ρ) → T ρ). We will skip the proof of ∆ ⊢
+∆ ⊢ (λx⋆U ρ. tρ) s
+(λx⋆U ρ. tρ) :=: (λx⋆U ′ ρ′ . t′ ρ′ ) : ((x⋆U ρ) → T ρ), as it is similar to the corresponding part
+of the η-validity lemma.
+b u′ ⋆ U ρ, we have to show that
+Given (∆′ , u, u′ ) such that ∆′ ≤ ∆ and ∆′ ⊢ u s
+′
+⋆
+′
+′
+′
+′
+⋆
+′
+b (λx⋆U ρ . t ρ ) u : T ρ[u/x]. Let σ = (ρ, u/x) and σ ′ = (ρ′ , u′ /x).
+∆ ⊢ (λx⋆U ρ. tρ) u s
+b u′ ⋆ U ρ, we have ∆′ ⊢ σ s
+b σ ′ : Γ. x⋆U ρ. Instantiating the second
+As we supposed ∆′ ⊢ u s
+′
+′
+′
+hypothesis with ∆ , σ, σ therefore gives us ∆ ⊢ tσ = t′ σ ′ : T σ, which can also be written
+b t′ ρ′ [u′ /x] : T ρ[u/x], which is weak-head expansible to our goal.
+∆′ ⊢ tρ[u/x] s
+
+Lemma 4.15 (Validity of irrelevant application).
+Γ
+
+t = t′ : (x÷U ) → T
+Γ÷ u : U
+Γ t ÷ u = t′ ÷ u′ : T [u/x]
+
+Γ÷
+
+u′ : U
+
+b ρ′ : Γ and show ∆ ⊢ tρ ÷ uρ s
+b t′ ρ′ ÷ u′ ρ′ : T (ρ, uρ/x).
+Proof. Assume arbitrary ∆ ⊢ ρ s
+b u′ ρ′ ÷ U ρ, which means ∆÷ ⊢
+By the first hypothesis, it is sufficient to show ∆ ⊢ uρ s
+÷
+′
+′
+′
+′
+b
+b
+b
+uρ s uρ : U ρ and ∆ ⊢ u ρ s u ρ : U ρ. By Resurrection (Lemma 4.10), ∆÷ ⊢ ρ s
+b uρ : U ρ from the second hypothesis. Analogously, we obtain
+ρ : Γ÷ , hence ∆÷ ⊢ uρ s
+÷
+′
+′
+′
+′
+′
+b u ρ : U ρ from the third hypothesis which we can cast to U ρ by virtue of
+∆ ⊢ uρ s
+Γ U which we get from Γ (x÷U ) → T by Lemma 4.7.
+
+Theorem 4.16 (Fundamental theorem of logical relations).
+(1) If ⊢ Γ then
+Γ.
+(2) If Γ ⊢ t : T then Γ t : T .
+(3) If Γ ⊢ t = t′ : T then Γ t = t′ : T .
+Proof. By induction on the derivation.
+
+
+
+As a simple corollary we obtain syntactic validity, namely that definitional equality
+implies well-typedness and well-typedness implies well-formedness of the involved type.
+This lemma could have been proven purely syntactically, but the syntactic proof requires a
+sequence of carefully arranged lemmata like context conversion, substitution, functionality,
+and inversion on types [HP05, AC07]. Our “sledgehammer” semantic argument is built into
+the Kripke logical relation, in the spirit of Goguen [Gog00].
+Corollary 4.17 (Syntactic validity).
+(1) If Γ ⊢ t : T then Γ ⊢ T .
+(2) If Γ ⊢ t = t′ : T then Γ ⊢ t : T and Γ ⊢ t′ : T .
+Proof. By the fundamental theorem, Γ ⊢ t = t′ : T implies Γ
+Thm. 4.9 implies Γ ⊢ t, t′ : T and Γ ⊢ T .
+
+t = t′ : T , which by
+
+
+IRRELEVANCE IN TYPE THEORY
+
+23
+
+5. Meta-theoretic Consequences of the Model Construction
+In this section, we explicate the results established by the Kripke model.
+5.1. Admissibility of Substitution. Goguen [Gog00] observes that admissibility of substitution for the syntactic judgements can be inherited from the Kripke logical relation,
+which is closed under substitution by its very definition.
+To show that the judgements of IITT are closed under substitution we introduce relations Γ ⊢ σ : Γ′ for substitution typing and Γ ⊢ σ = σ ′ : Γ′ for substitution equality which
+are given inductively by the following rules:
+⊢Γ
+Γ ⊢σ:⋄
+
+Γ ⊢ σ : Γ′
+
+Γ′ ⊢ U
+Γ ⊢ σ(x) ⋆ U σ
+′
+Γ ⊢ σ : Γ . x⋆U
+
+Γ ⊢ σ = σ ′ : Γ′
+Γ′ ⊢ U
+Γ ⊢ σ(x) = σ ′ (x) ⋆ U σ
+⊢Γ
+Γ ⊢ σ = σ′ : ⋄
+Γ ⊢ σ = σ ′ : Γ′ . x⋆U
+Substitution typing and equality are closed under weakening.
+Semantically, substitutions are explained by environments. We define substitution validity as follows, again in rule form but not inductively:
+Γ′
+b σ ′ ρ′ : Γ ′
+Γ
+∀∆
+∆ σρ s
+Γ σ : Γ′
+Γ σ = σ ′ : Γ′
+Lemma 5.1 (Fundamental lemma for substitutions).
+(1) If Γ ⊢ σ : Γ′ then Γ σ : Γ′ .
+(2) If Γ ⊢ σ = σ ′ : Γ′ then Γ σ = σ ′ : Γ′ .
+Γ
+
+σ = σ : Γ′
+
+b ρ′ : Γ.
+ρs
+
+Proof. We demonstrate 2 by induction on Γ ⊢ σ = σ ′ : Γ′ .
+Case
+⊢Γ
+Γ ⊢ σ = σ′ : ⋄
+b σ ′ ρ′ : ⋄ trivially for any
+We have
+Γ by Thm. 4.16 and
+⋄ trivially. Also, ∆ ⊢ σρ s
+′
+b ρ : Γ.
+∆ ⊢ρs
+Case
+Γ ⊢ σ = σ ′ : Γ′
+Γ′ ⊢ U
+Γ ⊢ σ(x) = σ ′ (x) ⋆ U σ
+Γ ⊢ σ = σ ′ : Γ′ . x⋆U
+′
+We have
+Γ and
+Γ by induction hypothesis and Γ′
+U by Thm. 4.16, thus,
+′
+b ρ′ : Γ and show ∆ ⊢ σρ s
+b σ ′ ρ′ : Γ′ . x⋆U .
+Γ . x⋆U . Now assume arbitrary ∆ ⊢ ρ s
+b σ ′ ρ′ : Γ′ follows by induction hypothesis. The second subgoal ∆ ⊢
+First, ∆ ⊢ σρ s
+′
+′
+b
+(σρ)(x) s (σ ρ )(x) ⋆ U σρ is just an instance of the second induction hypothesis.
+
+Theorem 5.2 (Substitution and functionality).
+(1) If Γ ⊢ σ : Γ′ and Γ′ ⊢ t : T then Γ ⊢ tσ : T σ.
+(2) If Γ ⊢ σ : Γ′ . and Γ′ ⊢ t = t′ : T then Γ ⊢ tσ = t′ σ : T σ.
+(3) If Γ ⊢ σ = σ ′ : Γ′ . and Γ′ ⊢ t : T then Γ ⊢ tσ = tσ ′ : T σ.
+(4) If Γ ⊢ σ = σ ′ : Γ′ . and Γ′ ⊢ t = t′ : T then Γ ⊢ tσ = t′ σ ′ : T σ.
+
+24
+
+A. ABEL AND G. SCHERER
+
+Proof. We demonstrate 4, the other cases are just variations of the theme. First, from
+b σ ′ : Γ′ by the fundamental lemma for substitutions
+Γ ⊢ σ = σ ′ : Γ′ we get Γ ⊢ σ s
+b id : Γ. Now, by the fundamental
+(Lemma 5.1), using the identity environment Γ ⊢ id s
+′
+′
+′
+b t σ : T σ, which entails our goal Γ ⊢ tσ =
+theorem on Γ ⊢ t = t : T we obtain Γ ⊢ tσ s
+′
+′
+t σ : T σ by Thm. 4.9.
+
+5.2. Context conversion. Context equality ⊢ Γ = Γ′ is defined inductively by the rules
+⊢ Γ = Γ′
+Γ ⊢ U = U′
+.
+⊢⋄=⋄
+⊢ Γ. x⋆U = Γ′ . x⋆U ′
+All declarative judgements are closed under context conversion. This fact is easy to
+prove by induction over derivations, but we get it as just a special case of substitution.
+Lemma 5.3 (Identity substitution). If ⊢ Γ = Γ′ then Γ ⊢ id = id : Γ′ .
+Proof. By induction on ⊢ Γ = Γ′ .
+Case
+⊢ Γ = Γ′
+Γ ⊢ U = U′
+⊢ Γ. x⋆U = Γ′ . x⋆U ′
+By induction hypothesis and weakening, Γ. x⋆U ⊢ id = id : Γ′ . Also, Γ. x⋆U ⊢ x = x ⋆ U
+and by conversion Γ. x⋆U ⊢ x = x ⋆ U ′ . Together, Γ. x⋆U ⊢ id = id : Γ′ . x⋆U ′ .
+
+Theorem 5.4 (Context conversion). Let ⊢ Γ′ = Γ.
+(1) If Γ ⊢ t : T then Γ′ ⊢ t : T .
+(2) If Γ ⊢ t = t′ : T then Γ′ ⊢ t = t′ : T .
+Proof. By Thm. 5.2 with Γ′ ⊢ id = id : Γ.
+
+
+
+As a consequence, context equality is symmetric and transitive (we can trade Γ ⊢ U =
+U ′ for Γ′ ⊢ U = U ′ ). Thus, context conversion can be applied in the other direction as well.
+5.3. Inversion, injectivity, and type unicity. A condition for the decidability of type
+checking is the ability to invert typing derivations. The proof requires substitution.
+Lemma 5.5 (Inversion).
+(1) If Γ ⊢ x : T then (x : U ) ∈ Γ for some U with Γ ⊢ U = T .
+(2) If Γ ⊢ λx⋆U. t : T then Γ. x⋆U ⊢ t : T ′ for some T ′ with Γ ⊢ (x⋆U ) → T ′ = T .
+(3) If Γ ⊢ t ⋆ u : T then Γ ⊢ t : (x⋆U ) → T ′ and Γ ⊢ u ⋆ U for some U, T ′ with Γ ⊢
+T ′ [u/x] = T .
+(4) If Γ ⊢ s : T then there is (s, s′ ) ∈ Axiom such that Γ ⊢ s′ = T .
+s1 ,s2
+(5) If Γ ⊢ (x⋆U ) → T ′ : T then Γ ⊢ U : s1 and Γ. x⋆U ⊢ T ′ : s2 , and for some s3 we have
+Γ ⊢ s3 = T and (s1 , s2 , s3 ) ∈ Rule.
+Proof. Each by induction on the typing derivation.
+
+
+
+Remark 5.6. The need for inversion during type checking is the only good reason to have
+separate typing rules and not simply define typing Γ ⊢ t : T as the diagonal Γ ⊢ t = t : T
+of equality. While by a logical relation argument we will obtain a suitable inversion result
+for Γ ⊢ (x⋆U ) → T = (x⋆U ) → T —the famous function type injectivity (Theorem 5.7)— it
+seems hard to get something similar for application t u.
+
+IRRELEVANCE IN TYPE THEORY
+
+25
+
+Injectivity for function types w. r. t. typed equality is known to be tricky. It is connected
+to subject reduction and required for many meta-theoretic results. We harvest it from our
+Kripke model.
+s1 ,s2
+
+s′ ,s′
+
+1 2
+Theorem 5.7 (Function type injectivity). If Γ ⊢ (x⋆U ) → T = (x⋆U ′ ) →
+T ′ : s3 then
+′
+′
+′
+′
+s1 = s1 and s2 = s2 and Γ ⊢ U = U : s1 and Γ. x⋆U ⊢ T = T : s2 .
+
+b
+Proof. This follows from Lemma 4.7. Or we can prove it directly as follows: Since Γ ⊢ id s
+s1 ,s2
+s
+,s
+1
+2
+b (x⋆U ′ ) → T ′ : s3 which by
+id : Γ we have by the fundamental theorem Γ ⊢ (x⋆U ) → T s
+′
+′
+′
+b U : s1 and Γ ⊢ U = U ′ : s1 . Since
+inversion yields first s1 = s1 and s2 = s2 and Γ ⊢ U s
+b x⋆U , we also obtain Γ. x⋆U ⊢ T s
+b T ′ : s2 and conclude Γ. x⋆U ⊢ T = T ′ : s2 .
+Γ. x⋆U ⊢ x s
+
+From the inversion lemma we can prove uniqueness of types, since we are dealing with
+a functional PTS, and we have function type injectivity.
+Theorem 5.8 (Type unicity). If Γ ⊢ t : T and Γ ⊢ t : T ′ then Γ ⊢ T = T ′ .
+Proof. By induction on t, using inversion.
+
+
+
+5.4. Normalization and Subject Reduction. An immediate consequence of the model
+construction is that each term has a weak head normal form and that typing and equality
+is preserved by weak head normalization.
+Theorem 5.9 (Normalization and subject reduction). If Γ ⊢ t : T then t ց a and Γ ⊢ t =
+a : T.
+b t : T which by definition contains a derivation
+Proof. By the fundamental theorem, Γ ⊢ t s
+of Γ ⊢ t = ↓t : T .
+
+5.5. Consistency. Importantly, not every type is inhabited in IITT, thus, it can be used
+as a logic. A prerequisite is that types can be distinguished, which follows immediately
+from the construction of the logical relation.
+Lemma 5.10 (Type constructor discrimination). Neutral types, sorts and function types
+are mutually unequal.
+(1) Γ ⊢ N 6= s.
+(2) Γ ⊢ N 6= (x⋆U ) → T .
+(3) Γ ⊢ s = s′ implies s ≡ s′ .
+(4) Γ ⊢ s 6= (x⋆U ) → T .
+Proof. By the fundamental theorem applied to the identity substitution. For instance,
+assuming Γ ⊢ N = s : s′ we get Γ ⊢ N s s : s′ but this is a contradiction to the definition
+of s.
+
+From normalization and type constructor discrimination we can show that not every
+type is inhabited.
+Theorem 5.11 (Consistency). X : Set0 6 ⊢ t : X.
+
+26
+
+A. ABEL AND G. SCHERER
+
+Proof. Let Γ = (X : Set0 ). Assuming Γ ⊢ t : X, we have Γ ⊢ a : X for the whnf a of t.
+We invert on the typing of a. By Lemma 5.10, X cannot be equal to a function type or
+sort, thus, a can neither be a λ nor a function type nor a sort, it can only be neutral. The
+only variable X must be in the head of a, but since X is not of function type, it cannot be
+applied. Thus, a ≡ X and Γ ⊢ X : X, implying Γ ⊢ X = Set0 by inversion (Lemma 5.5).
+This is in contradiction to Lemma 5.10!
+
+5.6. Soundness of Algorithmic Equality. Soundness of the equality algorithm is a consequence of subject reduction.
+Theorem 5.12 (Soundness of algorithmic equality).
+(1) Let ∆ ⊢ t, t′ : T . If ∆ ⊢ t ⇐⇒
+b t′ : T then ∆ ⊢ t = t′ : T .
+′
+(2) Let ∆ ⊢ n, n : T . If ∆ ⊢ n ←→
+b n′ : U then ∆ ⊢ n = n′ : U and ∆ ⊢ U = T .
+Proof. Generalize the theorem to all six algorithmic equality judgments and prove it by
+induction on the algorithmic equality derivation. Since we have subject reduction, the
+proof proceeds mechanically, because each algorithmic rule corresponds, modulo weak head
+normalization, to a declarative rule.
+Case ∆ ⊢ T : s and ∆′ ⊢ T ′ : s and
+∆ ⊢ ↓T ⇐⇒ ↓T ′
+∆ ⊢ T ⇐⇒
+b T′
+′
+By induction hypothesis, ∆ ⊢ ↓T = ↓T : s. By subject reduction ∆ ⊢ T = ↓T : s and
+∆ ⊢ T ′ = ↓T ′ : s. By transitivity ∆ ⊢ T = T ′ : s.
+Case
+∆ ⊢ T ⇐⇒
+b T′
+∆ ⊢ T ⇐⇒ T ′ : s
+By induction hypothesis, ∆ ⊢ T = T ′ : s.
+
+5.7. Symmetry and Transitivity of Algorithmic Equality. Since algorithmic equality
+is sound for well-typed terms, it is also symmetric and transitive.
+Lemma 5.13 (Type and context conversion in algorithmic equality). Let ⊢ ∆ = ∆′ .
+(1) If ∆ ⊢ A, A′ and ∆ ⊢ A ⇐⇒ A′ then ∆′ ⊢ A ⇐⇒ A′ .
+(2) If ∆ ⊢ n, n′ : A and ∆ ⊢ n ←→ n′ : A then ∆′ ⊢ n ←→ n′ : A′ for some A′ with
+∆ ⊢ A = A′ .
+(3) If ∆ ⊢ t, t′ : A and ∆ ⊢ t ⇐⇒ t′ : A and ∆ ⊢ A = A′ then ∆′ ⊢ t ⇐⇒ t′ : A′ .
+Proof. By induction on the derivation of algorithmic equality, where we extend the statements to ←→
+b and ⇐⇒
+b accordingly.
+(1) Type equality.
+Case
+∆ ⊢ U ⇐⇒
+b U′
+∆. x⋆U ⊢ T ⇐⇒
+b T′
+∆ ⊢ (x⋆U ) → T ⇐⇒ (x⋆U ′ ) → T ′
+By inversion, ∆ ⊢ U, U ′ and by induction hypothesis, ∆′ ⊢ U ⇐⇒
+b U ′ . Again by
+′
+′
+inversion, ∆. x⋆U ⊢ T and ∆. x⋆U ⊢ T , yet by soundness of algorithmic equality,
+∆ ⊢ U = U ′ , hence ∆. x⋆U ⊢ T ′ by context conversion. Further, ⊢ ∆. x⋆U =
+
+IRRELEVANCE IN TYPE THEORY
+
+27
+
+∆′ . x⋆U . Thus, we can apply the other induction hypothesis to obtain ∆′ . x⋆U ⊢
+T ⇐⇒
+b T ′ , which finally yields ∆′ ⊢ (x⋆U ) → T ⇐⇒ (x⋆U ′ ) → T ′ .
+(2) Structural equality.
+Case
+(x : T ) ∈ ∆
+∆ ⊢ x ←→
+b x:T
+Since ⊢ ∆ = ∆′ , there is a unique (x : T ′ ) ∈ ∆′ with ∆ ⊢ T = T ′ . Hence,
+∆′ ⊢ x ←→
+b x : T ′.
+Case
+Type-directed equality.
+Case ∆ ⊢ t, t′ : T and ∆ ⊢ T = T ′ and
+T ցA
+∆ ⊢ t ⇐⇒ t′ : A
+∆ ⊢ t ⇐⇒
+b t′ : T
+By normalization, T ′ ց A′ , and subject reduction ∆ ⊢ A = T = T ′ = A′ . Since
+by conversion, ∆ ⊢ t, t′ : A, by induction hypothesis ∆′ ⊢ t ⇐⇒ t′ : A′ . Thus,
+∆′ ⊢ t ⇐⇒
+b t′ : T ′ .
+Case ∆ ⊢ (x⋆U ) → T = A′ and
+∆. x⋆U ⊢ t ⋆ x ⇐⇒
+b t′ ⋆ x : T
+∆ ⊢ t ⇐⇒ t′ : (x⋆U ) → T
+By injectivity A′ ≡ (x⋆U ′ ) → T ′ with ∆ ⊢ U = U ′ and ∆. x⋆U ⊢ T = T ′ . Since
+⊢ ∆. x⋆U = ∆′ . x⋆U ′ , by induction hypothesis we have ∆′ . x⋆U ′ ⊢ t ⋆ x ⇐⇒
+b t′ ⋆ x :
+′
+′
+′
+′
+′
+T . We conclude ∆ ⊢ t ⇐⇒ t : (x⋆U ) → T .
+
+Lemma 5.14 (Algorithmic equality is transitive). Let ⊢ ∆ = ∆′ . In the following, let the
+terms submitted to algorithmic equality be well-typed.
+(1) If ∆ ⊢ n1 ←→
+b n2 : T and ∆′ ⊢ n2 ←→
+b n3 : T ′ then ∆ ⊢ n1 ←→
+b n3 : T and
+′
+∆ ⊢T =T .
+(2) If ∆ ⊢ t1 ⇐⇒
+b t2 : T and ∆′ ⊢ t2 ⇐⇒
+b t3 : T ′ and ∆ ⊢ T = T ′ then ∆ ⊢ t1 ⇐⇒
+b t3 : T .
+′
+(3) If ∆ ⊢ T1 ⇐⇒
+b T2 : s and ∆ ⊢ T2 ⇐⇒
+b T3 : s then ∆ ⊢ T1 ⇐⇒
+b T3 : s
+Proof. We extend these statements to ←→ and ⇐⇒ and prove them simultaneously by
+induction on the first derivation.
+Case
+∆′ ⊢ n2 ←→
+b n3 : T ′
+∆ ⊢ n1 ←→
+b n2 : T
+∆ ⊢ n1 ⇐⇒ n2 : N
+∆′ ⊢ n2 ⇐⇒ n3 : N ′
+By induction hypothesis ∆ ⊢ n1 ←→
+b n3 : T , hence, ∆ ⊢ n1 ⇐⇒ n3 : N .
+Case
+∆ ⊢ N1 ←→
+b N2 : T
+∆ ⊢ N2 ←→
+b N3 : T ′
+∆ ⊢ N1 ⇐⇒ N2
+∆ ⊢ N2 ⇐⇒ N3
+Analogously.
+
+28
+
+A. ABEL AND G. SCHERER
+
+Case
+s1 ,s2
+
+∆ ⊢ n1 ←→ n2 : (x : U ) → T
+∆ ⊢ u1 ⇐⇒
+b u2 : U
+∆ ⊢ n1 u1 ←→
+b n2 u2 : T [u1 /x]
+s′ ,s′
+
+1 2
+∆′ ⊢ n2 ←→ n3 : (x : U ′ ) →
+T′
+∆′ ⊢ u2 ⇐⇒
+b u3 : U ′
+∆′ ⊢ n2 u2 ←→
+b n3 u3 : T ′ [u2 /x]
+
+s1 ,s2
+
+s1 ,s2
+
+By induction hypothesis we have ∆ ⊢ n1 ←→ n3 : (x : U ) → T and ∆ ⊢ (x : U ) →
+s′ ,s′
+
+1 2
+T = (x : U ′ ) →
+T ′ which gives in particular s1 = s′1 , s2 = s′2 , and ∆ ⊢ U = U ′ : s1
+by function type injectivity (Thm. 5.7). By induction hypothesis we can then deduce
+∆ ⊢ u1 ⇐⇒
+b u3 : U , and therefore conclude ∆ ⊢ n1 u1 ←→ n3 u3 : T [u1 /x].
+Case
+
+∆ ⊢ U1 ⇐⇒
+b U2 : s 1
+s1 ,s2
+
+∆. x⋆U1 ⊢ T1 ⇐⇒
+b T2 : s2
+s1 ,s2
+
+∆ ⊢ (x⋆U1 ) → T1 ⇐⇒ (x⋆U2 ) → T2 : s3
+∆ ⊢ U2 ⇐⇒
+b U3 : s 1
+
+∆. x⋆U2 ⊢ T2 ⇐⇒
+b T3 : s2
+
+s1 ,s2
+
+s1 ,s2
+
+∆ ⊢ (x⋆U2 ) → T2 ⇐⇒ (x⋆U3 ) → T3 : s2
+We get ∆ ⊢ U1 ⇐⇒
+b U3 : s1 by transitivity. To also get ∆. x⋆U1 ⊢ T1 ⇐⇒
+b T3 : s2 we
+need ⊢ ∆. x⋆U2 = ∆. x⋆U1 , but this stems from ∆ ⊢ U1 ⇐⇒
+b U2 : s1 by soundness of
+algorithmic equality.
+
+Theorem 5.15. The algorithmic equality relations are PERs on well-typed expressions.
+Proof. By Lemma 5.14 and an analogous proof of symmetry.
+
+
+
+6. A Kripke Logical Relation for Completeness
+The only open issues in the meta-theory of IITT are completeness and termination of
+algorithmic equality. In parts, completeness has been established in the last section already,
+namely, we have shown injectivity and discrimination for type constructors. What is missing
+is injectivity and discrimination for neutrals, e. g., if ∆ ⊢ n u = n′ u′ : T ′ then necessarily
+∆ ⊢ n = n′ : (x : U ) → T and ∆ ⊢ u = u′ : U , plus ∆ ⊢ T [u/x] = T ′ . In untyped λcalculus, this is an instance of Boehm’s theorem [Bar84]. We follow Coquand [Coq91] and
+Harper and Pfenning [HP05] and prove it by constructing a second Kripke logical relation,
+c , for completeness which is very similar to the first one, s, but at base types additionally
+requires algorithmic equality to hold. After proving the fundamental lemma again, we know
+that definitionally equal terms are also algorithmically so. As a consequence, equality is
+decidable in IITT, and so is type checking.
+
+IRRELEVANCE IN TYPE THEORY
+
+29
+
+6.1. Another Kripke Logical Relation. Again, by induction on A ∈ s we define two
+Kripke relations
+∆ ⊢ A c A′ : s
+∆ ⊢ a c a′ : A.
+c and the generalization to ⋆. This time, however,
+together with their respective closures c
+at base types we will additionally require algorithmic equality to hold, more precisely, the
+relation ∆ ⊢ t :⇐⇒: t′ : T which stands for the conjunction of the propositions
+• ∆ ⊢ t : T and ∆ ⊢ t′ : T , and
+• ∆ ⊢ t ⇐⇒
+b t′ : T .
+Note that by soundness of algorithmic equality, :⇐⇒: implies :=:.
+Again, we allow ourselves rule notation for the defining clauses of c .
+∆ ⊢ N :⇐⇒: N ′ : s
+∆ ⊢ N c N′ : s
+
+∆ ⊢ n :⇐⇒: n′ : N
+∆ ⊢ n c n′ : N
+
+⊢∆
+(s, s′ )
+∆ ⊢ s c s : s′
+
+c U ′ : s1
+∆ ⊢U c
+c u′ ⋆ U =⇒ Γ ⊢ T [u/x] c
+c T ′ [u′ /x] : s2
+∀Γ ≤ ∆, Γ ⊢ u c
+s1 ,s2
+s1 ,s2 ′
+′
+∆ ⊢ (x⋆U ) → T :=: (x⋆U ) → T : s3
+s1 ,s2
+
+s1 ,s2
+
+∆ ⊢ (x⋆U ) → T c (x⋆U ′ ) → T ′ : s3
+
+(s1 , s2 , s3 )
+
+c u′ ⋆ U =⇒ Γ ⊢ f ⋆ u c
+c f ′ ⋆ u′ : T [u/x]
+∀Γ ≤ ∆, Γ ⊢ u c
+s,s′
+
+∆ ⊢ f :=: f ′ : (x⋆U ) → T
+s,s′
+
+∆ ⊢ f c f ′ : (x⋆U ) → T
+∆ ⊢ ↓t c ↓t′ : ↓T
+
+∆ ⊢ t :=: t′ : T
+
+c t′ : T
+∆ ⊢tc
+∆÷ ⊢ a c a : A
+∆÷ ⊢ a′ c a′ : A
+∆ ⊢ a c a′ ÷ A
+
+c t:T
+∆÷ ⊢ t c
+
+c t′ : T
+∆ ÷ ⊢ t′ c
+
+c t′ ÷ T
+∆ ⊢tc
+This logical relation contains only well-typed and definitionally equal terms. It is symmetric,
+transitive, and closed under weakening and type conversion. The proofs are in analogy to
+those of Section 4, which are relying on the fact that the underlying relation :=: is a Kripke
+PER and closed under type conversion. The relation :⇐⇒: underlying c has the same
+properties, thanks to soundness of algorithmic equality.
+Note that in the definition of ∆ ⊢ f c f ′ : (x⋆U ) → T we did not require f and f ′
+to be algorithmically equal. This would hinder the proof of the fundamental theorem for
+c , since algorithmic equality is not closed under application by definition—it will follow
+from the fundamental theorem, though. In the next lemma we shall prove that f and f ′
+are algorithmically equal if they are related by c . The name Escape Lemma was coined
+by Jeffrey Sarnat [SS08].
+Lemma 6.1 (Escape from the logical relation). Let ∆ ⊢ A c A′ : s
+(1) ∆ ⊢ A ⇐⇒ A′ .
+c t′ : A then ∆ ⊢ t ⇐⇒ t′ : A.
+(2) If ∆ ⊢ t c
+(3) If ∆ ⊢ n ←→ n′ ⋆ A and ∆ ⊢ n = n′ ⋆ A then ∆ ⊢ n c n′ ⋆ A.
+
+30
+
+A. ABEL AND G. SCHERER
+
+c T′ : s
+Corollary 6.2. Let ∆ ⊢ T c
+(1) ∆ ⊢ T ⇐⇒
+b T ′.
+c t′ : T then ∆ ⊢ t ⇐⇒
+(2) If ∆ ⊢ t c
+b t′ : T .
+c n′ ⋆ T .
+(3) If ∆ ⊢ n ←→
+b n′ ⋆ T and ∆ ⊢ n = n′ ⋆ T then ∆ ⊢ n c
+The corollary is a direct, non-inductive consequence of the lemma, so we can use it in
+the proof of the lemma, quoted as “IH”.
+Proof of the lemma. Simultaneously by induction on A :⇐⇒: A′ : s.
+Case ∆ ⊢ N c N ′ : s.
+Case 1. ∆ ⊢ N ⇐⇒ N ′ by assumption.
+Case 2. We have ∆ ⊢ ↓t ←→ ↓t′ : , thus ∆ ⊢ t ⇐⇒ t′ : N .
+Case 3.
+First, consider ⋆ = :. If ∆ ⊢ n = n′ : N and ∆ ⊢ n ←→ n′ : N then ∆ ⊢ n ⇐⇒ n′ : N
+and trivially ∆ ⊢ n c n′ : N .
+Then, take ⋆ = ÷. Note that if ∆÷ ⊢ n = n : N and ∆÷ ⊢ n ←→ n : N then
+∆÷ ⊢ n ⇐⇒ n : N and ∆÷ ⊢ n c n : N . This implies that if ∆ ⊢ n = n′ ÷ N and
+∆ ⊢ n ←→ n′ ÷ N then ∆ ⊢ n ⇐⇒ n′ ÷ N and ∆ ⊢ n c n′ ÷ N .
+Case ∆ ⊢ s c s : s′ .
+Case 1. Clearly, ∆ ⊢ s ⇐⇒ s.
+c T ′ : s. Then ∆ ⊢ T ⇐⇒
+Case 2. Let ∆ ⊢ T c
+b T ′ by IH 1, thus ∆ ⊢ T ⇐⇒ T ′ : s
+′
+Case 3. For ⋆ = : let ∆ ⊢ N ←→ N : s. By inversion, ∆ ⊢ N ←→
+b N ′ : T for some T .
+′
+′
+Then ∆ ⊢ N ⇐⇒ N and ∆ ⊢ N c N : s by definition.
+Considering ⋆ = ÷, it is sufficient to observe that ∆÷ ⊢ N ←→ N : s implies
+∆÷ ⊢ N ⇐⇒ N and ∆÷ ⊢ N c N : s by definition.
+Case ∆ ⊢ (x⋆U ) → T c (x⋆U ′ ) → T ′ : s3 .
+Case 1. Similar to 2.
+c t′ : (x⋆U ) → T . It is sufficient to show ∆. x⋆U ⊢
+Case 2. By assumption, ∆ ⊢ t c
+⋆
+′
+⋆
+c U ′ : s1 , which includes ∆ ⊢ U , we have ∆. x⋆U ⊢
+t x ⇐⇒
+b t x : T . Since ∆ ⊢ U c
+c t′ ⋆ x : ↓T via
+x = x ⋆ U . Since also ∆. x⋆U ⊢ x ←→
+b x ⋆ U , we obtain ∆. x⋆U ⊢ t ⋆ x c
+IH 3, ∆. x⋆U ⊢ x c x ⋆ U . IH 2 then entails our goal.
+Case 3. First, the case for ⋆ = :. We reuse variable ⋆ for a different irrelevance
+marker. We have ∆ ⊢ n ←→ n′ : (x⋆U ) → T . Assume arbitrary Γ :⇐⇒: Γ ≤ ∆ and
+c u′ ⋆ U , which yields Γ ⊢ u = u′ ⋆ U and Γ ⊢ T [u/x] c
+c T [u′ /x] : Seti . In
+Γ ⊢uc
+′
+case ⋆ = : we have to apply IH 2 for Γ ⊢ u ⇐⇒ u : ↓U . Otherwise, we obtain directly
+Γ ⊢ n ⋆ u ←→ n′ ⋆ u′ : ↓(T [u/x]). By IH 3, Γ ⊢ n ⋆ u c n′ ⋆ u′ : ↓(T [u/x]).
+The case for ⋆ = ÷ proceeds analogously.
+
+b we extend c
+c to substitutions and define the semantic validity judgements
+In analogy to s
+c Γ and Γ
+c t : T and Γ
+c t = t′ : T based on c
+c . Since by the escape lemma,
+c x : ∆(x), we have Γ ⊢ id c
+c id : Γ for c Γ. Finally, we reprove the fundamental
+∆ ⊢xc
+theorem:
+c ).
+Theorem 6.3 (Fundamental theorem for c
+c
+(1) If ⊢ Γ then
+Γ.
+(2) If Γ ⊢ t : T then Γ c t : T .
+(3) If Γ ⊢ t = t′ : T then Γ c t = t′ : T .
+
+IRRELEVANCE IN TYPE THEORY
+
+31
+
+6.2. Completeness and Decidability of Algorithmic Equality. Derivations of algorithmic equality can now be obtained by escaping from the logical relation.
+Theorem 6.4 (Completeness of algorithmic equality). Γ ⊢ t = t′ : T implies Γ ⊢ t ⇐⇒
+b
+t′ : T .
+c id : Γ, we have Γ ⊢ t c
+c t′ : T by the fundamental theorem, and
+Proof. Since Γ ⊢ id c
+conclude with Lemma 6.1.2.
+
+Termination of algorithmic equality is a consequence of completeness. When invoking
+the algorithmic equality check ∆ ⊢ t ⇐⇒
+b t′ : T on two well-typed expressions ∆ ⊢ t, t′ : T
+we know by completeness that t and t′ are related to themselves, i. e., ∆ ⊢ t ⇐⇒
+b t : T and
+∆ ⊢ t′ ⇐⇒
+b t′ : T . This means that t, t′ , and T are weakly normalizing by the strategy the
+equality algorithm implements: reduce to weak head normal form and recursively continue
+with the subterms. Running the equality check on t and t′ performs, if successful, exactly
+the same reductions, and if it fails, at most the same reductions in t, t′ , and T . Hence,
+testing equality on well-typed terms always terminates. This argument has been applied
+in previous work to untyped equality [AC07]. Here, we apply it to typed equality; it is
+an alternative to Goguen’s technique of proving termination for typed equality from strong
+normalization [Gog05], which, in our opinion, does not scale to dependently-typed equality.
+Lemma 6.5 (Termination of algorithmic equality). Let ⊢ ∆.
+(1) Type equality.
+(a) Let ∆ ⊢ A, A′ . If D :: ∆ ⊢ A ⇐⇒ A and ∆ ⊢ A′ ⇐⇒ A′ then the query
+∆ ⊢ A ⇐⇒ A′ terminates.
+(b) Let ∆ ⊢ T, T ′ . If D :: ∆ ⊢ T ⇐⇒
+b T and ∆ ⊢ T ′ ⇐⇒
+b T ′ then the query ∆ ⊢ T ⇐⇒
+b
+′
+T terminates.
+(2) Structural equality. Let ∆ ⊢ n : T and ∆ ⊢ n′ : T ′ .
+(a) If D :: ∆ ⊢ n ←→ n : A and ∆ ⊢ n′ ←→ n′ : A′ then the query ∆ ⊢ n ←→ n′ : ?
+terminates. If successfully, it returns A and we have ∆ ⊢ A = T = T ′ = A.
+(b) If D :: ∆ ⊢ n ←→
+b n : T and ∆ ⊢ n′ ←→
+b n′ : T ′ then the query ∆ ⊢ n ←→
+b n′ : ?
+′
+terminates. If successfully, it returns T and we have ∆ ⊢ T = T .
+(3) Type-directed equality.
+(a) Let ∆ ⊢ t, t′ : A. If D :: ∆ ⊢ t ⇐⇒ t : A and ∆ ⊢ t′ ⇐⇒ t′ : A then the query
+∆ ⊢ t ⇐⇒ t′ : A terminates.
+(b) Let ∆ ⊢ t, t′ : T . If D :: ∆ ⊢ t ⇐⇒
+b t : T and ∆ ⊢ t′ ⇐⇒
+b t′ : T then the query
+′
+∆ ⊢ t ⇐⇒
+b t : T terminates.
+Proof. Simultaneously by induction on derivation D.
+(1) Type equality.
+Case A = A′ = s. The query ∆ ⊢ A ⇐⇒ A′ terminates successfully.
+Case A = (x⋆U ) → T and A′ = (x⋆U ′ ) → T ′ . First, the query ∆ ⊢ U ⇐⇒
+b U ′ runs.
+By induction hypothesis, it terminates. If it fails, the whole query fails. Otherwise,
+the query ∆. x⋆U ⊢ T ⇐⇒
+b T ′ is run. By induction hypothesis on ∆. x⋆U ⊢ T ⇐⇒
+b T
+′
+′
+and ∆. x⋆U ⊢ T ⇐⇒
+b T ′ , the query terminates.
+Case A = N and A′ = N ′ neutral. By induction hypothesis on ∆ ⊢ N ←→
+b N :T
+and ∆ ⊢ N ′ ←→
+b N ′ : T ′ , the query ∆ ⊢ N ←→
+b N ′ : ? terminates. Hence, the query
+∆ ⊢ N ⇐⇒ N ′ terminates.
+
+32
+
+A. ABEL AND G. SCHERER
+
+Case Weak head normal forms A, A′ not covered by previous cases: the query ∆ ⊢
+A ⇐⇒ A′ fails immediately, since there is no applicable algorithmic type equality
+rule.
+Case The query ∆ ⊢ T ⇐⇒
+b T ′ first invokes weak head normalization on T and T ′ .
+Both terminate since ∆ ⊢ T ⇐⇒
+b T , which implies T ց A, and analogously T ′ ց A′
+′
+′
+since ∆ ⊢ T ⇐⇒
+b T by assumption. Then, the query ∆ ⊢ A ⇐⇒ A′ is run, which
+terminates by induction hypothesis on ∆ ⊢ A ⇐⇒ A and ∆ ⊢ A′ ⇐⇒ A′ .
+(2) Structural equality.
+Case n = n′ = x. The query ∆ ⊢ n ←→
+b n′ : ? terminates successfully, returning type
+∆(x). Since ⊢ ∆, by inversion (Lemma 5.5) ∆ ⊢ T = T ′ = ∆(x).
+Case Neutral relevant application for ∆ ⊢ n u : T0 and ∆ ⊢ n′ u′ : T0′ .
+∆ ⊢ n ←→ n : (x : U ) → T
+∆ ⊢ u ⇐⇒
+b u:U
+∆ ⊢ n u ←→
+b n u : T [u/x]
+∆ ⊢ n′ ←→ n′ : (x : U ′ ) → T ′
+∆ ⊢ u′ ⇐⇒
+b u′ : U ′
+∆ ⊢ n′ u′ ←→
+b n′ u′ : T ′ [u′ /x]
+The query ∆ ⊢ n u ←→
+b n′ u′ : ? first invokes query ∆ ⊢ n ←→ n′ : ?. By induction
+hypothesis on ∆ ⊢ n ←→ n : (x : U ) → T and ∆ ⊢ n′ ←→ n′ : (x : U ′ ) → T ′
+the query terminates. If it fails the whole query fails. Otherwise it returns a type
+A in weak head normal form, which is identical to (x : U ) → T by uniqueness of
+inferred types (Lemma 3.1). Further, ∆ ⊢ (x : U ) → T = (x : U ′ ) → T ′ , and by
+function type injectivity (Thm. 5.7), ∆ ⊢ U = U ′ and ∆. x : U ⊢ T = T ′ . Thus, we
+can invoke the induction hypothesis on ∆ ⊢ u ⇐⇒
+b u : U and ∆ ⊢ u′ ⇐⇒
+b u′ : U
+′
+′
+′
+(cast from ∆ ⊢ u ⇐⇒
+b u : U , Lemma 5.13) to infer that the second subquery
+∆ ⊢ u ⇐⇒
+b u′ : U terminates. If this one is successful, then by soundness of
+algorithmic equality, ∆ ⊢ u = u′ : U , which implies ∆ ⊢ T [u/x] = T ′ [u′ /x].
+Case Neutral irrelevant application with typing
+∆ ⊢ n : (x÷U1 ) → T1
+∆ ⊢ u ÷ U1
+÷
+∆ ⊢ n u : T1 [u/x]
+and algorithmic self-equality
+∆ ⊢ n ←→ n : (x÷U ) → T
+∆ ⊢ n ÷ u ←→
+b n ÷ u : T [u/x]
+
+∆ ⊢ u′ ÷ U1′
+∆ ⊢ n′ : (x÷U1′ ) → T1′
+∆ ⊢ n′ ÷ u′ : T1′ [u′ /x]
+∆ ⊢ n′ ←→ n′ : (x÷U ′ ) → T ′
+∆ ⊢ n′ ÷ u′ ←→
+b n′ ÷ u′ : T ′ [u′ /x]
+
+The query ∆ ⊢ n ÷ u ←→
+b n′ ÷ u′ : ? invokes query ∆ ⊢ n ←→ n′ : ?, which terminates
+by induction hypothesis. If successfully, then ∆ ⊢ (x÷U1 ) → T1 (x÷U ) → T =
+(x÷U ′ ) → T ′ = (x÷U1′ ) → T1′ . By function type injectivity, ∆ ⊢ U1 = U = U ′ = U1′
+and ∆. x÷U ⊢ T1 = T = T ′ = T1′ . By conversion ∆ ⊢ u = u′ ÷ U , thus, ∆ ⊢
+T1 [u/x] = T [u/x] = T ′ [u′ /x] = T1′ [u′ /x].
+Case In all other cases, the query ∆ ⊢ n ←→
+b n′ : ? fails immediately.
+Case The query ∆ ⊢ n ←→ n : ? spawns subquery ∆ ⊢ n ←→
+b n′ : ? which terminates
+′
+by induction hypothesis on ∆ ⊢ n ←→
+b n : T and ∆ ⊢ n ←→
+b n′ : T ′ . If successfully,
+it returns type T , and since T ց A, the original query also terminates, returning A.
+(3) Type-directed equality.
+Case Function type ∆ ⊢ t, t′ : (x⋆U ) → T . The query ∆ ⊢ t ⇐⇒ t′ : (x⋆U ) → T
+spawns subquery ∆. x⋆U ⊢ t ⋆ x ⇐⇒
+b t′ ⋆ : T . Since ∆. x⋆U ⊢ t ⋆ x, t′ ⋆ x : T and the
+
+IRRELEVANCE IN TYPE THEORY
+
+33
+
+subquery terminates by induction hypothesis on ∆. x⋆U ⊢ t ⋆ x ⇐⇒
+b t ⋆ x : T and
+′
+⋆
+′
+⋆
+∆. x⋆U ⊢ t x ⇐⇒
+b t x : T.
+Case Sort ∆ ⊢ T, T ′ : s. The query ∆ ⊢ T ⇐⇒ T ′ : s calls ∆ ⊢ T ⇐⇒
+b T ′ , which
+terminates by induction hypothesis on ∆ ⊢ T ⇐⇒
+b T and ∆ ⊢ T ′ ⇐⇒
+b T ′.
+Case Neutral type N .
+t′ ց n ′
+∆ ⊢ n′ ←→
+b n′ : T ′
+tցn
+∆ ⊢ n ←→
+b n:T
+∆ ⊢ t ⇐⇒ t : N
+∆ ⊢ t′ ⇐⇒ t′ : N
+′
+The query ∆ ⊢ t ⇐⇒ t : N first weak head normalizes t and t′ . By assumption,
+t ց n and t′ ց n′ , so this terminates. The subquery ∆ ⊢ n ←→
+b n′ : ? terminates
+by induction hypothesis. Thus, the whole query terminates.
+Case If A is neither a function type, a sort, or a neutral type, the query ∆ ⊢ t ⇐⇒ t′ : A
+fails immediately.
+Case The query ∆ ⊢ t ⇐⇒
+b t′ : T first weak head normalizes T which terminates since
+T ց A by assumption. Then it calls ∆ ⊢ t ⇐⇒ t′ : A which terminates by induction
+hypothesis.
+
+Theorem 6.6. If ∆ ⊢ t : T and ∆ ⊢ t′ : T then the query ∆ ⊢ t ⇐⇒
+b t′ : T terminates.
+Proof. From the lemma by completeness of algorithmic equality.
+
+
+
+Thus we have shown that algorithmic equality is correct, i. e., sound, complete, and
+terminating. Together, this entails decidability of equality in IITT.
+Theorem 6.7 (Decidability of IITT).
+(1) Γ ⊢ t = t′ : T is decidable.
+(2) Γ ⊢ t : T is decidable.
+Proof. Decidability of equality follows from soundness (Thm. 5.12), completeness (Thm. 6.4),
+and termination (Thm. 6.6). Decidability of typing follows from decidability of type conversion, weak head normalization, and function type injectivity, using inversion (Lemma 5.5)
+on typing derivations. Any reasonable type inference algorithm will do.
+
+7. Extensions
+Data types and recursion. The semantics of IITT is ready to cope with inductive data types
+like the natural numbers and the associated recursion principles. Recursion into types, aka
+known as large elimination, is also accounted for since we have universes and a semantics
+which does not erase dependencies (unlike Pfenning’s model [Pfe01]).
+Types with extensionality principles. One purpose of having a typed equality algorithm is
+to handle η-laws that are not connected to the shape of the expression (like η-contraction
+for functions) but to the shape of the type only. Typically these are types T with at most
+one inhabitant, i. e., the empty type, the unit type, singleton types or propositions.6 For
+such T we have the η-law
+Γ ⊢ t, t′ : T
+Γ ⊢ t = t′ : T
+6Some care is necessary for the type of Leibniz equality [Abe09, Wer08].
+
+34
+
+A. ABEL AND G. SCHERER
+
+which can only be checked in the presence of type T . Realizing such η-laws gives additional
+“proof” irrelevance which is not covered by Pfenning’s irrelevant quantification (x÷U ) → T .
+Internal erasure. Terms u÷U in irrelevant position are only there to please the type checker,
+they are ignored during equality checking. This can be inferred from the substitution
+principle: If Γ. x÷U ⊢ T and Γ ⊢ u, u′ ÷ U , then Γ ⊢ T [u/x] = T [u′ /x]; the type T has the
+same shape regardless of u, u′ . Hence, terms like u serve the sole purpose to prove some
+proposition and could be replaced by a dummy • immediately after type-checking.
+Internal erasure can be realized by making Γ ⊢ t ÷ T a judgement (as opposed to just
+a notation for Γ÷ ⊢ t : T ) and adding the rule
+Γ ⊢ t÷T
+.
+Γ ⊢•÷T
+The rule states that if there is already a proof t of T , then • is a new proof of T . This
+preserves provability while erasing the proof terms. Conservativity of this rule can be proven
+as in joint work of the author with Coquand and Pagano [ACP11].
+8. Conclusions
+We have extended Pfenning’s notion of irrelevance to a type theory IITT with universes
+that accommodates types defined by recursion. We have constructed a Kripke model s
+that shows soundness of IITT, yielding normalization, subject reduction and consistency,
+plus syntactical properties of the judgements of IITT. A second Kripke logical relation c
+has proven correctness of algorithmic equality and, thus, decidability of IITT.
+Integrating irrelevance and data types in dependent type theory does not seem without
+challenges. We have succeeded to treat Pfenning’s notion of irrelevance, but our proof
+does not scale directly to parametric function types, a stronger notion of irrelevant function
+types called implicit quantification by Miquel [Miq01b].7 Two more type theories build
+on Miquel’s calculus [Miq01a], Barras and Bernardo’s ICC∗ [BB08] and Mishra-Linger and
+Sheard’s Erasure Pure Type Systems (EPTS) [MLS08], but none has offered a satisfying
+account of large eliminations yet. Miquel’s model [Miq00] features data types only as
+impredicative encodings. For irrelevant, parametric, and recursive functions to coexist
+it seems like three different function types are necessary, e. g., in the style of Pfenning’s
+irrelevance, extensionality and intensionality. We would like to solve this puzzle in future
+work, not least to implement high-performance languages with dependent types.
+Acknowledgments. The first author thanks Bruno Barras, Bruno Bernardo, Thierry Coquand, Dan Doel, Hugo Herbelin, Conor McBride, Ulf Norell, and Jason Reed for discussions
+on irrelevance in type theory. Work on a previous paper has been carried out while he was
+invited researcher at PPS, Paris, in the INRIA πr 2 team headed by Pierre-Louis Curien and
+Hugo Herbelin. The second author acknowledges financial support by the École Normale
+Superiéure de Paris for his internship at the Ludwig-Maximilians-Universität München from
+May to September 2011. We thank the two anonymous referees, who suggested changes
+and examples which significantly improved the presentation, and the patience of the editors
+waiting for our revisions.
+7A function argument is parametric if it is irrelevant for computing the function result while the type of
+the result may depend on it. In Pfenning’s notion, the argument must also be irrelevant in the type.
+
+IRRELEVANCE IN TYPE THEORY
+
+35
+
+References
+[AB04]
+
+Steven Awodey and Andrej Bauer. Propositions as [Types]. Journal of Logic and Computation,
+14(4):447–471, 2004.
+[Abe09]
+Andreas Abel. Extensional normalization in the logical framework with proof irrelevant equality.
+In Olivier Danvy, editor, Workshop on Normalization by Evaluation, affiliated to LiCS 2009, Los
+Angeles, 15 August 2009, 2009.
+[Abe11]
+Andreas Abel. Irrelevance in type theory with a heterogeneous equality judgement. In Martin
+Hofmann, editor, Foundations of Software Science and Computational Structures, 14th International Conference, FOSSACS 2011, Held as Part of the Joint European Conferences on Theory
+and Practice of Software, ETAPS 2011, Saarbrücken, Germany, March 26 - April 3, 2011. Proceedings, volume 6604 of Lecture Notes in Computer Science, pages 57–71. Springer-Verlag, 2011.
+[AC07]
+Andreas Abel and Thierry Coquand. Untyped algorithmic equality for Martin-Löf’s logical framework with surjective pairs. Fundamenta Informaticae, 77(4):345–395, 2007. TLCA’05 special issue.
+[ACD07] Andreas Abel, Thierry Coquand, and Peter Dybjer. Normalization by evaluation for Martin-Löf
+Type Theory with typed equality judgements. In 22nd IEEE Symposium on Logic in Computer
+Science (LICS 2007), 10-12 July 2007, Wroclaw, Poland, Proceedings, pages 3–12. IEEE Computer Society Press, 2007.
+[ACD08] Andreas Abel, Thierry Coquand, and Peter Dybjer. Verifying a semantic βη-conversion test for
+Martin-Löf type theory. In Philippe Audebaud and Christine Paulin-Mohring, editors, Mathematics of Program Construction, 9th International Conference, MPC 2008, Marseille, France,
+July 15-18, 2008. Proceedings, volume 5133 of Lecture Notes in Computer Science, pages 29–56.
+Springer-Verlag, 2008.
+[ACP11] Andreas Abel, Thierry Coquand, and Miguel Pagano. A modular type-checking algorithm for
+type theory with singleton types and proof irrelevance. Logical Methods in Computer Science,
+7(2:4):1–57, May 2011.
+[Ada06]
+Robin Adams. Pure type systems with judgemental equality. Journal of Functional Programming,
+16(2):219–246, 2006.
+[All87]
+Stuart Allen. A Non-Type-Theoretic Semantics for Type-Theoretic Language. PhD thesis, Cornell
+University, 1987.
+[Ama08] Roberto M. Amadio, editor. Foundations of Software Science and Computational Structures, 11th
+International Conference, FOSSACS 2008, Held as Part of the Joint European Conferences on
+Theory and Practice of Software, ETAPS 2008, Budapest, Hungary, March 29 - April 6, 2008.
+Proceedings, volume 4962 of Lecture Notes in Computer Science. Springer-Verlag, 2008.
+[Aug99]
+Lennart Augustsson. Cayenne - a language with dependent types. In Proceedings of the third
+ACM SIGPLAN International Conference on Functional Programming (ICFP ’98), Baltimore,
+Maryland, USA, September 27-29, 1998, volume 34 of SIGPLAN Notices, pages 239–250. ACM
+Press, 1999.
+[Bar84]
+Henk Barendregt. The Lambda Calculus: Its Syntax and Semantics. North Holland, Amsterdam,
+1984.
+[BB08]
+Bruno Barras and Bruno Bernardo. The implicit calculus of constructions as a programming
+language with dependent types. In Amadio [Ama08], pages 365–379.
+[BDN09] Ana Bove, Peter Dybjer, and Ulf Norell. A brief overview of Agda - a functional language with
+dependent types. In Stefan Berghofer, Tobias Nipkow, Christian Urban, and Makarius Wenzel,
+editors, Theorem Proving in Higher Order Logics, 22nd International Conference, TPHOLs 2009,
+Munich, Germany, August 17-20, 2009. Proceedings, volume 5674 of Lecture Notes in Computer
+Science, pages 73–78. Springer-Verlag, 2009.
+[CAB+ 86] Robert L. Constable, Stuart F. Allen, Mark Bromley, Rance Cleaveland, J. F. Cremer, Robert W.
+Harper, Douglas J. Howe, Todd B. Knoblock, Nax P. Mendler, Prakash Panangaden, James T.
+Sasaki, and Scott F. Smith. Implementing mathematics with the Nuprl proof development system.
+Prentice Hall, 1986.
+[Coq91]
+Thierry Coquand. An algorithm for testing conversion in type theory. In G. Huet and G. Plotkin,
+editors, Logical Frameworks, pages 255–279. Cambridge University Press, 1991.
+[Coq96]
+Thierry Coquand. An algorithm for type-checking dependent types. In Mathematics of Program
+Construction. Selected Papers from the Third International Conference on the Mathematics of
+
+36
+
+A. ABEL AND G. SCHERER
+
+Program Construction (July 17–21, 1995, Kloster Irsee, Germany), volume 26 of Science of
+Computer Programming, pages 167–177. Elsevier, May 1996.
+[Gog94]
+Healfdene Goguen. A Typed Operational Semantics for Type Theory. PhD thesis, University of
+Edinburgh, August 1994. Available as LFCS Report ECS-LFCS-94-304.
+[Gog00]
+Healfdene Goguen. A Kripke-style model for the admissibility of structural rules. In Paul
+Callaghan, Zhaohui Luo, James McKinna, and Robert Pollack, editors, Types for Proofs and
+Programs, International Workshop, TYPES 2000, Durham, UK, December 8-12, 2000, Selected
+Papers, volume 2277 of Lecture Notes in Computer Science, pages 112–124. Springer-Verlag, 2000.
+[Gog05]
+Healfdene Goguen. Justifying algorithms for βη conversion. In Vladimiro Sassone, editor, Foundations of Software Science and Computational Structures, 8th International Conference, FoSSaCS 2005, Held as Part of the Joint European Conferences on Theory and Practice of Software,
+ETAPS 2005, Edinburgh, UK, April 4-8, 2005, Proceedings, volume 3441 of Lecture Notes in
+Computer Science, pages 410–424. Springer-Verlag, 2005.
+[HP05]
+Robert Harper and Frank Pfenning. On equivalence and canonical forms in the LF type theory.
+ACM Transactions on Computational Logic, 6(1):61–101, 2005.
+[INR10]
+INRIA. The Coq Proof Assistant Reference Manual. INRIA, version 8.3 edition, 2010.
+[Let02]
+Pierre Letouzey. A new extraction for Coq. In Herman Geuvers and Freek Wiedijk, editors,
+Types for Proofs and Programs, Second International Workshop, TYPES 2002, Berg en Dal,
+The Netherlands, April 24-28, 2002, Selected Papers, volume 2646 of Lecture Notes in Computer
+Science, pages 200–219. Springer-Verlag, 2002.
+[Miq00]
+Alexandre Miquel. A model for impredicative type systems, universes, intersection types and
+subtyping. In 15th IEEE Symposium on Logic in Computer Science (LICS 2000), 26-29 June
+2000, Santa Barbara, California, USA, Proceedings, pages 18–29, 2000.
+[Miq01a] Alexandre Miquel. The implicit calculus of constructions. In Samson Abramsky, editor, Typed
+Lambda Calculi and Applications, 5th International Conference, TLCA 2001, Krakow, Poland,
+May 2-5, 2001, Proceedings, volume 2044 of Lecture Notes in Computer Science, pages 344–359.
+Springer-Verlag, 2001.
+[Miq01b] Alexandre Miquel. Le Calcul des Constructions implicite: syntaxe et sémantique. PhD thesis,
+Université Paris 7, December 2001.
+[ML08]
+Richard Nathan Mishra-Linger. Irrelevance, Polymorphism, and Erasure in Type Theory. PhD
+thesis, Portland State University, 2008.
+[MLS08] Nathan Mishra-Linger and Tim Sheard. Erasure and polymorphism in pure type systems. In
+Amadio [Ama08], pages 350–364.
+[MM04]
+Conor McBride and James McKinna. The view from the left. Journal of Functional Programming,
+14(1):69–111, 2004.
+[Pfe01]
+Frank Pfenning. Intensionality, extensionality, and proof irrelevance in modal type theory. In
+16th IEEE Symposium on Logic in Computer Science (LICS 2001), 16-19 June 2001, Boston
+University, USA, Proceedings. IEEE Computer Society Press, 2001.
+[PMW93] Christine Paulin-Mohring and Benjamin Werner. Synthesis of ML programs in the system Coq.
+Journal of Symbolic Computation, 15(5/6):607–640, 1993.
+[Ree02]
+Jason Reed. Proof irrelevance and strict definitions in a logical framework, 2002. Senior Thesis,
+published as Carnegie-Mellon University technical report CMU-CS-02-153.
+[Ree03]
+Jason Reed. Extending higher-order unification to support proof irrelevance. In David A. Basin
+and Burkhart Wolff, editors, Theorem Proving in Higher Order Logics, 16th International Conference, TPHOLs 2003, Rom, Italy, September 8-12, 2003, Proceedings, volume 2758 of Lecture
+Notes in Computer Science, pages 238–252. Springer-Verlag, 2003.
+[SS08]
+Carsten Schürmann and Jeffrey Sarnat. Structural logical relations. In Frank Pfenning, editor,
+Proceedings of the Twenty-Third Annual IEEE Symposium on Logic in Computer Science, LICS
+2008, 24-27 June 2008, Pittsburgh, PA, USA, pages 69–80. IEEE Computer Society Press, 2008.
+[VC02]
+Joseph C. Vanderwaart and Karl Crary. A simplified account of the metatheory of Linear LF. In
+Third International Workshop on Logical Frameworks and Metalanguages (LFM 2002), FLoC’02
+affiliated workshop, Copenhagen, Denmark, 2002. An extended version appeared as CMU Technical Report CMU-CS-01-154.
+[Wer08]
+Benjamin Werner. On the strength of proof-irrelevant type theories. Logical Methods in Computer
+Science, 4(3), 2008.
+This work is licensed under the Creative Commons Attribution-NoDerivs License. To view
+a copy of this license, visit http://creativecommons.org/licenses/by-nd/2.0/ or send a
+letter to Creative Commons, 171 Second St, Suite 300, San Francisco, CA 94105, USA, or
+Eisenacher Strasse 2, 10777 Berlin, Germany
+
+

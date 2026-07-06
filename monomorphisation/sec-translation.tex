@@ -1,0 +1,661 @@
+\section{The guarded translation and its model-theoretic soundness}
+\label{sec:translation}
+
+This section defines the base translation of $\CICm$ problems into
+classical untyped first-order logic and proves it sound with respect
+to the standard model.  The translation follows the shape of the
+CoqHammer translation \cite[\S5.2]{CzajkaKaliszyk2018} and of the
+core embedding of~\cite{Czajka2016}, with one systematic design
+decision, discussed in \cref{rem:polarity}: guards attached to
+\emph{hypothesis} (negative) positions are always \emph{membership}
+guards $\hastype(x, \trCn{A})$, while typing information emitted in
+\emph{conclusion} (positive) positions may be unfolded pointwise.
+The payoff of this discipline is a bidirectional truth lemma
+(\cref{thm:truth}) in a model where $\hastype$ is literally set
+membership.
+
+\subsection{The target logic}
+
+\begin{definition}[First-order signature and semantics]
+\label{def:fol}
+The target is classical first-order logic with equality $\approx$
+over the signature $\Sigma_{\mathrm{FOL}}$ containing: a binary
+function symbol $\app$ (\emph{application}, written infix and
+left-associatively, $t\app u$, often just $t\,u$); a binary predicate
+$\hastype$ (\emph{the guard predicate}); a unary predicate $\PR$
+(\emph{truth of an encoded proposition}); an individual constant
+$\hat{c}$ for every constant $c$ of the environment (including
+inductive type names and constructors), constants $\lift{\SProp}$ and
+$\lift{\STypeI}$, and the \emph{lifted constants} introduced in
+\cref{def:lifted} below.  We use standard Tarskian semantics;
+$\FM, \nu \folmodels \varphi$ denotes truth of $\varphi$ in the
+structure $\FM$ under the valuation $\nu$, and $\Phi \folproves
+\varphi$ denotes classical derivability.  By G\"odel completeness,
+$\Phi \folproves \varphi$ iff every model of $\Phi$ satisfies
+$\varphi$.  A \emph{problem} is a pair $(\Phi, \varphi)$ of a set of
+sentences (axioms) and a sentence (the conjecture); an ATP
+establishes $\Phi \folproves \varphi$ by refuting $\Phi \cup
+\{\neg\varphi\}$.
+\end{definition}
+
+\begin{convention}
+Every $\CICm$ variable is also a first-order variable.  Proof
+variables never occur in translated material
+(\cref{lem:proof-confinement}), so no ``proof-erasure'' constant is
+needed --- a simplification over \cite{CzajkaKaliszyk2018,
+Czajka2016}, where a constant $\mathsf{prf}$/$\varepsilon$ stands
+for erased proofs.
+\end{convention}
+
+\subsection{Lifted constants}
+
+The term encoding must map binders (products, abstractions, case
+expressions) and propositions-in-term-position to first-order
+\emph{terms}.  As in \cite{CzajkaKaliszyk2018,Czajka2016} this is
+done by \emph{lifting}: the offending subterm is replaced by a new
+constant applied to the encodings of its free variables, and axioms
+describing the constant are emitted.  To make the translation a
+well-defined function (and to model the hash-consing performed by
+the implementation) we index lifted constants by what they lift.
+
+\begin{definition}[Lifted constants; extended environment]
+\label{def:lifted}
+Let $\Gamma \vdash t : T$ where $t$ is not a proof, and let
+$\tup{y}{:}\tup{\rho} = \mathrm{FC}(\Gamma; t)$ be the subcontext of
+$\Gamma$ declaring the free variables of $t$ (in context order;
+by \cref{lem:proof-confinement} none of them are proof variables).
+The \emph{lifted constant} $\lift{t}_{\tup{y}:\tup{\rho}}$ is a
+first-order constant indexed by the $\alpha$-equivalence class of
+the pair $(\tup{y}{:}\tup{\rho},\, t)$; distinct classes yield
+distinct constants.  The \emph{extended environment} $\Env^{+}$
+adds, for every such pair used by the translation, the $\CICm$
+definition
+\[
+  \ell_{(\tup{y}:\tup{\rho};\, t)} \;\coloneqq\; \lambda
+  \tup{y}{:}\tup{\rho}.\, t \;:\; \Pi \tup{y}{:}\tup{\rho}.\, T .
+\]
+$\Env^{+}$ is admissible whenever $\Env$ is: the new constants are
+definitions, interpreted by \ref{M:var} as
+$\sem{\lambda\tup{y}{:}\tup{\rho}.\,t}$.  We write $\MM$ also for the
+extension of the standard model to $\Env^{+}$, and we identify the
+first-order constant $\lift{t}_{\tup{y}:\tup{\rho}}$ with
+$\hat{\ell}_{(\tup{y}:\tup{\rho};\,t)}$.
+\end{definition}
+
+\subsection{The translation functions}
+
+\begin{definition}[Guards]
+\label{def:guards}
+For a $\Gamma$-term $A$ that is not a proposition (a data type,
+$\STypeI$, or kind-level), and a first-order term $u$, the
+\emph{membership guard} is
+\[
+  \trG{\Gamma}{u}{A} \;\coloneqq\; \hastype(u, \trC{\Gamma}{A}) .
+\]
+For a context $\Delta = x_1{:}A_1, \ldots, x_n{:}A_n$ extending
+$\Gamma$ and a formula $\varphi$, the \emph{guarded closure} is
+\[
+  \langle \forall \Delta \rangle_{\Gamma}\, \varphi \;\coloneqq\;
+  Q_1\, \bigl( Q_2\, ( \cdots Q_n\, \varphi ) \bigr),
+  \quad
+  Q_i \;=\;
+  \begin{cases}
+    \forall x_i.\ \trG{\Gamma_i}{x_i}{A_i} \to {-} & \text{if $A_i$ not a proposition,}\\
+    \trF{\Gamma_i}{A_i} \to {-} & \text{if $A_i$ a proposition,}
+  \end{cases}
+\]
+where $\Gamma_i = \Gamma, x_1{:}A_1, \ldots, x_{i-1}{:}A_{i-1}$.
+The \emph{flattened typing formula} of a first-order term $u$ at a
+$\Gamma$-type $T$ (not a proposition) is defined by recursion on
+$T$:
+\[
+  \mathrm{Flat}_\Gamma(u, \Pi x{:}A.\,B) \;=\;
+     \forall x.\ \trG{\Gamma}{x}{A} \to \mathrm{Flat}_{\Gamma, x:A}(u \app x,\ B),
+  \qquad
+  \mathrm{Flat}_\Gamma(u, T) \;=\; \hastype(u, \trC{\Gamma}{T})
+\]
+for $T$ not a product.  (In a non-propositional product
+$\Pi x{:}A.\,B$ of $\CICm$ the domain $A$ is never a proposition,
+by the shape of $\mathcal{R}$; so the first clause needs no
+proposition case.  $\mathrm{Flat}$ coincides with the guard function
+$\mathsf{G}$ of \cite[\S5.2]{CzajkaKaliszyk2018}.)
+\end{definition}
+
+\begin{definition}[Translation]
+\label{def:translation}
+For $\Gamma$-propositions $\varphi$ the formula translation
+$\trF{\Gamma}{\varphi}$, and for $\Gamma$-terms $t$ that are neither
+proofs nor sorts other than $\SProp, \STypeI$ the term translation
+$\trC{\Gamma}{t}$, are defined by mutual recursion.  Each clause of
+$\trC{}{}$ that introduces a lifted constant also \emph{emits}
+axioms into the axiom store $\Ax$; emission is idempotent (axioms
+are indexed by the same $\alpha$-classes as the constants).
+
+\medskip
+\noindent\emph{Formula translation} $\trF{\Gamma}{\varphi}$:
+\begin{enumerate}[label=(F\arabic*),leftmargin=3em]
+\item $\trF{\Gamma}{\Pi x{:}A.\,\varphi} = \trF{\Gamma}{A} \to
+  \trF{\Gamma}{\varphi}$ \quad if $A$ is a proposition
+  (then $x \notin \FV(\varphi)$ by \cref{cor:impl-nondep});
+\item $\trF{\Gamma}{\Pi x{:}A.\,\varphi} = \forall x.\
+  \trG{\Gamma}{x}{A} \to \trF{\Gamma, x:A}{\varphi}$ \quad if $A$ is
+  not a proposition;
+\item $\trF{\Gamma}{\top} = \top$, \ $\trF{\Gamma}{\bot} = \bot$, \
+  $\trF{\Gamma}{\varphi \circ \psi} = \trF{\Gamma}{\varphi} \circ
+  \trF{\Gamma}{\psi}$ for $\circ \in \{\wedge, \vee,
+  \leftrightarrow\}$;
+\item $\trF{\Gamma}{t \ceq_A u} = \bigl(\trC{\Gamma}{t} \approx
+  \trC{\Gamma}{u}\bigr)$;
+\item $\trF{\Gamma}{\cexists{x}{A}\varphi} = \exists x.\
+  \trG{\Gamma}{x}{A} \wedge \trF{\Gamma, x:A}{\varphi}$;
+\item otherwise ($\varphi$ atomic: a variable, constant, application
+  or case expression of type $\SProp$): $\trF{\Gamma}{\varphi} =
+  \PR(\trC{\Gamma}{\varphi})$.
+\end{enumerate}
+
+\noindent\emph{Term translation} $\trC{\Gamma}{t}$:
+\begin{enumerate}[label=(C\arabic*),leftmargin=3em]
+\item $\trC{\Gamma}{x} = x$; \ $\trC{\Gamma}{c} = \hat{c}$; \
+  $\trC{\Gamma}{\SProp} = \lift{\SProp}$; \
+  $\trC{\Gamma}{\STypeI} = \lift{\STypeI}$;
+\item $\trC{\Gamma}{t\,u} = \trC{\Gamma}{t} \app \trC{\Gamma}{u}$
+  (by \cref{lem:proof-confinement} neither $t$ nor $u$ is a proof);
+\item \emph{(proposition lifting)} if $t$ is a proposition that is
+  not a variable, constant or application whose translation is
+  wanted as a term (i.e.\ $t$ occurs in term position), then
+  $\trC{\Gamma}{t} = \lift{t}_{\tup{y}:\tup{\rho}}\,\tup{y}$ with
+  $\tup{y}{:}\tup{\rho} = \mathrm{FC}(\Gamma; t)$, emitting
+  \[
+    \langle \forall\, \tup{y}{:}\tup{\rho} \rangle\,
+    \Bigl( \PR\bigl(\lift{t}\,\tup{y}\bigr) \leftrightarrow
+           \trF{\Gamma}{t} \Bigr) ;
+    \tag{$\Ax$-prop}
+  \]
+  for $t$ a variable, constant or application, clauses (C1)--(C2)
+  apply unchanged also when $t$ is a proposition;
+\item \emph{(product lifting)} if $t = \Pi x{:}A.\,B$ is not a
+  proposition (so it is a data type or kind-level), then
+  $\trC{\Gamma}{t} = \lift{t}_{\tup{y}:\tup{\rho}}\,\tup{y}$,
+  emitting the \emph{application-typing axiom}
+  \[
+    \langle \forall\, \tup{y}{:}\tup{\rho} \rangle\,
+    \Bigl( \forall z.\ \hastype\bigl(z, \lift{t}\,\tup{y}\bigr) \to
+      \forall x.\ \trG{\Gamma}{x}{A} \to
+      \hastype\bigl(z \app x,\ \trC{\Gamma,x:A}{B}\bigr) \Bigr) ;
+    \tag{$\Ax$-app}
+  \]
+\item \emph{(abstraction lifting)} if $t = \lambda
+  \tup{x}{:}\tup{A}.\,b$ with maximal $\lambda$-prefix (so $b$ is
+  not an abstraction), $t$ not a proof, then $\trC{\Gamma}{t} =
+  \lift{t}_{\tup{y}:\tup{\rho}}\,\tup{y}$, emitting
+  \[
+    \langle \forall\, \tup{y}{:}\tup{\rho},\, \tup{x}{:}\tup{A}
+    \rangle\, \Bigl( \lift{t}\,\tup{y}\,\tup{x} \;\approx_{\Gamma'}\;
+    b \Bigr)
+    \tag{$\Ax$-$\lambda$}
+  \]
+  where $\Gamma' = \Gamma, \tup{x}{:}\tup{A}$ and
+  $\approx_{\Gamma'}$ is the \emph{levelled equality}: for
+  first-order term $u$ and $\Gamma'$-term $b$,
+  \[
+    u \approx_{\Gamma'} b \;\coloneqq\;
+    \begin{cases}
+      \PR(u) \leftrightarrow \trF{\Gamma'}{b} & \text{if $b$ is a proposition,}\\
+      \forall z.\ \hastype(z, u) \leftrightarrow
+        \hastype(z, \trC{\Gamma'}{b}) & \text{if $b$ is a data type or kind-level,}\\
+      u \approx \trC{\Gamma'}{b} & \text{if $b$ is a data object;}
+    \end{cases}
+  \]
+  additionally the \emph{typing atoms and flattened typing axiom}
+  for $\lift{t}$ are emitted:
+  \[
+    \langle \forall\, \tup{y}{:}\tup{\rho} \rangle\,
+      \hastype\bigl(\lift{t}\,\tup{y},\ \trC{\Gamma}{T}\bigr),
+    \qquad
+    \langle \forall\, \tup{y}{:}\tup{\rho} \rangle\,
+      \mathrm{Flat}_{\Gamma}\bigl(\lift{t}\,\tup{y},\ T\bigr)
+    \tag{$\Ax$-ty}
+  \]
+  where $T$ is the type of $t$ (a non-propositional product, since
+  $t$ is not a proof);
+\item \emph{(case lifting)} if $t = \case{I,\tup{\tau},Q}{u}{\tup{u}}$
+  is not a proof and not a proposition-in-term-position handled by
+  (C3), then $\trC{\Gamma}{t} =
+  \lift{t}_{\tup{y}:\tup{\rho}}\,\tup{y}$, emitting the axioms
+  ($\Ax$-ty) for its type $Q\,u$ --- when that type is not a product
+  the flattened axiom degenerates to the typing atom --- and the
+  \emph{case equation}
+  \[
+    \langle \forall\, \tup{y}{:}\tup{\rho} \rangle\,
+    \bigvee_{j=1}^{k}\;
+    \exists \tup{x}_j.\ \Bigl(
+      \textstyle\bigwedge_l \trG{}{x_{j,l}}{\sigma_{j,l}[\tup{\tau}/\tup{A}]}
+      \;\wedge\;
+      \trC{\Gamma}{u} \approx
+        \hat{c}_j\, \trC{\Gamma}{\tup{\tau}}\, \tup{x}_j
+      \;\wedge\;
+      \bigl( \lift{t}\,\tup{y} \approx_{\Gamma_j} u_j\,\tup{x}_j \bigr)
+    \Bigr)
+    \tag{$\Ax$-case}
+  \]
+  with $\Gamma_j = \Gamma, \tup{x}_j : \tup{\sigma}_j[\tup{\tau}/\tup{A}]$.
+  Note that the guards on $\tup{y}$ --- in particular on the free
+  variables of the scrutinee $u$ --- are part of the axiom; these
+  are the guards that \cite[\S5.6]{CzajkaKaliszyk2018} identifies as
+  never omittable, and \cref{prop:nec-mono} below reproves that
+  observation semantically.
+\end{enumerate}
+\end{definition}
+
+\begin{definition}[Translation of declarations and problems]
+\label{def:transl-problem}
+Fix an admissible environment.  For each kind of declaration the
+following axioms are generated (all in the empty context).
+\begin{enumerate}[label=(D\arabic*),leftmargin=3em]
+\item \emph{Parameter $c : T$.}  If $T$ is a proposition: the
+  \emph{premise formula} $\trFn{T}$ (labelled $c$).  Otherwise: the
+  typing atom $\hastype(\hat{c}, \trCn{T})$ and the flattened axiom
+  $\mathrm{Flat}_{\langle\rangle}(\hat{c}, T)$.
+\item \emph{Definition $c \coloneqq t : T$.}  The axioms of (D1) for
+  $c : T$, and additionally the \emph{unfolding axiom}
+  $\hat{c} \approx_{\langle\rangle} t$ --- with $\approx_{\Gamma}$
+  the levelled equality of ($\Ax$-$\lambda$); for $T$ kind-level of
+  product shape the unfolding is emitted in the pointwise form
+  $\langle\forall \tup{x}{:}\tup{A}\rangle\, (\hat{c}\,\tup{x}
+  \approx_{\tup{x}:\tup{A}} t\,\tup{x})$ so that no
+  $\approx$-equation between type-level terms is ever generated
+  (cf.\ \cref{lem:no-type-eq}).
+\item \emph{Inductive declaration} (notation of \cref{def:env}(iii);
+  write $\tup{A}$ for the parameters and abbreviate $\sigma'_{j,l} =
+  \sigma_{j,l}$, all in context $\tup{A}{:}\STypeI$):
+  \begin{itemize}
+  \item typing atoms and flattened typing axioms (D1-style) for $I$
+    and for each constructor $c_j$;
+  \item for each $j$, the \emph{injectivity axiom}
+    $\trFn{\forall \tup{A}{:}\STypeI.\ \forall \tup{x}, \tup{x}'.\
+      c_j\,\tup{A}\,\tup{x} \ceq c_j\,\tup{A}\,\tup{x}' \to
+      \bigwedge_l x_l \ceq x'_l}$;
+  \item for each $i \neq j$, the \emph{discrimination axiom}
+    $\trFn{\forall \tup{A}{:}\STypeI.\ \forall \tup{x}, \tup{x}'.\
+      \neg\,( c_i\,\tup{A}\,\tup{x} \ceq c_j\,\tup{A}\,\tup{x}' )}$;
+  \item the \emph{inversion axiom}
+    $\trFn{\forall \tup{A}{:}\STypeI.\ \forall z{:}I\,\tup{A}.\
+      \bigvee_j \exists \tup{x}_j{:}\tup{\sigma}_j.\
+      z \ceq c_j\,\tup{A}\,\tup{x}_j}$
+  \end{itemize}
+  (the quantified bodies are the evident $\CICm$ propositions; their
+  $\mathsf{F}$-translations expand the guards).
+\item \emph{Universe atom.} $\hastype(\lift{\SProp}, \lift{\STypeI})$.
+  \textbf{No} axiom $\hastype(\lift{\STypeI}, \lift{\STypeI})$ is
+  emitted, in contrast to \cite[\S5.4]{CzajkaKaliszyk2018}: that
+  atom is false in the intended semantics, and in the stratified
+  calculus $\CICm$ it is never needed.
+\end{enumerate}
+Given a finite set $P$ of \emph{premises} (parameter declarations
+$p_i : \varphi_i$ with $\varphi_i$ closed propositions) and a closed
+goal proposition $\varphi_G$, the \emph{translated problem} is
+\[
+  \mathrm{Transl}(P, \varphi_G) \;=\;
+  \bigl( \Ax_{\mathrm{gen}} \cup \setof{\trFn{\varphi_i}}{p_i \in P},\
+         \trFn{\varphi_G} \bigr)
+\]
+where $\Ax_{\mathrm{gen}}$ collects (D2)--(D4) axioms for all
+declarations reachable from $P \cup \{\varphi_G\}$ together with all
+axioms emitted by the recursive calls of $\mathsf{C}$.
+\end{definition}
+
+\begin{lemma}[No type-level equations]
+\label{lem:no-type-eq}
+No axiom or conjecture of a translated problem contains an
+$\approx$-literal either side of which is the translation of a data
+type or kind-level term.  All equations between such terms are
+rendered in the extensional form $\forall z.\, \hastype(z,\cdot)
+\leftrightarrow \hastype(z,\cdot)$ by the levelled equality.
+\end{lemma}
+
+\begin{proof}
+By inspection of \cref{def:translation,def:transl-problem}:
+$\approx$ is produced only by (F4), where both sides are data
+objects by the typing rule of $\ceq$; by ($\Ax$-$\lambda$),
+($\Ax$-case) and (D2) through the levelled equality, whose
+$\approx$-clause is restricted to data-object bodies; and by
+($\Ax$-case) in the scrutinee equation, whose sides are data
+objects.
+\end{proof}
+
+\subsection{The induced structure \texorpdfstring{$\FMstar$}{M*}}
+
+\begin{definition}[Standard first-order structure]
+\label{def:mstar}
+The structure $\FMstar$ has domain $\Dom \coloneqq \Utwo$, and
+interprets:
+\begin{itemize}
+\item $u \app v$: \ $\ap(f, a) \coloneqq f(a)$ if $f$ is a function
+  (graph) with $a \in \dom(f)$, and $\emptyset$ otherwise;
+\item $\hastype(u, v)$: \ the membership relation
+  $\setof{(a,b) \in \Dom^2}{a \in b}$;
+\item $\PR(u)$: \ $\setof{a \in \Dom}{\emptyset \in a}$;
+\item $\approx$: \ identity;
+\item each constant $\hat{c}$ (including lifted constants, via
+  \cref{def:lifted}) by $\sem{c} \in \Dom$; and
+  $\lift{\SProp} \mapsto \Om$, $\lift{\STypeI} \mapsto \Uone$.
+\end{itemize}
+A pair $(\rho, \nu)$ of a $\Gamma$-assignment and a first-order
+valuation is \emph{conforming} if $\nu(x) = \rho(x)$ for every
+non-proof variable $x$ of $\Gamma$.
+\end{definition}
+
+\begin{lemma}[Compositionality]
+\label{lem:compositionality}
+Let $t$ be a $\Gamma$-term in the domain of $\trC{\Gamma}{-}$ and
+let $(\rho, \nu)$ be conforming.  Then the value of
+$\trC{\Gamma}{t}$ in $\FMstar$ under $\nu$ equals $\semr{t}{\rho}$.
+\end{lemma}
+
+\begin{proof}
+Induction on $t$.  Variables and constants: by conformity and
+\cref{def:mstar}; sorts: $\sem{\SProp} = \Om$, $\sem{\STypeI} =
+\Uone$ by \ref{M:sorts}.  Application $t\,u$: by the induction
+hypothesis the arguments of $\app$ evaluate to $\semr{t}{\rho}$ and
+$\semr{u}{\rho}$.  Since $t$ is not a proof, its type is a
+non-propositional product $\Pi x{:}A.\,B$, so by \ref{M:typing} and
+\ref{M:pi} the value $\semr{t}{\rho}$ is a graph with domain
+$\semr{A}{\rho} \ni \semr{u}{\rho}$; hence the $\ap$-clause applies
+and yields $\semr{t}{\rho}(\semr{u}{\rho}) = \semr{t\,u}{\rho}$ by
+\ref{M:lam}.  Lifted clauses (C3)--(C6): the translation is
+$\lift{t}\,\tup{y}$, whose value is
+$\ap(\cdots\ap(\sem{\ell}, \rho(y_1))\cdots, \rho(y_m))$ with $\ell
+\coloneqq \lambda\tup{y}{:}\tup{\rho}.\,t$.  Each application step
+is within the successive domains by \ref{M:typing} (the
+$y_i$-values conform), so by \ref{M:lam}, \ref{M:conv} and
+\ref{M:subst} the value equals
+$\semr{(\lambda\tup{y}.\,t)\,\tup{y}}{\rho} = \semr{t}{\rho}$.
+\end{proof}
+
+\subsection{The truth lemma and base soundness}
+
+\begin{theorem}[Truth lemma]
+\label{thm:truth}
+Let $\varphi$ be a $\Gamma$-proposition and $(\rho, \nu)$
+conforming.  Then
+\[
+  \FMstar, \nu \folmodels \trF{\Gamma}{\varphi}
+  \qquad\Longleftrightarrow\qquad
+  \semr{\varphi}{\rho} = \holds .
+\]
+Moreover every axiom emitted by the translation of any term
+occurring in the problem is true in $\FMstar$.
+\end{theorem}
+
+\begin{proof}
+Both statements are proved simultaneously by induction on the size
+of the translated term (the axioms emitted for a lifted subterm
+mention only translations of terms of smaller or equal size in
+extended contexts; we make the measure precise below).  Throughout,
+``true'' means true in $\FMstar$ under the ambient valuation, and we
+use \cref{lem:compositionality} silently for all $\mathsf{C}$-images.
+
+\emph{Measure.}  Define the weight of a term as its size, and order
+proof obligations as follows: the truth-lemma obligation for
+$\varphi$ depends on truth-lemma obligations for immediate
+subformulas of $\varphi$ (smaller) and on nothing else; the
+axiom-truth obligations for a lifted constant
+$\lift{t}_{\tup{y}:\tup{\rho}}$ depend on truth-lemma obligations
+for terms of size at most that of $t$'s components ($b$, branch
+bodies, $A$, $B$), each smaller than $t$.  So the induction is
+well-founded.
+
+\emph{Truth lemma, case (F1)} $\varphi = \Pi x{:}A.\,\psi$ with $A$
+a proposition, $x \notin \FV(\psi)$.  By \ref{M:pi},
+$\semr{\varphi}{\rho} = \holds$ iff ($\semr{A}{\rho} = \emptyset$ or
+$\semr{\psi}{\rho} = \holds$): indeed $\semr{A}{\rho} \in \Om$, and
+the trace-product condition ``$\forall a \in \semr{A}{\rho}.\
+\semr{\psi}{\rho[x \mapsto a]} = \holds$'' is vacuous when
+$\semr{A}{\rho} = \emptyset$ and equivalent to $\semr{\psi}{\rho} =
+\holds$ when $\semr{A}{\rho} = \holds$ (as $x \notin \FV(\psi)$,
+by \ref{M:subst} the value does not depend on $a$).  Classically,
+the right-hand side is exactly the truth condition of
+$\trF{}{A} \to \trF{}{\psi}$ by the induction hypothesis for $A$ and
+$\psi$.
+
+\emph{Case (F2)} $\varphi = \Pi x{:}A.\,\psi$, $A$ not a
+proposition.  The translation is $\forall x.\ \hastype(x,
+\trC{\Gamma}{A}) \to \trF{\Gamma,x:A}{\psi}$.  Since
+$\hastype^{\FMstar}$ is membership and $\trC{\Gamma}{A}$ evaluates
+to $\semr{A}{\rho}$, the translated formula is true iff for every
+$d \in \semr{A}{\rho}$ the formula $\trF{\Gamma,x:A}{\psi}$ is true
+under $\nu[x \mapsto d]$.  For each such $d$, the pair
+$(\rho[x \mapsto d], \nu[x \mapsto d])$ is conforming for
+$\Gamma, x{:}A$, and the induction hypothesis turns the condition
+into: for every $d \in \semr{A}{\rho}$,
+$\semr{\psi}{\rho[x \mapsto d]} = \holds$ --- which by \ref{M:pi} is
+exactly $\semr{\varphi}{\rho} = \holds$.  Note this equivalence is
+\emph{exact} in both directions: the guard carves out precisely the
+set $\semr{A}{\rho}$ from the domain $\Dom$.  This is the point of
+using membership guards in hypothesis positions.
+
+\emph{Case (F3), (F4), (F5)}: immediate from \ref{M:conn}, the
+induction hypothesis, and (for F4) \cref{lem:compositionality};
+for (F5) note again that the guard in $\exists x.\ \hastype(x,
+\trC{\Gamma}{A}) \wedge \cdots$ ranges exactly over
+$\semr{A}{\rho}$.
+
+\emph{Case (F6)} $\varphi$ atomic.  $\trF{\Gamma}{\varphi} =
+\PR(\trC{\Gamma}{\varphi})$, and $\trC{\Gamma}{\varphi}$ evaluates
+to $\semr{\varphi}{\rho} \in \Om$ (by \ref{M:typing}).  Now
+$\PR^{\FMstar}(a)$ iff $\emptyset \in a$, and for $a \in \Om$ this
+is equivalent to $a = \holds$.
+
+\emph{Axiom truth.}  We verify each emitted axiom family.
+
+($\Ax$-prop): under any values $\tup{d}$ of $\tup{y}$ passing their
+guards, the pair $(\rho, \nu)$ with $\rho = [\tup{y} \mapsto
+\tup{d}]$ is conforming; the left side $\PR(\lift{t}\,\tup{y})$
+holds iff $\emptyset \in \semr{t}{\rho}$ iff $\semr{t}{\rho} =
+\holds$, and the right side iff the same by the induction
+hypothesis (truth lemma for $t$, smaller than the lifting trigger).
+Values of $\tup{y}$ \emph{failing} their guards make the guarded
+closure vacuously true.
+
+($\Ax$-app): let $\tup{d}$ pass the guards, let $e$ satisfy
+$\hastype(z, \lift{t}\,\tup{y})$, i.e.\ $e \in \semr{\Pi
+x{:}A.\,B}{\rho}$, and let $a \in \semr{A}{\rho}$.  By \ref{M:pi},
+$e$ is a graph with domain $\semr{A}{\rho}$ and $e(a) \in
+\semr{B}{\rho[x \mapsto a]}$; by the $\ap$-clause, $z \app x$
+evaluates to $e(a)$, and $\trC{\Gamma,x:A}{B}$ evaluates to
+$\semr{B}{\rho[x\mapsto a]}$ by \cref{lem:compositionality}.  So the
+conclusion atom is membership of $e(a)$ in exactly that set: true.
+
+($\Ax$-$\lambda$): under guard-passing values, both sides of the
+levelled equality evaluate compatibly: $\lift{t}\,\tup{y}\,\tup{x}$
+evaluates, as in \cref{lem:compositionality}, to
+$\semr{b}{\rho}$; the right side is $\trC{}{b}$ (or
+$\trF{}{b}$ under $\PR$, or the $\hastype$-extension of
+$\trC{}{b}$), which denotes/holds-of the same set by
+\cref{lem:compositionality} (respectively by the induction
+hypothesis for the $\PR$-clause; for the type-level clause both
+$\hastype$-atoms test membership in the same set, so the
+$\forall z$-equivalence is true).
+
+($\Ax$-ty): the typing atom asserts $\semr{\ell\,\tup{y}}{} \in
+\semr{T}{\rho}$ --- an instance of \ref{M:typing}.  The flattened
+axiom: by induction on $T$'s product prefix, repeatedly applying
+\ref{M:pi} exactly as in the ($\Ax$-app) case: guard-passing
+arguments lie in the successive domains, applications stay in the
+successive codomains, and the final atom is membership of the fully
+applied value in the final codomain --- true by \ref{M:typing} and
+\ref{M:pi}.
+
+($\Ax$-case): let $\tup{d}$ pass the guards of $\tup{y}$; write
+$\rho$ for the induced assignment.  By \ref{M:typing},
+$\semr{u}{\rho} \in \sem{I}(\semr{\tup{\tau}}{\rho})$, so by
+\ref{M:ind}(d) there are unique $j$ and arguments $\tup{e}$ (in the
+appropriate denotations, \ref{M:ind}(a)) with $\semr{u}{\rho} =
+\sem{c_j}(\semr{\tup{\tau}}{\rho})(\tup{e})$.  Choose the $j$-th
+disjunct and witnesses $\tup{e}$: the guards on $\tup{x}_j$ hold by
+construction; the scrutinee equation holds by
+\cref{lem:compositionality}; and the levelled equality between
+$\lift{t}\,\tup{y}$ and $u_j\,\tup{x}_j$ holds because by
+\ref{M:case} $\semr{t}{\rho} = \semr{u_j}{\rho}(\tup{e}) =
+\semr{u_j\,\tup{x}_j}{\rho[\tup{x}_j \mapsto \tup{e}]}$, and the
+levelled equality's truth then follows exactly as in the
+($\Ax$-$\lambda$) case.
+
+(D1)/(D2): typing atoms and flattened axioms as in ($\Ax$-ty);
+premise formulas are handled by \cref{thm:base-soundness} below;
+unfolding axioms: by \ref{M:var} $\sem{c} = \sem{t}$, and the
+levelled equality between two names of the same set is true as in
+($\Ax$-$\lambda$).
+
+(D3): each of the injectivity, discrimination and inversion axioms
+is $\trFn{\chi}$ for a closed $\CICm$ proposition $\chi$; by the
+truth-lemma part (already available for $\chi$, which is not larger
+than the trigger --- these axioms are emitted at declaration
+translation time, and we simply order them after all truth-lemma
+obligations for their own subterms), it suffices that $\chi$ is
+valid.  Validity of injectivity is \ref{M:ind}(b); of
+discrimination, \ref{M:ind}(c); of inversion, \ref{M:ind}(d)
+(every element of $\sem{I}(\tup{a})$ is a constructor value with
+arguments in the required denotations).
+
+(D4): $\Om \in \Uone$: true, as $\Om \in \Uone$ by
+\cref{def:model}.
+\end{proof}
+
+\begin{theorem}[Base soundness]
+\label{thm:base-soundness}
+Let $\Env$ be admissible with standard model $\MM$, let $P$ be
+premises whose statements $\varphi_i$ are valid in $\MM$ (e.g.\
+provable, cf.\ \cref{prop:prov-valid}), and let $\varphi_G$ be a
+closed goal proposition.  If
+\[
+  \Ax_{\mathrm{gen}} \cup \setof{\trFn{\varphi_i}}{i} \;\folproves\;
+  \trFn{\varphi_G},
+\]
+then $\varphi_G$ is valid in $\MM$.  In particular the axiom set
+$\Ax_{\mathrm{gen}} \cup \{\trFn{\varphi_i}\}_i$ is consistent.
+\end{theorem}
+
+\begin{proof}
+By \cref{thm:truth}, $\FMstar$ satisfies $\Ax_{\mathrm{gen}}$, and
+satisfies each $\trFn{\varphi_i}$ since $\varphi_i$ is valid.  By
+soundness of classical provability, $\FMstar \folmodels
+\trFn{\varphi_G}$.  By the converse direction of \cref{thm:truth},
+$\sem{\varphi_G} = \holds$.  Consistency: $\FMstar$ is a model of
+the axiom set.
+\end{proof}
+
+We record the invariant that the rest of the paper preserves.
+
+\begin{definition}[Soundness invariant]
+\label{def:si}
+A first-order problem $(\Phi, \gamma)$ is \emph{$\MM$-sound} if
+there exists an expansion $\FM$ of $\FMstar$ by interpretations of
+finitely many fresh symbols such that (i) $\FM \folmodels \Phi$, and
+(ii) $\FM \folmodels \gamma$ implies that $\varphi_G$ is valid in
+$\MM$, where $\varphi_G$ is the pending goal.  If $(\Phi, \gamma)$
+is $\MM$-sound and $\Phi \folproves \gamma$, then $\varphi_G$ is
+valid.  \Cref{thm:base-soundness} states that
+$\mathrm{Transl}(P, \varphi_G)$ is $\MM$-sound (with $\FM =
+\FMstar$ and (ii) supplied by \cref{thm:truth}).
+\end{definition}
+
+\subsection{Discussion: design choices and the implemented translation}
+\label{sec:transl-discussion}
+
+\begin{remark}[The polarity discipline]
+\label{rem:polarity}
+Typing information appears in two polarities.  In \emph{hypothesis}
+position --- the guard of a universally quantified premise variable
+--- our translation always uses the membership guard $\hastype(x,
+\trCn{A})$.  In \emph{conclusion} position --- typing axioms for
+constants and lifted functions --- it emits both the membership atom
+and the pointwise $\mathrm{Flat}$ axiom.  Both conclusion forms are
+true in $\FMstar$ (\cref{thm:truth}); the pointwise form in
+hypothesis position would \emph{not} be: the formula
+$\forall f. (\forall x.\ \hastype(x, \hat{A}) \to \hastype(f \app
+x, \hat{B})) \to \trFn{\psi}$ quantifies also over graphs whose
+domain strictly contains $\sem{A}$; such junk elements satisfy the
+pointwise hypothesis but need not satisfy $\psi$'s translation, so
+the translated premise could be false in $\FMstar$ even when the
+$\CICm$ premise is valid.  For the same reason a
+\emph{bidirectional} characterisation axiom $\forall z.\
+\hastype(z, \lift{\Pi x{:}A.B}) \leftrightarrow (\forall x.\ldots)$
+--- which the CoqHammer implementation emits for lifted type
+constants (\texttt{opt\_type\_lifting}) --- is unsound for
+$\FMstar$: its right-to-left direction asserts that the pointwise
+class is exactly $\sem{\Pi x{:}A.\,B}$, which fails in any
+membership interpretation.  Our ($\Ax$-app) keeps only the sound
+elimination direction, exactly as the axiom family $\Delta_{G_1}$
+of \cite[Def.~45]{Czajka2016} does.  The translation
+of~\cite[\S5.2]{CzajkaKaliszyk2018} uses the pointwise form
+(via its function $\mathsf{G}$) also in hypothesis positions; that
+choice is one of the reasons the implemented translation ``is
+neither sound nor complete'' in the strict sense
+\cite[\S5.6]{CzajkaKaliszyk2018}, while its guarded core in the
+discipline used here is validated both proof-theoretically
+\cite{Czajka2016} and model-theoretically (\cref{thm:truth}).
+\end{remark}
+
+\begin{remark}[Functional extensionality]
+\label{rem:funext}
+In $\FMstar$, elements of $\sem{A \to B}$ are graphs with domain
+exactly $\sem{A}$, so pointwise equal elements are equal:
+the translation of the functional extensionality axiom is
+\emph{true} in $\FMstar$, and may soundly appear among the
+premises.  The inconsistency discussed in
+\cite[\S5.6]{CzajkaKaliszyk2018} --- functional extensionality
+plus Coq equality mapped to $\approx$ --- arises only in
+combination with the \emph{omission of guards} on the free and bound
+variables of lifted abstractions, which the implementation performs
+by default and our base translation does not.  Once guards are kept,
+the extensionality instance forced by ($\Ax$-$\lambda$) applies only
+to guard-passing arguments, and truth in $\FMstar$ is restored.
+The systematic study of which guards may be dropped is exactly the
+subject of \cref{sec:erasure}; the erasure criterion proved there
+authorises dropping guards only at types where no collapse of the
+kind exhibited in \cref{prop:nec-mono} can occur.
+\end{remark}
+
+\begin{remark}[Incompleteness]
+\label{rem:incompleteness}
+The translation is deliberately incomplete, and no claim of
+completeness is made anywhere in this paper.  Known sources include
+the absence of $\xi$/extensionality reasoning for lifted constants
+(\cite[Example~51]{Czajka2016}) and the loss of higher-order
+instantiation.  Completeness statements below
+(\cref{prop:mono-conservative,thm:spec-faithful,prop:erasure-complete})
+are always \emph{relative}: transformation $X$ does not lose
+first-order proofs that existed before $X$.
+\end{remark}
+
+\begin{example}
+\label{ex:translation}
+Let $\Env$ contain $\mathsf{nat}$ (constructors $\mathsf{O},
+\mathsf{S}$), the parametric $\mathsf{list}$ (constructors
+$\mathsf{nil} : \Pi A{:}\STypeI.\,\mathsf{list}\,A$ and
+$\mathsf{cons} : \Pi A{:}\STypeI.\,A \to \mathsf{list}\,A \to
+\mathsf{list}\,A$), and a predicate $\mathsf{In} : \Pi
+A{:}\STypeI.\,A \to \mathsf{list}\,A \to \SProp$.  The premise
+\[
+  \varphi \;=\; \Pi A{:}\STypeI.\ \Pi x{:}A.\ \Pi
+  l{:}\mathsf{list}\,A.\ \mathsf{In}\,A\,x\,(\mathsf{cons}\,A\,x\,l)
+\]
+translates to
+\[
+  \forall A.\ \hastype(A, \lift{\STypeI}) \to
+  \forall x.\ \hastype(x, A) \to
+  \forall l.\ \hastype(l, \widehat{\mathsf{list}} \app A) \to
+  \PR\bigl(\widehat{\mathsf{In}} \app A \app x \app
+     (\widehat{\mathsf{cons}} \app A \app x \app l)\bigr).
+\]
+Every literal carries the type variable $A$; the inversion axiom for
+$\mathsf{list}$ is likewise generic in $A$.  \Cref{sec:mono} is
+about replacing such formulas by instances at the ground types at
+which they are used, e.g.\ $A \coloneqq \mathsf{nat}$;
+\cref{sec:specialization} then turns $\hastype(l,
+\widehat{\mathsf{list}} \app \widehat{\mathsf{nat}})$ into
+$\guard{\mathsf{list\,nat}}(l)$ and flattens the applications; and
+\cref{sec:erasure} deletes the guards that monotonicity renders
+redundant.
+\end{example}

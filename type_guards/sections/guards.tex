@@ -1,0 +1,422 @@
+\section{Guard omission}
+\label{sec:guards}
+
+We now formulate the guard-omission criterion and prove it sound.  The
+section is purely first-order: all results hold in an arbitrary
+$\Sig$-structure satisfying $\Comp$, and the intended models enter only
+through $\MN \models \Comp$ (\cref{thm:base-soundness}).  Throughout,
+``formula'' means $\Sig$-formula; the results apply to the images of the
+translation but are not restricted to them.
+
+\subsection{Typing consequences and covers}
+
+\begin{definition}[Typing consequences]
+  \label{def:tc}
+  For a $\Sig$-atom $A$, the set $\tc{A}$ of \emph{typing consequences} of
+  $A$ is defined by:
+  \begin{align*}
+    \tc{\hat p(\tup s, \tup t)} &\defeq
+      \{\, \T(s_j, \TypeC) \mid 1 \le j \le k_p \,\} \cup
+      \{\, \T(t_i,\ \enc{\tau^p_i}[\tup s/\tup\alpha]) \mid
+           1 \le i \le m_p \,\}, \\
+    \tc{\T(s, \hat I(\tup s))} &\defeq
+      \{\, \T(s_j, \TypeC) \mid 1 \le j \le k_I \,\}, \\
+    \tc{A} &\defeq \emptyset \quad \text{for every other atom}
+  \end{align*}
+  --- in particular $\tc{A} = \emptyset$ for equations $s = t$, for
+  $\T$-atoms whose second argument is a variable or the constant $\TypeC$,
+  and for any atom not of the two shapes above.  Here
+  $\enc{\tau^p_i}[\tup s/\tup\alpha]$ is the $\Sig$-term obtained by
+  substituting the argument terms $\tup s$ for the type variables
+  $\tup\alpha$ in the translated declared argument type; note
+  $\enc{\tau^p_i}$ contains no variables besides $\tup\alpha$.
+\end{definition}
+
+\begin{lemma}[Strictness]
+  \label{lem:strictness}
+  For every atom $A$ and every $B \in \tc{A}$:
+  $\Comp \models \forall(A \imp B)$.
+\end{lemma}
+
+\begin{proof}
+  Let $\AA \models \Comp$ and let $w$ be a valuation with
+  $\AA, w \models A$.  If $A = \hat p(\tup s, \tup t)$ and
+  $B = \T(t_i, \enc{\tau^p_i}[\tup s/\tup\alpha])$, consider the axiom
+  $\forall\tup\alpha\,\tup x.\ \hat p(\tup\alpha,\tup x) \imp
+  \T(x_i, \enc{\tau^p_i})$ of $\mathrm{Cp}$.  Applying it at the valuation
+  sending $\alpha_j \mapsto \den{s_j}{\AA,w}$ and
+  $x_i \mapsto \den{t_i}{\AA,w}$, and using the standard substitution
+  property $\den{r[\tup s/\tup\alpha]}{\AA,w} =
+  \den{r}{\AA, w[\tup\alpha \mapsto \den{\tup s}{\AA,w}]}$ of first-order
+  semantics, we obtain $\AA, w \models B$.  The cases
+  $B = \T(s_j,\TypeC)$ and $A = \T(s, \hat I(\tup s))$ are identical,
+  using the other $\mathrm{Cp}$ axioms and $\mathrm{Ct}$ respectively.
+\end{proof}
+
+\begin{definition}[Cover]
+  \label{def:cover}
+  Let $x$ be a variable and $u$ a $\Sig$-term with $x \notin \fv{u}$.  An
+  atom $A$ \emph{covers} $(x,u)$ if $\T(x,u) \in \tc{A}$ (syntactic
+  identity of terms).
+\end{definition}
+
+Thus $\mathit{Even}(x)$ covers $(x, \mathit{nat})$;
+$\hat{\mathit{le}}(n,m)$ covers $(n,\mathit{nat})$ and $(m,\mathit{nat})$;
+$\T(l, \widehat{\mathit{list}}(\alpha))$ covers $(\alpha, \TypeC)$; an
+equation covers nothing; $\T(x,\beta)$ with variable $\beta$ covers
+nothing.  The exclusions are not incidental --- each is witnessed by a
+counterexample in \cref{sec:tightness} or by failure of
+\cref{lem:strictness} in $\MN$ (e.g.\ $\T^{\MN}(d,\beta)$ can hold with
+$\beta$ valued $\ast$, in which case $\T(\beta,\TypeC)$ fails).
+
+\subsection{Junk-truth and junk-falsity}
+
+\begin{definition}[$\jt$/$\jf$]
+  \label{def:jtjf}
+  Fix $(x,u)$ as in \cref{def:cover}.  The judgments $\jtx{x}{u}(\phi)$
+  (\emph{junk-true}) and $\jfx{x}{u}(\phi)$ (\emph{junk-false}) are the
+  least pair of predicates on formulas closed under the following rules,
+  where ``$A$ covers'' abbreviates ``$A$ is an atom covering $(x,u)$'',
+  and bound variables are (by our convention) distinct from $x$ and from
+  the variables of $u$:
+  \begin{align*}
+    &\jt(\top)
+    && \jf(\bot) \\
+    &\jt(A \imp \psi) \ \text{if } A \text{ covers}
+    && \jf(A) \ \text{if } A \text{ covers} \\
+    &\jt(\phi_1 \imp \phi_2) \ \text{if } \jt(\phi_2) \text{ or } \jf(\phi_1)
+    && \jf(\phi_1 \imp \phi_2) \ \text{if } \jt(\phi_1) \text{ and }
+       \jf(\phi_2) \\
+    &\jt(\phi_1 \wedge \phi_2) \ \text{if } \jt(\phi_1) \text{ and }
+      \jt(\phi_2)
+    && \jf(\phi_1 \wedge \phi_2) \ \text{if } \jf(\phi_1) \text{ or }
+      \jf(\phi_2) \\
+    &\jt(\phi_1 \vee \phi_2) \ \text{if } \jt(\phi_1) \text{ or }
+      \jt(\phi_2)
+    && \jf(\phi_1 \vee \phi_2) \ \text{if } \jf(\phi_1) \text{ and }
+      \jf(\phi_2) \\
+    &\jt(\forall y.\psi),\ \jt(\exists y.\psi) \ \text{if } \jt(\psi)
+    && \jf(\forall y.\psi),\ \jf(\exists y.\psi) \ \text{if } \jf(\psi)
+  \end{align*}
+  The first $\jt$-implication rule is the \emph{cover rule}; note that it
+  ignores $\psi$ entirely.  Since $\neg\psi = \psi \imp \bot$, the derived
+  rules $\jt(\neg\psi) \Leftarrow \jf(\psi)$ and
+  $\jt(\neg A)$ for covering $A$, as well as
+  $\jt(A \biimp A')$ for covering $A, A'$, are instances.
+\end{definition}
+
+\begin{lemma}[Junk instantiation]
+  \label{lem:junk}
+  Let $\AA \models \Comp$ and let $w$ be a valuation with
+  $\AA, w \not\models \T(x,u)$.  Then
+  $\jtx{x}{u}(\phi)$ implies $\AA, w \models \phi$, and
+  $\jfx{x}{u}(\phi)$ implies $\AA, w \not\models \phi$.
+\end{lemma}
+
+\begin{proof}
+  Simultaneous induction on the derivation of the judgment.
+
+  \emph{Cover cases.}  If $A$ covers $(x,u)$ then
+  $\Comp \models \forall(A \imp \T(x,u))$ by \cref{lem:strictness}, so
+  from $\AA,w \not\models \T(x,u)$ we get $\AA,w \not\models A$.  This
+  gives the $\jf(A)$ case directly, and makes
+  $A \imp \psi$ true under $w$, giving the $\jt$ cover rule.
+
+  \emph{Propositional cases.}  Immediate from the induction hypotheses and
+  the truth tables; e.g.\ for
+  $\jf(\phi_1 \imp \phi_2)$ from $\jt(\phi_1)$ and $\jf(\phi_2)$: by
+  induction $\AA,w \models \phi_1$ and $\AA,w \not\models \phi_2$, so
+  $\AA,w \not\models \phi_1 \imp \phi_2$.
+
+  \emph{Quantifier cases.}  For $\jt(\forall y.\psi)$ from $\jt(\psi)$:
+  for every $d \in |\AA|$ the valuation $w[y \mapsto d]$ still falsifies
+  $\T(x,u)$, because $y \neq x$ and $y \notin \fv{u}$, so the induction
+  hypothesis gives $\AA, w[y \mapsto d] \models \psi$.  For
+  $\jt(\exists y.\psi)$, pick any $d \in |\AA|$ (domains are nonempty)
+  and argue likewise.  The $\jf$ cases are dual, with
+  $\jf(\forall y.\psi)$ using nonemptiness.
+\end{proof}
+
+\subsection{The omission theorem}
+
+\begin{theorem}[Guard omission]
+  \label{thm:guard-equivalence}
+  Let $x \notin \fv{u}$.
+  \begin{enumerate}[label=(\roman*)]
+  \item If $\jtx{x}{u}(\phi)$ then
+    $\Comp \models
+    (\forall x.\ \T(x,u) \imp \phi) \biimp (\forall x.\ \phi)$.
+  \item If $\jfx{x}{u}(\phi)$ then
+    $\Comp \models
+    (\exists x.\ \T(x,u) \wedge \phi) \biimp (\exists x.\ \phi)$.
+  \end{enumerate}
+\end{theorem}
+
+\begin{proof}
+  Let $\AA \models \Comp$ and $w$ be a valuation (of the remaining free
+  variables).
+
+  (i) The direction $\Leftarrow$ is weakening of the body and holds
+  outright.  For $\Rightarrow$, assume
+  $\AA, w \models \forall x.\ \T(x,u) \imp \phi$ and let $d \in |\AA|$.
+  If $\AA, w[x \mapsto d] \models \T(x,u)$, the assumption yields
+  $\phi$.  Otherwise \cref{lem:junk} yields
+  $\AA, w[x \mapsto d] \models \phi$ from $\jt(\phi)$.  (The valuation of
+  $u$ is unaffected by $x \mapsto d$ since $x \notin \fv{u}$.)
+
+  (ii) The direction $\Rightarrow$ is weakening.  For $\Leftarrow$, let
+  $d$ witness $\exists x.\phi$, i.e.\
+  $\AA, w[x \mapsto d] \models \phi$.  If
+  $\AA, w[x \mapsto d] \not\models \T(x,u)$ then \cref{lem:junk} (the
+  $\jf$ half) gives $\AA, w[x\mapsto d] \not\models \phi$, a
+  contradiction; hence $\T(x,u)$ holds at $d$ and $d$ witnesses the
+  guarded existential.
+\end{proof}
+
+Both statements are \emph{equivalences relative to $\Comp$}; by the
+replacement lemma they may be applied to any subformula occurrence, at any
+polarity, of any premise or of the (negated) goal.  We package this,
+together with the polarity-restricted weakenings for guards that fail the
+criterion, into a single admissibility notion.
+
+\begin{definition}[Admissible optimization]
+  \label{def:admissible}
+  A \emph{guard-rewrite step} on a formula $\chi$ replaces one occurrence
+  of a subformula
+  \[
+    \forall x.\ \T(x,u) \imp \phi
+    \quad\text{by}\quad \forall x.\ \phi
+    \qquad\text{or}\qquad
+    \exists x.\ \T(x,u) \wedge \phi
+    \quad\text{by}\quad \exists x.\ \phi ,
+  \]
+  and it is \emph{licensed} if $\jtx{x}{u}(\phi)$ (universal case) or
+  $\jfx{x}{u}(\phi)$ (existential case).  A \emph{weakening step} replaces
+  a positive occurrence of $\T(t,u) \wedge \phi$ by $\phi$, or of
+  $\forall x.\ \phi$ by $\forall x.\ \T(x,u) \imp \phi$, or a negative
+  occurrence dually.  An \emph{optimized problem} for $(\Env,\phi_0)$ is
+  any set $\Theta' \cup \Comp \cup \{\neg G'\}$ obtained from
+  $\Ax \cup \Comp \cup \{\neg\enc{\phi_0}\}$ by finitely many steps, each
+  of which is: (a) a licensed guard-rewrite step applied anywhere in a
+  premise or in $G$ ($G$ initially $\enc{\phi_0}$); or (b) a weakening
+  step applied in a premise; or (c) a \emph{strengthening} of the goal:
+  replacement of $G$ by any $G''$ with $\Comp \models G'' \imp G$.  The
+  axioms $\Comp$ themselves are never rewritten.
+\end{definition}
+
+\begin{theorem}[Soundness of guard omission]
+  \label{thm:guards-sound}
+  If some optimized problem for $(\Env, \phi_0)$ is unsatisfiable, then
+  $\Th \entg \phi_0$.
+\end{theorem}
+
+\begin{proof}
+  As in \cref{thm:base-soundness-end}, assume $\Th \not\entg \phi_0$ and
+  pick $\NN \models \Th$ with $\NN \not\entg \phi_0$; we show
+  $\MN$ satisfies the optimized problem.  $\MN \models \Comp$ by
+  \cref{thm:base-soundness}.  By induction on the sequence of steps we
+  show that $\MN$ satisfies every current premise and the negation of the
+  current goal.  Initially this is \cref{thm:base-soundness} and
+  \cref{lem:relativization}.  For a licensed guard-rewrite step,
+  \cref{thm:guard-equivalence} gives
+  $\Comp \models \psi \biimp \psi'$ for the replaced subformula, hence
+  (since $\MN \models \Comp$) \cref{lem:replacement}(i) preserves the
+  truth value of the rewritten premise, and preserves the truth value of
+  $G$, hence of $\neg G$.  For a weakening step in a premise,
+  $\Comp \models \forall(\psi \imp \psi')$ holds for the replaced
+  subformula by pure logic ($\T(t,u) \wedge \phi \models \phi$ and
+  $\forall x.\phi \models \forall x. \T(x,u) \imp \phi$), and
+  \cref{lem:replacement}(ii) with the stated polarities gives that the
+  new premise is $\Comp$-entailed by the old one, hence true in $\MN$.
+  For a goal strengthening, $\Comp \models G'' \imp G$ and
+  $\MN \models \neg G$ give $\MN \models \neg G''$.
+\end{proof}
+
+\begin{corollary}[Conservativity]
+  \label{cor:no-loss}
+  Let the optimized problem be obtained using only licensed guard-rewrite
+  steps (no weakenings or strengthenings).  Then the optimized problem is
+  satisfiable if and only if the original problem
+  $\Ax \cup \Comp \cup \{\neg\enc{\phi_0}\}$ is.  In particular, guard
+  omission with completion axioms present loses no ATP proofs.
+\end{corollary}
+
+\begin{proof}
+  Both problems contain $\Comp$.  In any structure
+  $\AA \models \Comp$, each licensed rewrite preserves truth values of
+  the rewritten sentences (\cref{thm:guard-equivalence} with
+  \cref{lem:replacement}(i)), so $\AA$ satisfies the original problem iff
+  it satisfies the optimized one.  A model of either is a model of
+  $\Comp$, so the two problems have the same models.
+\end{proof}
+
+\begin{remark}
+  \Cref{cor:no-loss} is the formal content of the slogan ``drop
+  obligations, keep facts --- or emit completion axioms''.  Without
+  $\Comp$ in the problem, omission remains \emph{sound}
+  (\cref{thm:guards-sound} never uses $\Comp \subseteq$ problem on the
+  unsatisfiable side), but a dropped guard that other clauses needed as a
+  \emph{fact} can no longer be re-derived and proofs may be lost.  With
+  $\Comp$ emitted, the dropped typing information is recoverable from the
+  covering atom in one resolution step, and refutability is exactly
+  preserved.
+\end{remark}
+
+\subsection{Simultaneous omission}
+
+In practice one wants to delete many guards of a premise at once, and
+covers may be provided by \emph{retained guards} (the
+$\mathit{app\_nil\_r}$ example), so licensing must be checked against the
+final formula.  Deleting guards one at a time is already justified ---
+each step of \cref{def:admissible} is licensed \emph{in the formula it is
+applied to} --- but the natural algorithm computes a set of deletable
+guards by a fixpoint and deletes them simultaneously.  The next
+proposition shows the two views agree for antecedent guards.  Call an
+occurrence of a subformula $\forall x.\ \T(x,u) \imp \phi$ a
+\emph{universal guard occurrence} with body $\phi$.
+
+\begin{lemma}[Expansion]
+  \label{lem:expansion}
+  Let $\chi'$ be obtained from $\chi$ by replacing, at finitely many
+  positions, subformulas $\rho$ by $\T(s,w) \imp \rho$ or by
+  $\forall y.\ \T(y,w) \imp \rho'$ where $\chi$ had $\forall y.\rho'$
+  (insertion of guard antecedents), or subformulas $\rho$ by
+  $\T(s,w) \wedge \rho$ (insertion of guard conjuncts).  Then:
+  \begin{enumerate}[label=(\roman*)]
+  \item $\jtx{x}{u}(\chi)$ implies $\jtx{x}{u}(\chi')$, provided only
+    antecedent insertions are used;
+  \item $\jfx{x}{u}(\chi)$ implies $\jfx{x}{u}(\chi')$, provided only
+    conjunct insertions are used.
+  \end{enumerate}
+\end{lemma}
+
+\begin{proof}
+  (i) Induction on the $\jt$-derivation for $\chi$.  Every rule of
+  \cref{def:jtjf} either ignores the subformula in which the insertion
+  occurred (the cover rule, one-sided $\vee$/$\imp$ rules) or descends
+  into it; in the latter case apply the induction hypothesis.  If the
+  insertion happens \emph{at} the conclusion of the derivation --- the
+  whole judged formula $\rho$ becomes $\T(s,w) \imp \rho$ --- then
+  $\jt(\T(s,w) \imp \rho)$ follows from $\jt(\rho)$ by the
+  weakening rule $\jt(\phi_1 \imp \phi_2) \Leftarrow \jt(\phi_2)$.
+  Insertions under a quantifier that the derivation traverses are handled
+  by the induction hypothesis at the quantifier rule's premise.
+  (ii) Dual induction: an inserted conjunct at the judged position gives
+  $\jf(\T(s,w) \wedge \rho)$ from $\jf(\rho)$ by the one-sided
+  $\wedge$ rule.
+\end{proof}
+
+\begin{proposition}[Simultaneous omission of antecedent guards]
+  \label{prop:simultaneous}
+  Let $\chi$ be a formula and $S$ a set of universal guard occurrences in
+  $\chi$, pairwise non-overlapping in the sense that no guard atom of one
+  occurrence lies inside another's guard atom (bodies may nest freely).
+  Let $\chi_S$ be the result of deleting all guards in $S$
+  simultaneously.  If for every $g = (x_g, u_g) \in S$ the judgment
+  $\jtx{x_g}{u_g}(\phi_g)$ holds, where $\phi_g$ is the body of $g$
+  \emph{as it appears in $\chi_S$}, then
+  $\Comp \models \chi \biimp \chi_S$; i.e.\ the simultaneous deletion is
+  a valid composite of licensed steps.
+\end{proposition}
+
+\begin{proof}
+  Order $S = \{g_1, \dots, g_n\}$ arbitrarily and delete one guard per
+  step; let $\chi_i$ denote the formula after deleting
+  $g_1,\dots,g_i$, so $\chi_0 = \chi$ and $\chi_n = \chi_S$.  When
+  deleting $g_{i}$ from $\chi_{i-1}$, its body $\phi'$ there differs from
+  $\phi_{g_i}$ (its body in $\chi_S$) exactly by the presence of the
+  not-yet-deleted guards $g_{i+1},\dots,g_n$ that lie inside it --- i.e.\
+  $\phi'$ is obtained from $\phi_{g_i}$ by inserting universal guard
+  antecedents.  By assumption $\jtx{x_{g_i}}{u_{g_i}}(\phi_{g_i})$, so by
+  \cref{lem:expansion}(i) $\jtx{x_{g_i}}{u_{g_i}}(\phi')$, and the step is
+  licensed.  Each step preserves $\Comp$-equivalence by
+  \cref{thm:guard-equivalence,lem:replacement}; compose.
+\end{proof}
+
+\begin{remark}[Fixpoint computation, and mixing with existential guards]
+  \label{rem:fixpoint}
+  \Cref{prop:simultaneous} is exactly what justifies the practical
+  algorithm: start from the set of all universal guard occurrences of a
+  premise, and iteratively remove from the candidate set any guard whose
+  body (with all current candidates deleted) fails $\jt$ --- covers being
+  hypothesis atoms and \emph{retained} guards.  The iteration is monotone
+  (shrinking the deleted set only adds antecedents, which by
+  \cref{lem:expansion}(i) preserves $\jt$), so it reaches a greatest
+  fixpoint, which satisfies the hypothesis of the proposition.  In the
+  $\mathit{app\_nil\_r}$ example the fixpoint retains the guard on $l$
+  (its body is an equation) and deletes the guard on $\alpha$, covered by
+  the retained $\T(l, \widehat{\mathit{list}}(\alpha))$.  For
+  \emph{existential} guard conjuncts, whose licensing judgment is $\jf$,
+  \cref{lem:expansion}(ii) covers simultaneous deletion of several
+  conjuncts, but a mixed set of antecedent and conjunct deletions with
+  nested scopes must be checked stepwise (delete innermost guards first):
+  $\jf$ is not in general preserved by antecedent insertion, since
+  $\jf(\T(y,w) \imp \rho)$ would require the inserted guard to be
+  junk-\emph{true}.  Stepwise licensing is always sound by
+  \cref{thm:guards-sound}.
+\end{remark}
+
+\subsection{Worked examples}
+\label{subsec:guard-examples}
+
+\begin{example}
+  \label{ex:even}
+  $\enc{\forall x{:}\mathit{nat}.\ \mathit{Even}\,x \imp
+    \mathit{Even}\,(S(S\,x))}
+  = \forall x.\ \T(x, \widehat{\mathit{nat}}) \imp
+  (\hat{\mathit{Even}}(x) \imp \hat{\mathit{Even}}(\hat S(\hat S(x))))$.
+  The body is $A \imp \psi$ with $A = \hat{\mathit{Even}}(x)$, and
+  $\T(x, \widehat{\mathit{nat}}) \in \tc{A}$ since
+  $\tau^{\mathit{Even}}_1 = \mathit{nat}$.  The cover rule gives $\jt$;
+  by \cref{thm:guard-equivalence}(i) the guard may be dropped, at any
+  polarity.
+\end{example}
+
+\begin{example}
+  \label{ex:le-inv}
+  In the translated inversion principle for $\mathit{le}$ (dis\-played in
+  \cref{sec:overview}), the guards on $n$ and $m$ have bodies of the form
+  $\hat{\mathit{le}}(n,m) \imp \cdots$ (after dropping the inner guard
+  first, or by \cref{lem:expansion}(i) directly), and
+  $\hat{\mathit{le}}(n,m)$ covers both $(n,\widehat{\mathit{nat}})$ and
+  $(m,\widehat{\mathit{nat}})$: drop both.  The naked disjunct $m = n$ is
+  never inspected --- the cover rule stops at the covering hypothesis.
+  The existential conjunct $\T(k,\widehat{\mathit{nat}})$ has body
+  $\hat{\mathit{le}}(n,k) \wedge m = \hat S(k)$, which is $\jf$ for
+  $(k,\widehat{\mathit{nat}})$ by the one-sided $\wedge$ rule applied to
+  the covering atom $\hat{\mathit{le}}(n,k)$; by
+  \cref{thm:guard-equivalence}(ii) it, too, may be dropped ---
+  and by \cref{cor:no-loss} nothing is lost while $\Comp$ is present.
+\end{example}
+
+\begin{example}
+  \label{ex:app-nil}
+  In $\enc{\mathit{app\_nil\_r}}$ (\cref{sec:overview}) the guard on $l$
+  is \emph{not} deletable: its body is the equation
+  $\hat{\mathit{app}}(\alpha, l, \hat{\mathit{nil}}(\alpha)) = l$, whose
+  $\tc{}$ is empty, and no rule of \cref{def:jtjf} applies.  (This is not
+  a weakness of the criterion: the unguarded sentence is false in $\MN$
+  --- instantiate $l$ with any junk element; the left-hand side is then a
+  junk tree, which differs from $l$ itself --- so no sound criterion can
+  delete it.)  The guard on $\alpha$ is deletable by
+  \cref{prop:simultaneous} with $S$ containing only it: its body in
+  $\chi_S$ still contains the retained guard
+  $\T(l, \widehat{\mathit{list}}(\alpha))$, an atom covering
+  $(\alpha, \TypeC)$ by the second clause of \cref{def:tc}.
+\end{example}
+
+\begin{example}
+  \label{ex:typing-axiom}
+  Typing axioms themselves shrink: in the axiom (T1) for
+  $\mathit{cons}$, the guard $\T(\alpha, \TypeC)$ is covered by the
+  antecedent $\T(l, \widehat{\mathit{list}}(\alpha))$ (or by
+  $\T(x,\alpha)$? --- no: $\alpha$ there is a \emph{variable} type side,
+  $\tc{\T(x,\alpha)} = \emptyset$; only the rigid
+  $\widehat{\mathit{list}}(\alpha)$ occurrence provides the cover).  For
+  $\mathit{nil}$'s typing axiom
+  $\forall\alpha.\ \T(\alpha,\TypeC) \imp
+  \T(\hat{\mathit{nil}}(\alpha), \widehat{\mathit{list}}(\alpha))$ the
+  guard must stay: the body is a $\T$-atom, which no rule makes $\jt$.
+  Indeed the unguarded version is false in $\MN$: for junk $\alpha$ the
+  type side is a junk tree and the $\T$-atom fails.
+\end{example}

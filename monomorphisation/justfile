@@ -1,0 +1,21 @@
+# Build the paper with XeTeX.
+#
+#   just         - full build (xelatex + bibtex + 2x xelatex)
+#   just quick   - single xelatex pass (no bibliography refresh)
+#   just clean   - remove generated files
+
+paper := "main"
+
+default: build
+
+build:
+    xelatex -interaction=nonstopmode -halt-on-error {{paper}}.tex
+    bibtex {{paper}}
+    xelatex -interaction=nonstopmode -halt-on-error {{paper}}.tex
+    xelatex -interaction=nonstopmode -halt-on-error {{paper}}.tex
+
+quick:
+    xelatex -interaction=nonstopmode -halt-on-error {{paper}}.tex
+
+clean:
+    rm -f {{paper}}.pdf *.aux *.bbl *.blg *.log *.out *.toc *.fls *.synctex.gz

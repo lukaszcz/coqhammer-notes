@@ -1,0 +1,156 @@
+\section{Introduction}
+\label{sec:intro}
+
+Hammers --- tools that discharge proof obligations of an
+interactive proof assistant by calling automated theorem provers
+(ATPs) --- have become standard equipment for proof assistants
+based on simple type theory, and increasingly for those based on
+dependent type theory: CoqHammer for Coq/Rocq
+\cite{CzajkaKaliszyk2018}, and more recently Lean-auto and the Lean
+hammer effort \cite{QianEtAl2025,ZhuEtAl2025}.  A hammer has three
+phases: premise selection, translation of the goal and premises
+into the ATPs' logic, and reconstruction of the found proof inside
+the assistant.  This paper is about the middle phase for dependent
+type theory, and specifically about two optimisations that are
+folklore for simple type theory but have never been given a
+rigorous treatment for the Calculus of Inductive Constructions
+(CIC):
+
+\begin{itemize}
+\item \emph{Heuristic monomorphisation}: replacing premises that
+  quantify over types (``$\forall A{:}\mathsf{Type}$.
+  $\forall x{:}A$. $\forall l{:}\mathsf{list}\,A$. \ldots'') by
+  finitely many instances at the ground types occurring in the problem
+  ($A \coloneqq \mathsf{nat}$, \ldots).  For Sledgehammer-style
+  hammers this is known to outperform not only the polymorphic
+  encodings but even native polymorphic prover support
+  \cite{Blanchette2016,Desharnais2022}; for CIC it has remained a
+  to-do item.
+\item \emph{Guard erasure}: the CoqHammer translation is an untyped
+  encoding that retains typing information as \emph{guards} ---
+  atoms $\hastype(x, \tau)$ read ``$x$ has type $\tau$'' ---
+  attached to every quantifier.  Guards multiply literals and
+  clutter every clause.  For many-sorted first-order logic, the
+  monotonicity analysis of Claessen, Lillieström and Smallbone
+  \cite{Claessen2011} and Blanchette, B\"ohme, Popescu and
+  Smallbone \cite{Blanchette2016} identifies which sorts' guards
+  can be erased soundly.  Whether and how that analysis transfers
+  to dependent type theory was posed as an open question in the
+  soundness study of the CoqHammer translation
+  \cite[\S6]{Czajka2016}, whose own proof-theoretic method is
+  incompatible with the model constructions monotonicity requires.
+  Meanwhile the implementation omits certain guards on empirical
+  grounds, with a known concrete counterexample delimiting the
+  practice \cite[\S5.6]{CzajkaKaliszyk2018}.
+\end{itemize}
+
+Both optimisations are \emph{dangerous}: instantiation interacts
+with the type-directed translation, and guard erasure strengthens
+premises --- erase the guard of a quantifier over a one-element
+type and everything collapses to a point
+(\cref{prop:nec-mono}).  The purpose of this paper is to say
+precisely when they are safe, and to prove it.
+
+\paragraph{Approach.}
+We work over $\CICm$ (\cref{sec:calculus}), a stratified fragment
+of CIC with an impredicative universe of propositions, two
+predicative universes, primitive connectives, and parametric
+inductive data types --- rich enough to express polymorphic
+premises, their instances, and all the guard phenomena at issue,
+while excluding proof-dependent data (we prove proofs are
+hermetically confined in the fragment,
+\cref{lem:proof-confinement}).  The key methodological decision is
+semantic: we fix a set-theoretic standard model of the environment
+(\cref{sec:semantics}, following
+\cite{Werner1997,Aczel1998,LeeWerner2011}) and prove a
+\emph{bidirectional truth lemma} (\cref{thm:truth}) for a guarded
+translation in which the guard predicate is interpreted as
+\emph{set membership} (\cref{sec:translation}).  Every
+transformation of the paper is then measured against one invariant:
+the translated axioms must remain true in the induced first-order
+structure, and truth of the translated goal must continue to imply
+validity of the original goal (\cref{def:si}).  This
+model-theoretic setup is exactly what the erasure analysis needs
+and what the existing proof-theoretic soundness framework
+\cite{Czajka2016} cannot provide; it also matches the actual use of
+\emph{classical} ATPs, for which minimal-logic proof reconstruction
+does not apply.  The guarantee it delivers is semantic ---
+optimised ATP successes imply the goal is true --- and combines
+with the kernel-checked reconstruction phase, which makes the
+end-to-end system safe unconditionally
+(\cref{rem:absolute-safety}).
+
+\paragraph{Contributions.}
+\begin{enumerate}
+\item A self-contained, model-theoretic soundness theorem for a
+  guarded CIC-to-FOL translation in the style of CoqHammer
+  (\cref{thm:truth,thm:base-soundness}), including a polarity
+  analysis showing which of the implemented translation's guard
+  forms are validated by the semantics and which are not
+  (\cref{rem:polarity}).
+\item A formulation of heuristic monomorphisation as premise
+  instantiation at the $\CICm$ level --- instantiate, normalise,
+  retranslate --- with: soundness independent of the
+  instance-selection heuristic (\cref{thm:mono-sound});
+  conservativity of the keep-generic policy
+  (\cref{prop:mono-conservative}); incompleteness of the
+  drop-generic policy (\cref{prop:drop-incomplete}); coverage of
+  higher-order instances (\cref{rem:tier2}); and a proof that no
+  computable complete instance-selection strategy exists for
+  $\CICm$ (\cref{thm:undecidable}), adapting the
+  Bobot--Paskevich combinatory-logic reduction
+  \cite{BobotPaskevich2011} to a semantic consequence relation,
+  with a full decidability analysis of the instance fragment.
+\item \emph{Signature specialisation} (\cref{sec:specialization}):
+  a uniform per-occurrence renaming --- type-argument fusion, guard
+  specialisation $\hastype(x, \tau) \mapsto \guard{\tau}(x)$, arity
+  flattening, predicate flattening --- proved sound by one
+  interpretation principle (\cref{thm:spec-sound}) and proved
+  \emph{faithful} (provability-preserving in both directions,
+  \cref{thm:spec-faithful}) on the first-order core, \emph{without
+  the bridging axioms} the current implementation emits.
+\item \emph{Monotonicity-based guard erasure}
+  (\cref{sec:erasure}): a formulation of guard erasure for the
+  fully monomorphised, fully specialised problems; the reduction of
+  its soundness to \emph{inflatability}
+  (\cref{thm:erasure-from-inflatable}) with unconditional
+  proof-preservation (\cref{prop:erasure-complete}); a sorted-core
+  extraction and relativisation theorem
+  (\cref{thm:relativisation}); full adaptations of the cloning and
+  merging model constructions
+  (\cref{lem:cloning,thm:erasure-main}); an \emph{internal}
+  infinity criterion for inductive types driven by the
+  translation's own injectivity and discrimination axioms
+  (\cref{lem:ind-infinity}); and proofs that both side conditions
+  --- witnessed inhabitation and monotonicity --- are necessary
+  (\cref{prop:nec-inhab,prop:nec-mono}), the latter subsuming the
+  known counterexample of \cite[\S5.6]{CzajkaKaliszyk2018}
+  (\cref{rem:jar-counterexample}).
+\item The composed pipeline with its end-to-end soundness theorem
+  and an account of exactly where completeness is traded away
+  (\cref{sec:pipeline}).
+\end{enumerate}
+
+All proofs are given in full, except for standard metatheory of
+Pure Type Systems and inductive types
+(\cref{prop:metatheory}) and the existence of set-theoretic models
+(\cref{prop:model-exists}), which are quoted with references.
+
+\paragraph{Design constraint.}
+Throughout, transformations are \emph{shallow}: per-occurrence
+manipulations of formulas, without mediating axiomatic bridges
+between old and new symbols.  This constraint, adopted from the
+CoqHammer development guidelines, is not cosmetic: bridging axioms
+reintroduce the generic apparatus into every problem and defeat the
+purpose of specialisation.  The faithfulness and erasure theorems
+show that on the fragment that matters --- fully monomorphised,
+essentially first-order problems --- nothing is lost by shallowness.
+
+\paragraph{Organisation.}
+\Cref{sec:calculus} defines $\CICm$ and proves the two fragment
+lemmas.  \Cref{sec:semantics} fixes the semantics.
+\Cref{sec:translation} defines the translation and proves the truth
+lemma and base soundness.  \Cref{sec:mono,sec:specialization,%
+sec:erasure} develop the three optimisations, and
+\cref{sec:pipeline} composes them.  \Cref{sec:related} discusses
+related work.

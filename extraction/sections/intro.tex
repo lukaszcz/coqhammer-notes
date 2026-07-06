@@ -1,0 +1,250 @@
+\section{Introduction}
+\label{sec:intro}
+
+A \emph{hammer} is a proof-automation tool that, given a goal stated in the
+logic of a proof assistant and the ambient library of previously established
+facts, selects a set of plausibly relevant premises, translates the goal and
+the premises into the input logic of external automated theorem provers
+(ATPs), runs the ATPs, and finally reconstructs any proof found inside the
+proof assistant~\cite{BlanchetteEtAl2016qed}.  For proof assistants based on
+dependent type theory, the reference tool is
+CoqHammer~\cite{CzajkaKaliszyk2018,CoqHammer} for Rocq (formerly Coq), whose
+translation maps the Calculus of Inductive Constructions (CIC) into untyped
+first-order logic (FOL).
+
+The efficiency of the whole enterprise hinges on the translation being
+\emph{shallow}~\cite{Czajka2018}: a source proposition must become a
+first-order \emph{formula}, with the source connectives and quantifiers
+mapped directly to their first-order counterparts, so that the ATP's highly
+optimised handling of first-order primitives --- clausification,
+resolution, superposition, term indexing --- does real logical work on the
+translated problem.  The alternative, a \emph{deep} embedding in which
+propositions become first-order \emph{terms} related by an inhabitation
+predicate $\mathsf{T}(x,\tau)$, forces the ATP to simulate the object logic
+one bridge-axiom instantiation at a time and to synthesise first-order terms
+standing for proof terms; this is well understood to be dramatically less
+effective (see the discussion in \cite[\S 1.1]{Czajka2018} and
+\cref{sec:shallow} below).
+
+For the \emph{propositional} skeleton of a statement, shallowness is
+achieved by the translation of \cite{CzajkaKaliszyk2018}: universally
+quantified implications become guarded first-order formulas, equality
+becomes first-order equality, and so on.  Two related parts of the
+translation, however, have remained essentially deep, and both concern
+exactly the places where dependent type theory diverges from first-order
+logic:
+
+\begin{enumerate}[leftmargin=2em]
+\item \emph{Definitions by pattern matching.}  The translation of
+  \cite{CzajkaKaliszyk2018} renders a match
+  $\tcase{x}{\cdot}{\csO \Rightarrow t_1 \mid \csS\,y \Rightarrow t_2}$,
+  lifted to a fresh constant $F$, as a single \emph{guarded disjunctive
+  axiom}
+  \[
+    \forall x.\ \nat(x) \to
+      \bigl(x \feq \csO \wedge F(x) \feq t_1'\bigr) \vee
+      \bigl(\exists y.\ \nat(y) \wedge x \feq \csS(y) \wedge F(x) \feq t_2'\bigr),
+  \]
+  a formula that clausifies into many long non-Horn clauses with Skolem
+  functions and that superposition provers cannot orient into rewrite
+  rules.
+\item \emph{Types with propositional content.}  A constant whose type
+  mixes computation with specification --- the running example, from the
+  CoqHammer problem list, is
+  \begin{align*}
+    &h : \forall x\,y\,z{:}\nat.\; x = y \wedge y = z \to
+      \{u : \nat \mid x = u\}\\
+    &h\;x\;y\;z\;p \defeq
+      \mathsf{match}\ p\ \mathsf{with}\ \mathsf{conj}\ p_1\ p_2
+      \Rightarrow{}\\
+    &\qquad\qquad
+      \mathsf{exist}\ (\lambda u.\, x = u)\ z\ (\mathsf{eq\_trans}\ p_1\ p_2)
+  \end{align*}
+  --- receives \emph{no} usable axiom at all: the match on the proof $p$ is
+  translated to an opaque constant, and the type is translated to an opaque
+  atom $\mathsf{HasType}(h, \mathsf{sig}(\nat, P))$ that no other axiom
+  connects to anything.  The information is present but buried inside an
+  inhabitation atom: a local relapse into the deep embedding.
+\end{enumerate}
+
+Both phenomena have a common diagnosis, already conjectured in
+\cite[\S 9]{CzajkaKaliszyk2018}: the translation should be \emph{factored
+through the intermediate representation of program extraction} in the sense
+of Letouzey~\cite{Letouzey2004,Letouzey2003,Letouzey2008}.  This paper
+carries the factorisation out precisely and proves it sound.
+
+\subsection{The architecture}
+\label{sec:intro-arch}
+
+The slogan is:
+\begin{quote}
+  \emph{translation = program extraction + specification extraction.}
+\end{quote}
+For a definition $c \defeq t : \tau$ in the source environment, the
+translation emits two groups of first-order axioms.
+
+\paragraph{Program extraction.}  The body $t$ is erased, following
+Letouzey's function $\erasef$, into a term of an untyped functional
+calculus $\lbox$ (\cref{sec:lambdabox}): proofs and propositional arguments
+disappear, matches on propositional singletons (conjunctions, equations,
+$\bot$) collapse to their unique branch, and refinement values
+$\mathsf{exist}\;a\;p$ unbox to $a$.  The erased program is then compiled
+--- by lambda-lifting, case flattening and pattern-match compilation
+(\cref{sec:translation}) --- into a set of \emph{defining equations}, one
+per constructor pattern.  For the standard addition function the output is
+literally the recursive program, read as a first-order rewrite system:
+\[
+  \forall m.\ \Ihat{\mathsf{add}}(\csO, m) \feq m,
+  \qquad
+  \forall y\,m.\ \Ihat{\mathsf{add}}(\csS(y), m) \feq \csS(\Ihat{\mathsf{add}}(y, m)).
+\]
+These are orientable unit equations --- demodulators for superposition
+provers, ideal trigger material for SMT solvers --- in place of the guarded
+disjunction above.  For $h$, erasure yields $\erase{t} = z$ and hence the
+single equation $\forall x\,y\,z.\ \Ihat{h}(x,y,z) \feq z$.
+
+\paragraph{Specification extraction.}  The type $\tau$ is translated by a
+realizability reading $\guardf$ in the tradition of
+Kleene~\cite{Kleene1945} and Paulin-Mohring~\cite{PaulinMohring1989},
+defined structurally on types: informative quantification becomes guarded
+first-order quantification, propositional premises become implications with
+the (erased) proof argument dropped, and --- the essential new clause ---
+a refinement type $\refty{x{:}\sigma}{\varphi}$ is expanded \emph{inline,
+at every occurrence}, into the conjunction of the carrier guard and the
+payload formula.  For $h$ this produces the specification axiom
+\begin{multline*}
+  \forall x\,y\,z.\ \nat(x) \to \nat(y) \to \nat(z) \to{}\\
+    \bigl(x \feq y \wedge y \feq z \;\to\;
+      \nat(\Ihat{h}(x,y,z)) \wedge x \feq \Ihat{h}(x,y,z)\bigr),
+\end{multline*}
+which is exactly the statement of $h$'s type, as a first-order formula.  No
+$\mathsf{HasType}$ atom, no $\mathsf{sig}$, no $\mathsf{exist}$ and no
+projection appears anywhere in the output: the specification is shallow in
+precisely the sense of \cite[\S 1.1]{Czajka2018}.
+
+The two components are the two halves of extraction correctness: the
+equations describe the extracted program; the specification axiom is the
+statement that the program \emph{realizes} its type, which is Letouzey's
+simulation predicate $\sem{\tau}$ \cite[\S 2.4]{Letouzey2004} applied to
+the extracted constant.
+
+\subsection{Contributions}
+\label{sec:intro-contrib}
+
+This paper makes the architecture precise and proves it correct.
+Specifically:
+
+\begin{enumerate}[leftmargin=2em]
+\item We define a source calculus $\CICm$ (\cref{sec:calculus}): a
+  monomorphic, first-order fragment of CIC with inductive datatypes,
+  primitive refinement types, inductive predicates, propositional
+  singleton eliminations into informative positions (conjunction,
+  equality, absurdity), structural fixpoints, and full first-order
+  intuitionistic logic with induction at the proof level.  The calculus is
+  \emph{stratified}: terms, proofs, types, propositions and predicates are
+  separate syntactic categories, so the erasure zones of extraction are
+  syntactic rather than derived from sort analysis.  \Cref{sec:calculus-cic}
+  explains how the fragment arises from full CIC by the
+  instance-classification analysis implemented in CoqHammer.
+\item We define the erasure $\erasef$ from $\CICm$ into an untyped calculus
+  $\lbox$ with constructors, case and fixpoints (\cref{sec:lambdabox}), and
+  prove the two syntactic pillars of program extraction in this setting:
+  erasure commutes with substitution, and erasure maps source conversion to
+  $\lbox$-conversion.  $\lbox$ is an orthogonal rewrite system; we prove its
+  confluence in \cref{sec:confluence} by the Tait--Martin-L{\"o}f/Takahashi
+  method.
+\item We define the translation (\cref{sec:translation}): the compilation of
+  erased programs to per-constructor pattern equations with case flattening
+  and lambda-lifting; the specification extraction $\guardf$, the
+  proposition translation $\Ff$ and the term translation $\compf$; and the
+  emitted theory $\ThE$ for an environment $\Env$ and goal $G$.  All three
+  translation functions are structural --- there is no normalisation
+  requirement on the source --- and produce formulas built exclusively from
+  first-order connectives, per-datatype guard predicates, per-instance
+  inductive-predicate atoms, and equality.
+\item We prove soundness (\cref{sec:semantics,sec:soundness}).  From any
+  well-formed definitional environment we construct a first-order structure
+  $\ML$ whose domain is the set of closed $\lbox$ terms modulo conversion
+  --- crucially including ``junk'' elements denoting no source value ---
+  and a proof-irrelevant classical truth semantics $\pv{\cdot}$ for source
+  propositions, and show: every axiom of $\ThE$ holds in $\ML$
+  (\cref{thm:env-validity}), and $\ML \vDash \F{G}$ implies $\pv{G} = 1$
+  (\cref{lem:coincidence}).  Hence if $\ThE \provesfol \F{G}$ then $G$ is
+  true in the semantics; in particular no goal refutable in $\CICm$ becomes
+  provable after translation, and $\ThE$ is consistent
+  (\cref{thm:soundness,cor:consistency}).  The technical core is a
+  fundamental lemma (\cref{lem:fundamental}) proved by induction on typing
+  derivations, with a rank-indexed treatment of structural fixpoints in the
+  style of type-based termination~\cite{BartheEtAl2004,Gimenez1995}.
+\item We settle, rigorously, the design question that motivated the
+  factorisation (\cref{sec:casesplit}): the guarded disjunctive case axiom
+  of \cite[\S 5.2]{CzajkaKaliszyk2018} is \emph{false} in $\ML$ if its
+  guard is omitted --- we exhibit the junk countermodel --- while the
+  per-constructor equations hold at all elements of $\ML$, junk included,
+  so they need no guards at all; and the two axiomatisations are
+  interderivable in FOL relative to the structural axioms (inversion,
+  discrimination, injectivity) that the translation emits anyway.  The
+  choice between them is therefore purely operational, and
+  \cref{sec:casesplit-cnf} quantifies the operational difference in clause
+  shapes.
+\item We articulate the shallowness of the translation as a checklist of
+  verifiable properties and verify them clause by clause
+  (\cref{sec:shallow}), and we delimit precisely what is \emph{not} covered
+  --- polymorphism, indexed inductive families, well-founded recursion,
+  large elimination --- together with the known hard constraint for
+  extending the architecture to well-founded recursion
+  (\cref{sec:limitations}).
+\end{enumerate}
+
+\subsection{What soundness means here}
+\label{sec:intro-soundness}
+
+Following automated-reasoning terminology~\cite{Czajka2018,
+BlanchetteEtAl2016}, a hammer translation is \emph{sound} when provability
+of the translated goal from the translated premises does not outrun the
+source: it must be impossible to translate a consistent development and
+obtain a first-order theory from which the image of a false --- or
+refutable --- goal is derivable.  (The converse property, that provable
+goals remain provable, is \emph{completeness}; hammers deliberately trade
+it away, and the present translation is complete only on a fragment.  See
+\cref{sec:limitations-completeness}.)  Since the final arbiter in a hammer
+is proof reconstruction inside the proof assistant, soundness is not a
+safety requirement but a quality requirement --- an unsound translation
+wastes ATP time on phantom proofs and poisons premise-selection learning
+\cite{BlanchetteEtAl2016qed} --- and, more importantly for this paper, the
+soundness \emph{proof} is the specification of the translation: it
+identifies exactly which axioms may be emitted, which guards are mandatory,
+and why.
+
+We prove soundness model-theoretically, against a semantics that interprets
+source propositions classically and proof-irrelevantly
+(\cref{sec:semantics}).  Both choices are forced: the ATPs are classical,
+and the translation erases proofs, so it validates proof irrelevance by
+construction --- the corresponding necessity was isolated for the core
+embedding in \cite[Example 52]{Czajka2018}.  The semantics is nevertheless
+\emph{standard} on the first-order data of interest: the interpretation of
+$\nat$ in our model is (isomorphic to) the natural numbers
+(\cref{prop:standard}), so for concrete arithmetic-style goals ``true in
+the semantics'' means true.
+
+A proof-theoretic soundness theorem in the style of \cite{Czajka2018} ---
+reconstructing a source proof term from a first-order derivation --- is
+strictly stronger and correspondingly harder in the presence of inductive
+types; we leave it as future work (\cref{sec:limitations}), noting that the
+model-theoretic statement is the one with operational consequences for a
+hammer.
+
+\subsection{Relation to the implemented translation}
+\label{sec:intro-impl}
+
+The calculus $\CICm$ and the translation of this paper are an idealisation
+of a design for CoqHammer, not a description of its current code: the
+current tool emits the guarded disjunctive case axioms of
+\cref{sec:casesplit} and translates the type of $h$ to an opaque
+inhabitation atom.  The idealisation is faithful in the other direction:
+every axiom family emitted by the translation of this paper has a direct
+implementation site in the existing translation pipeline, and the fragment
+$\CICm$ is the image of CIC under analyses (proposition detection,
+singleton classification, refinement classification, monomorphisation)
+that are either implemented or specified for implementation.  We indicate
+the correspondences where relevant but keep the development self-contained.

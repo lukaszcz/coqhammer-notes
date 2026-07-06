@@ -1,0 +1,2869 @@
+Extracting
+in the
+
+Fw’s Programs
+Calculus
+
+from Proofs
+of Constructions
+
+Christine
+Paulin-Mohring
+INRIA and LIENS
+45 Rue d’Ulm
+75230 PARIS Cedex 05
+FRANCE
+mohring@ens.ens.fr
+
+specification of the program. Examples of derivations
+of algorithms in this formalism may be found in [13].
+
+We define in this paper a notion of realizability
+for
+the Calculus of Constructions.
+The extracted programs are terms of the Calculus that do not contain
+dependent types. We introduce a distinction between
+informative
+and non-informative
+propositions.
+This
+distinction allows the removal of the “logical” part in
+the development of a program.
+We show also how
+to use our notion of realizability
+in order to interpret
+various axioms like the axiom of choice or the induction on integers. A practical example of development
+of program is given in the appendix.
+
+A first attempt to obtain the computational
+meaning of a proof was the “stripping”
+process [6] that
+removes all types from the proof. But this term still
+contains informations
+that are useless for computa
+tion. For example, some part of the proof may disappear during reduction or is known to always reduce to
+some given term. This problem appears also in systems like Nuprl or Martin-LGf’s
+Type Theory where
+a subset type is introduced in order to hide part of
+the computational
+information.
+In the system PX of
+Hayashi, a syntactic class of non-informative
+propositions is recognized by the process of extraction.
+
+Introduction
+
+We propose a way to hide computational
+information in the Calculus of Constructions.
+We introduce
+two constants Spec and Prop in order to do a syntactic distinction
+between the propositions that have a
+“computational
+informative”
+contents and the propositions that only have a “logical” contents. We guide
+the process of extraction by marking in the propositions some parts that are useless for computation.
+The system checks the correctness of the marking.
+We extract programs from proofs by removing the
+“logical” information
+and also the type’s dependencies.
+
+Several systems have been developed in order to formalize and check mathematical
+reasoning.
+Among
+these is the Calculus of Constructions.
+It is an impredicative
+higher-order
+&calculus
+with dependent
+types [5,4,8,7]. Via the “Curry-Howard”
+correspondence [ll], if t is a well-formed term of type M, then
+we can read t as an higher-order proof presented in
+a natural deduction way of some proposition represented by M.
+Given a formalized intuitionistic
+proof of a proposition, it is natural to look at the computational
+contents of this proof, We are also interested in deriving
+correct algorithms as proofs of existential formulae
+universally quantified Vx.3y.P(z,y),
+where P is the
+
+For example, let t be a proof of the existential type
+If P is “informative”
+the extraction will
+3% : Al’(z).
+forget about the dependency of P with respect to x.
+We shall extract from t a pair of type the conjonction
+of the types extracted from A and P. If P is marked
+to be “non-informative”
+then this proof will give us
+an element of type the type extracted from A.
+Now if a term t is extracted from a proof of A, then
+it certainly satisfies some extra properties (depending
+on A). For example it will be convenient to be able
+to prove something like : If P is a “non-informative”
+proposition then the term extracted from a proof of
+
+Permission to copy without fee all or part of this material is granted
+provided that the copies are not made or distributed for direct
+commercial advantage, the ACM copyright notice and the title of
+the publication and its date appear, and notice is given that copying
+is by permission of the Association for Computing Machinery. To
+copy otherwise, or to republish, requires a fee and/or specfic
+permission.
+
+0 1989 ACM O-89791-294-2/89/0001/0089
+
+$1.50
+
+89
+
+~;u33y;P(o, y) is a fonction f such that.P(f,f(z))
+is
+. The defimtion of a notion of reahzabllity gives
+a precise and systematic way to internalize the computational meaning of the intuitionistic
+propositions.
+With each proposition A of the Calculus, we associate
+a predicate of realizability
+Xx.R(A, z). We prove that
+if the judgement 1 E A is derivable in the system then
+there is a proof of the proposition R(A, t’) with t’ the
+term extracted from t.
+
+in the Calculus of Constructions
+is also typed in the
+system F,. The dependent types add an extra logical
+information
+about the term. We may see a proof of
+the Calculus of Constructions
+as a development .of a
+program in the system F,.
+We briefly recall some features of the system F,.
+In the system F, there‘are three levels of terms : the
+orders, the data types schemes and the programs. We
+call AD the set of terms of F,. This set contains a
+set Vo of variables and is defined as follows.
+
+It is possible to interpret the proposition A as the
+set of terms ‘1~such that the proposition R(A, u) may
+be proved. Let assume that there exists a term ‘u such
+that IR(A, u) is provable. Then it is possible to prove
+that A is consistent with the theory. If we add A as
+an axiom axA then axA may occur in the extracted
+programs and we have to say how to reduce it. In this
+case we shall know that it is correct to replace axA
+by ‘1~in the extracted programs. We will show several
+examples of propositions
+that are not provable but
+that are realizable in our system.
+
+Orders Data is an order and if A and B are orders
+so is A =k- B.
+Data types schemes Let r be a sequence of binding of variables to orders. We define the judgement
+r l-.~, o E A, with A an order.
+Variable :
+
+Products
+
+In the first section, we present the Calculus of Constructions with Realizations that is a variant of the
+Calculus of Constructions
+with explicit distinction
+between proofs and programs, and between informa
+tive and non-informative
+propositions.
+In the second
+section we define our notion of realizability
+for this
+Calculus and state its properties. The third section
+gives examples of application of this notion. In the
+appendix is a complete example of development of a
+program that find the minimum of a non empty list.
+
+:
+I’ l-F... r E Data
+r kF... u E Data
+I’ l-.Fw d =+ r E Data
+I’,X :Al-pw a~ Data
+r I-F~ (X : A)o E Data
+
+A bstmction
+
+:
+
+r,X:At-p,aEB
+I’ tF,
+Application
+
+1
+
+X : A occurs in I
+
+[x : A]u E A + B
+
+:
+
+rtF,aEAd?
+r tF,
+
+The Calculus
+of Construct ions with Realizations
+
+I'tF,
+(U T) E B
+
+TEA
+
+If there exists l? and an order A such that
+In the original Calculus of Constructions
+proofs are
+identified with programs and each proof is intuitionistic and represents a program.
+In the Calculus of
+Constructions
+with Realizations there will be a syntactic distinction between pure programs and proofs.
+And among the proofs we separate “logical” proofs
+and proofs from which w,e will extract programs.
+
+PI-F, (TEA
+is derivable by the above rules then u is called a data
+type scheme and a data type if A = Data.
+We introduce a congruence
+schemes generated by :
+
+relation
+
+on data types
+
+([X : A]u T) =p u[X/?-]
+
+1.1
+
+The system
+language
+
+with u[X/T] the result of substituting
+rences of X in 6.
+
+15 as a programming
+
+T to free occur-
+
+Environment
+An environment
+is a sequence of
+binding of variables to orders or data types. If I is
+an environment then IO denotes the subsequence of
+l? with only the variables bound to orders. We define
+the notion of well-formed environment.
+
+The Calculus of Constructions
+contains Girard’s F,
+system. The system F, is the part of the Calculus
+of Constructions
+where Itypes are not dependent of
+proofs. It is worth noting that each pure A-term typed
+
+90
+
+The empty environment
+
+The system F, is included in the Calculus of Constructions by an identification
+of Data with Prop.
+
+is well-formed
+
+If I’ is well-formed and A is an order and X does
+not occur in I? then I’, X : A is well-formed.
+
+Now let see the system Fw as a programming language. It is possible to express and prove properties
+of these programs in the Calculus of Constructions.
+But it is then convenient to not identify Data with
+Prop. This will allow for example to add one “exceptional” element in each data type without getting an
+inconsistent proof system.
+-
+
+If I? is well-formed, if l?o l-F, u E Dula and if
+2 does not occur F then l’, x : u is well-formed.
+If I’ is an environment then we introduce the judgement l? l--~, A4 E Type. This judgement is correct if
+r is well-formed and M is an order.
+
+The Calculus of Constructions
+with Realizations
+will contain the possibility of doing proofs of terms in
+
+Let F be a well formed environment.
+We define the judgement F l-F, t E u with u a data
+type.
+Programs
+
+Variables :
+
+2 :U occws
+
+r-b,
+Abstractions
+
+AD*
+
+inF
+
+1.2
+
+ZEU
+
+distinguish
+
+r
+
+r,X:dF,
+
+te7
+
+tFw
+
+E U j
+
+[X : U]t
+
+T
+
+For some propositions, we know beforehand a program that interprets their computational
+meaning.
+We want to use this program instead of interpreting an arbitrary proof. These formulae are called
+self-realizing
+in Beeson’s book El].
+Examples of
+self-realizing propositions are Harrop’s formulae and
+“type zero” propositions in Hayashi’s system PX [lo].
+This replacement of proofs leads to an optimization
+of the extracted code.
+
+In F, (unlike the Calculus of Constructions)
+there
+is no “type’s dependence”. It means that data type
+schemes cannot occur in orders and programs cannot
+occur in data types.
+
+The minimum we want is to be able to say to the
+system “extract or not something from this proof’.
+This may be done with a very simple modification of
+the Calculus of Constructions.
+With just this “hiding” facility, we will be able to internally optimize the
+extracted code by replacing some proofs by a given
+program.
+
+If there exists l? and a data type u such that
+rkF,tEu
+by the above rules then t is called a pro-
+
+gram.
+The system Fw fulfills
+
+l
+
+l
+
+A well-typed
+
+the following
+
+term is strongly
+
+We
+
+two kinds of such proofs.
+
+In some cases we want just to hide some part of
+the proof. For example when developing a program
+as a proof of an existential formula Zlx.P(z), we are
+just interested in the computational
+contents of the
+witness and not in the one of the proof of correctness.
+
+Application :
+
+l
+
+proofs
+
+Some proofs are not needed for the computation.
+
+:
+
+r,X:Al-&tEa
+r tFw [X : A]t E (X : A)u
+
+is derivable
+
+Useless
+
+properties.
+
+We now give a precise definition
+
+of our system.
+
+norm&able.
+
+1.3
+
+The usual concrete types (for example natural
+numbers or product) are defined using secondorder quantification
+(cf [2,7].
+
+The
+
+proof
+
+language
+
+We define the language AR of the proof-system. We
+follow the presentation of [4]. We will just consider
+a Calculus of Constructions with three levels (proofs,
+propositions and propositional types). But there will
+be two kinds of propositions, the informative ones of
+type Spec and the non-informative
+ones of type Prop.
+
+There is no general fixpoint. However it is possible to code (extensionally)
+all recursive functions provably total in higher order arithmetic
+using primitive recursion on functional types.
+
+91
+
+As in the original calculus, a set V of variables is
+given and the constructors are product, abstraction
+and application.
+We want propositions that express
+properties of programs of F,. So there will be new
+constructors for abstraction, application and product
+that will mix a term off AD and a term of AR.
+Definition
+
+containing
+
+Let K be one of Prop, Spec or Type and V be one
+of Data or Type. With each environment
+r we associate an environment rD of F, that contains only
+the programming bindings x : N with x E VJJ and
+NEA,.
+Environments
+
+:
+
+1 The set of terms AR is the smallest set
+the following constructions :
+
+/I is Valid
+rl-MME
+
+Constants
+
+: Prop, Spec and Type.
+
+Variables : V C .AR
+
+rD
+
+kF,
+
+M
+
+xEV
+X@r
+I?,x : M is Valid
+
+E 2)
+
+x E VD
+
+I? is Valid
+
+20
+
+r, x :D M is Valid
+Application
+
+:
+Hypothesis
+
+(M N) with M, N E AR
+(oM N) with M E AR and N E AD
+Abstraction
+
+:
+
+I’ is Valid
+
+:
+
+[x:M]Nwith:c~VandM,N~A~
+[x :D M]N with x E VD, N E AR and M E AD
+
+Propositional
+
+x : N occurs in I?
+rl-xEN
+
+(N E AR)
+
+types :
+I’ is Valid
+IT t Prop E Type
+
+Product :
+(x:M)N
+withxEV
+andM,NEAR
+(X:D M)N WithxEVD,
+NEAR
+andMEAD
+
+I’ is Valid
+r t Spec c Type
+
+Notations
+Let x be in V and N in AR or x in VD
+and N in AD. The term M[x/w
+denotes the term
+M where N has been substituted for free occurrences
+of x in M.
+
+Product :
+r,x:PtMEK
+rl-(x:P)MEK
+
+If x does not occur in B then the term (x : A)B
+will be written A + I? or A + B.
+The rules of inference of the Calculus of Constructions with Realizations are described in the following
+section.
+
+1.4
+
+Type
+
+inference
+
+Abstraction
+
+:
+
+I’,x:PtmEN
+l-,x:pt-N~K
+r t [X : P]m E (Z : P)N
+
+system
+
+We extend the notion of environment
+in a natural
+way. An environment
+binds variables of either the
+proof or the programming
+system. If I’ is an environment and x is a variable, x 4 p means that the
+variable x does not occur in l?. The type inference
+system is the natural extension of the classical system to this new language.
+There are two kinds of judgement. Let l? be an environment and M and N two terms of AR, the judgement are I’ is Valid and r I- M E N.
+
+r,X:DPt-mEN
+r,xZD PtNEx
+r t [X zD p]m E (X rD P)N
+Application
+
+:
+
+rtmE(x:P)N
+
+rtrE&
+IT t (m r) E N[x/r]
+
+r t M E (x :D P)N
+rD
+EF,
+p E &
+r t (Dm r) E N[x/r]
+
+92
+
+p =p Q
+
+P
+
+=B
+
+Q
+
+1.5
+
+Properties
+
+We shall say that a term kf is well-formed in AR
+if and only if there exists r and iV such that l? lM E N. We shall call N the type of M. Terms of
+type Prop or Spec are called propositions and terms
+of type Type are called propositional
+types. A type
+is either a proposition or a propositional type. There
+are three levels of terms : the propositional types, the
+propositional
+schemes (terms of type a propositional
+type) and proofs (terms of type a proposition).
+
+Non-informative
+
+if and only
+
+If N # Data then M is non-informative
+if N is.
+
+if and only
+
+An important property
+change the informative
+a term.
+
+does not
+nature of
+
+is that substitution
+or non-informative
+
+Proposition
+2 Let M and R be terms such that M
+and M[x/R]
+are well-formed.
+Then M is a noninformative
+term if and only if M[x/R]
+is a noninformative term.
+
+This system is a syntactic variant of the original
+Calculus of Constructions.
+We find again the original Calculus by an identification
+of Spec with Prop
+and either by an identification
+of Data with Prop or
+just by removing all terms of A,. In particular it is
+straighforward
+to verify that all terms are strongly
+normalizable and that the system is consistent.
+
+1.6
+
+If N = Data then N is non-informative
+if N = (21 : Al). . . (2, : A,)Prop.
+
+It is possible to combine Prop and Spec
+Examples
+in several ways. For example if A is of type Data
+and P of type A ---+ Prop. It is possible to define
+an informative proposition whose meaning is “there
+exists x of type A such that (P 2)” in the following
+way :
+
+Terms
+
+ZAP
+
+G (c : Spec)((z : A)(P
+
+z) + C) + C
+
+We now distinguish between two syntactic classes of
+contents
+terms : terms with a positive informative
+(we shall call them informative terms) and terms with
+a null informative
+contents (we shall call them noninformative terms).
+
+Or if A is an informative proposition (A of type Spec)
+then it is possible to hide its informative contents by
+considering :
+
+Definition
+2 Let M be a term Of AR. Then M is a
+non-informative
+term if one of the following properties holds :
+
+2
+
+Realizability
+
+2.1
+
+Introduction
+
+l
+
+M = Prop
+
+l
+
+M is a variable of type a non-informative
+
+l
+
+l
+
+l
+
+A’ F (C : Prop)(A
+
+Notions of realizability
+have been defined in order to
+capture the computational
+meaning of intuitionistic
+proofs. With each formula A of the theory is associated another formula “2 realizes A”. The soundness
+theorem establishes that if A is provable then we can
+find some object t such that ‘Y realizes A”.
+
+term.
+
+M = (z : P)N
+non-informative
+
+or M = (x :D P)N
+term.
+
+with N a
+
+M = [z : PIN
+non-informative
+
+or M = [x :D PIN
+term.
+
+with N a
+
+There are many different notions of realizability
+[17]. In particular the relation “2 realizes A” may or
+not be a formula of the initial theory (with x a new
+variable). In the relation of realizability,
+the object z
+may or not be restricted to belong to a language with
+only total objects.
+
+M = (N P) or M = (DN P) with N a noninformative term.
+
+Otherwise
+
+a term is said to be informative.
+
+There is another
+terms.
+Proposition
+of type N.
+
+caracterisation
+
+Our notion of realizability
+may be viewed as an extension to the Calculus of Constructions of the modified realizability
+of HA”. Its main characteristics are
+that the realizations are typed in the system F, (and
+then are strongly normalizable) and that the formula
+“t realizes M” (that we shall write R(M, 2)) is a formula of the Calculus.
+
+of non-informative
+
+1 Let M be a well-formed
+
++ C) + C
+
+term in AR
+
+93
+
+Remark
+We are going to define on terms the function of extraction C and the function of realizability
+72. We show on a picture the relationship between,
+Data, Prop, Spec extraction and realizability.
+
+0 rj M
+
+I- M E Spec
+I-tEM
+
+&
+P
+I-F, C(M)
+
+E Data
+
+FF,
+
+E f(M)
+
+c(t)
+
+l
+
+R
+
+\
+
+[x
+
+: A]B
+
+then B
+scheme.
+
+is
+
+an informative
+
+Ij A is an informative
+order then
+
+propositional
+
+&(M)
+
+else &(M)
+
+= @: E(A)]E(B)
+
+type or an
+= C(B).
+
+If M = (A B) then A is an informative
+sitional scheme.
+If B is an informative propositional
+a data type scheme then
+
+x : I(M)
+
+I- R(M,z)
+
+I- u E R(M,
+
+E Prop
+
+E(M)
+
+= (C(A) E(B))
+
+else E(M)
+
+propo-
+
+scheme or
+
+= E(A).
+
+C(t))
+
+Proofs
+
+2.2
+
+=
+
+propositional
+
+Let M be an informative
+
+proof.
+
+Extraction
+
+We define a function & of extraction for informative terms, inductively
+on the structure of the term.
+This fonction is defined for the three levels of terms
+of the Calculus.
+The function & removes the noninformative
+part of the term and the type’s dependences in order to get a F,-term. At each variable x
+is associated by extraction a new variable Z. We do
+not write the D subscripts in the terms and take as a
+notation that if A4 E AD and x E V, then E(M) = M
+andf=
+2.
+Definition
+
+3 (Extraction)
+
+Propositional
+propositional
+
+types
+type.
+
+If M = (X
+propositional
+
+Let M
+
+E(M)
+l
+
+= E(B).
+
+or in ho
+
+= (E(A) E(B))
+
+proof.
+
+then
+
+else E(M)
+
+= I(A).
+The
+
+The proof proceeds by induction on the length of the
+derivation.
+The main point is the commutation
+of
+extraction with respect to substitution,
+namely if M
+and N are informative terms then
+
+then B is an informative
+
+I(M)
+
+else I(M)
+
+l:(B)
+
+schemes
+scheme.
+
+type or an
+= E(B)
+
+Let M be an informative
+
+If M is a variable X then E(M)
+
+= z.
+
+else I(M)
+
+and properties
+
+The general scheme for the definition
+f realizes A =+ B is :
+
+or in AD then
+
+= (T : E(A))E(B)
+
+Definition
+izability
+
+of real-
+
+In general the notion of realizability
+is defined for
+propositions.
+But in the Calculus of Constructions,
+in a proposition may appear variables, propositional
+types and propositional
+schemes.
+
+0 IfM
+= (x : A)B then B is an informative
+propositional scheme.
+
+E(M)
+
+else E(M)
+
+= Data.
+
+propositional
+
+If A is informative
+
+= @ : E(A)JC(B)
+
+If M = (A B) then A is an informative
+
+E(M)
+
+proof.
+
+or in ho then
+
+If B is informative
+
+2.3
+
+l
+
+If M = [x : A]B then B is an informative
+
+be an informative
+
+If A is an informative
+order then
+
+Propositional
+propositional
+
+l
+
+If A is informative
+
+= f.
+
+Theorem
+1 If I’ I- M E N with M on informative
+term then &(r) I--F, C(M) E E(N)
+
+: A)B
+type.
+
+= E(A) j
+
+If M is a variable x then E(M)
+
+The function & is extended to the environments.
+main result about extraction is :
+
+. If M = Spec then &(M)
+l
+
+l
+
+Vz.z realizes
+
+= E(B).
+
+94
+
+A =R f(z)
+
+of the formula
+
+realizes
+
+B.
+
+This definition is extended to dependent products and
+quantification
+over propositional
+types in the Calculus of Constructions.
+
+l
+
+R(P, r) = (z : M)R(N,
+
+(r 7F))
+
+Abstraction
+Let P = [Z : M]N
+tive propositional scheme.
+-
+
+Let us see how to define the notion of realizability
+for variables of type a propositional type, for example
+Spec. Let M be of type Spec, then E(M) is of type
+Data, a term t realizes M, if it is of type I(M) and
+if there exists a proof of the formula R(M, t). With
+realizability,
+we interpret M as a subset of terms of
+type S(M). In order to interpret a variable X of type
+Spec, we need two new variables.
+A variable C of
+type Data (the type of extracted objects of proofs of
+X) and a variable P of type C -t Prop (the predicate
+satisfied by extracted objects of proofs of X). This
+treatment of higher-order quantification
+is analogous
+with the one of J. -L. Krivine in the system AF2 [12]
+but we are in a typed framework.
+
+l
+
+If M is an informative
+R(P)
+
+l
+
+l
+
+l
+
+= [z : E(M)][?:
+
+propositional
+
+type
+
+= [z : R(M)]R(N)
+proposition
+
+then
+
+= [Z: &(M)@(N)
+
+If M is a non-informative
+R(P)
+
+type then
+
+: R(M,E)]R(N)
+
+If M is an informative
+R(P)
+
+with N an informa-
+
+propositional
+
+If M is a non-informative
+then
+R(P)
+
+The notion of realizability
+is defined for types (that
+is propositions or propositional types).
+
+proposition
+
+then
+
+= R(N)
+
+The other cases may be deduced easily. The fonction
+R is extended to the environments in a natural way.
+
+If M is an informative
+proposition
+or a propositional type, we define R(M, r) (to be read as r realizes M), with T a free variable of type E(M) not
+occurring in M. The formula R(M, r) will be a noninformative
+formula.
+If t is a term then we write
+R(M, t) for R(M, r)[r/t].
+
+It is possible to see the case of non-informative
+proposition and data types as particular cases of informative propositions.
+Let T be a data type inhabited by one element t. If M is a non-informative
+proposition,
+it will be possible to define S(M) = T
+and R(M, r) = (r =T t) AR(M).
+Let True be a noninformative tautology. If M is a data type then it will
+be possible to define R(M,r)
+= True.
+
+This is the general case. But we need also to define
+a notion of realizability
+for non-informative
+types. If
+M is a non informative
+type, the analogous of the
+predicate R(M,r)
+is a proposition or propositional
+scheme then we
+type ‘R(M). If M is a propositional
+define a new term R(M).
+If M is an informative
+proposition
+then M is also a propositional
+scheme
+and we take as a definition R(M,r)
+= (R(M) r).
+We give some examples of the definition
+
+If M is in AD then
+
+Definition
+4 A term t realizes (is a realization of)
+an informative type P (in an environment I’) if the
+type R( P, t) has a proof (in I’).
+An informative type P is realizable (in an environment I’) if there exists a term that realizes it (in I’).
+
+of ‘R.
+
+Our notion of realizability
+
+is sound.
+
+Spec Let r be a variable of type Data then
+Theorem
+2 (soundness)
+If t is a proof of the informative proposition M in an environment r then
+&(t) realizes M in ‘&?(I’).
+
+R(Spec, r) = P + Prop
+Variable
+If X is a variable of type M then y is a
+to be a
+variable of type S(M) and we define RF)
+variable (still of name X) of type R(M,X).
+
+The proof is by induction
+tion of I I- t E M.
+
+Product
+Let P = (Z : M)N with N an informative
+proposition and T be a variable of type C(P).
+l
+
+If M is informative
+R(P,r)
+
+l
+
+Remarks
+In formulas R(M, r), the types only depend on programming
+objects and never on proofWe have ‘R(M)
+= M, if M is a nonobjects.
+informative
+proposition that contains neither informative subterms nor sub-propositions
+that depends
+on proofs (they may depend on programs).
+In any
+case, if M is non-informative
+and provable then R( M)
+is also provable.
+
+then
+
+= (?F : E(M))(z
+
+If M is non-informative
+R(P, r) = (CC: R(M))R(N,
+
+: R(M,f))R(N,
+
+on the length of the deriva-
+
+(r 3!))
+
+then
+r)
+
+95
+
+3
+
+Examples
+
+but this proposition
+R(II) is equal to :
+
+In this section we show how some propositions are
+realized. In order to be more readable, we do not
+write the D indexes in terms, there is no ambiguity
+to do that. We also adopt more convenient notations
+instead of z for extracted bound variables.
+
+(A : Prop)((C
+
+is realizable.
+
+: Prop)(R(A)
+
+The proposition
+
+--+ C) + C) + R(A)
+
+that is provable because R(A) is of type Prop. trivially true. So II may be added consistently as an
+axiom. So S is of type Prop + Spec and may be
+viewed as an injection of the class of non-infomative
+propositions in the class of informative propositions.
+
+We study the following examples. Leibniz’s equality is a proposition
+that is realized by a fixed term
+independently
+of its proof. We show the realization
+of the existential type cand prove the consistency of
+the axiom of choice. We present also the predicate
+of realizability
+of disjunctive formulae, and the example of the natural numbers with the predicate of
+induction.
+
+When we define a second order type like conjonction or disjunction, it is possible to define it by quantification over a propositional
+variable of type Prop
+or Spec. For example with A and B, two propositions
+we have two kinds of disjonction :
+AVB
+
+E (C:P~O~)(A-+C)-+(B+C)+C
+
+A+B=(C:Spec)(A-+C)+(B+C)+C
+Remark
+An application of a notion of realizability
+is to prove the consistency of some axioms. Let A be
+a proposition, then if there exists a term that realizes
+A then A is consistent with the theory. Suppose that
+there exists a derivation of A l- I then because A is
+realizable, I is also realizable, this implies that it is
+provable.
+
+The proposition AV B is non-informative
+while A +B
+is informative.
+Using S it is possible to prove
+A+B
+and a similar proposition
+
+j
+
+AVB
+
+for every second order type.
+
+We may wonder whether the converse is realizable.
+In general, it is false. For example
+
+The notion of realizability
+is not only useful to extract programs from proofs but also to add consistent
+axioms that will be used in the development of the
+proof. In this section, we shall show several axioms
+that may be added consistently to the theory. Some
+of them becomes tautology if we identify Prop and
+Spec. But they are necessary in order to optimize the
+extracted code.
+
+AVB
+
+=s
+
+A+B
+
+is not realizable.
+But it is true for the conjonction
+of two noninformative propositions A and B. We define
+AAB
+
+z
+
+(C : Prop)(A
+
++ B + C) -+ C
+
+A x B E (C : Spec)(A + B + C) + C
+
+3.1
+
+About
+
+The proposition
+
+Prop and Spec
+
+A/\B+AxB
+The original constant Prop of the Calculus of Constructions is now the constant Spec. In the syntax,
+these two constants are not related. But in a certain
+sense we have the following relation Prop c Spec.
+This relation may be explicited.
+We define a term S
+of type Prop + Spec.
+S z [A : Prop](C
+
+is provable
+informative
+
+of the non-
+
+This corresponds to the notion of “self-realizing”
+formula (cf Beeson [l]). A formula M is self-realizing
+if there exists a term 4 such that 4 realizes A4 as
+soon as M is provable. We want to replace the term
+extracted from an arbitrary proof of M by 4. A way
+to implement this is to introduce a non-informative
+version M’ of M (by quantification
+over Prop) and to
+add an axiom @ of type M’ + M that will be realized
+by 4. When we need a proof of M, we shall use (a m)
+with m a non-informative
+proof of M’. The extracted
+term of this proof of M will be exactly 4. The class
+of propositions that may be realized independently of
+their proofs can be dynamically
+increased.
+
+: Spec)(A + C) + C
+
+It is easy to find a proof of
+(A : Prop)A + (S A).
+It is not possible to prove the non-informative
+sition :
+II = (A : Prop)(S A) + A
+
+using the two projections
+conjonction.
+
+prop*
+
+96
+
+A non-informative
+equality
+
+3.2
+
+Leibniz’s
+realizing”
+
+proposition
+
+:
+
+3.3
+
+The
+
+type
+
+absurdity
+
+It is natural to want a proposition
+is non-informative.
+We define :
+
+equality
+is a simple example of ‘selfproposition.
+We are in the environment :
+
+“absurdity”
+
+that
+
+I = (C : Prop)C
+
+A : Spec, a : A, b : B
+
+We then need the property
+
+:
+
+We define :
+except : (C : Spec)l
+
+-+ C
+
+Eq E (P : A + Spec)(P a) ---) (P b)
+The proposition
+and
+
+R(excepl,
+
+r) is equal to :
+
+(C : Data)(P : C + Prop)L ---f (P (r C))
+a =A b G (P : A + Prop)(P
+
+a) + (P b)
+This proposition is provable whatever r is. The problem is P has to be typed of type (C : DaZa)C. It is
+not possible to find a closed term of this type. We
+will keep the variable ezcepi in the extraction environment. Because the separation between Prop and
+Da-ta, the system is still consistent. It is also possible to prove (as a meta result) that a term extracted
+in a consistent environment
+cannot be of the form
+(etcept Ul . . . up).
+
+We have :
+
+E(Eq) = (C : Data)C --+ c
+and if r is a variable
+R(Eq,r)
+
+=
+
+of type f(Eq)
+
+:
+
+(C : Data)(P : C(A) + C + Prop)
+(x : C)(P f(a) x) - (P f(b) (r C z))
+
+The proposition
+
+a =A b is non-informative
+
+R(a =A b) = (P : f(A)
+
++
+
+JJ~oP)(P W)
+
+and
+-
+
+P
+
+3.4
+
+Q))
+
+=A
+
+b, =
+
+(c(a)
+
+=qA)
+
+f(b))
+
+We remark that it is consistent to assume a =A b if
+E(a) and E(b) are equal. This allow to forget about
+equality of proofs terms.
+It is easy to prove the following
+e(a)
+
+=E(A)
+
+c(b)
+
+properties
+
++ R(Eq, [C : Data][x
+
+W-f%, r) -+ f(a)
+
+=E(A)
+
+A : Data,
+The existential
+by :
+
+:
+
+CA(@)
+
+: C]x)
+
+C(b)
+
+3.4.1
+
+Each proof of equality can be replaced in the extracted program by the identity. So we do not need
+a computational
+proof of equality but only a logical
+one. We will use non-informative
+equality during the
+program’s development process. We take as an (informative) axiom eqspec of type :
++
+
+(9 : A + Prop
+
+intuitionistic
+
+quantification
+
+is defined
+
+G (C : Spec)((z : A)(@ z) --f C) -+ C.
+
+Realizability
+
+The extracted type is (C : Dada)(A - C) -+ C that
+we write x. This is not exactly A but a type similar
+to A.-More precisely we call LA thcinjection
+from A
+into A and ?TAthe projection from A on A. Formally :
+LA
+
+a=Ab
+
+proposition
+
+We show that realizing the proposition 3~ : A.P(x)
+with P a non-informative
+proposition gives an object
+t of type A such that P(t) is realizable. We are in the
+environment :
+
+We shall use the same notations for equality of elements of type B of type Data and shall write :
+R(a
+
+Existential
+
+G [a : A][C : Dda][h
+
+: A + Cj(h a)
+
+(P : A -) Spec)(P a) + (P b)
+?TA E [a : x](a
+
+The variable eqspec may appear in the extracted programs but it is correct to replace it by the identity. So
+that the final program will be valid in an environment
+without any occurrence of eqspec.
+
+It is not exactly
+
+an isomorphism
+(TA
+
+97
+
+A [z : Ajx)
+
+(LA
+
+x))
+
+=A
+
+because
+2
+
+is provable but not
+
+and & - R(P). In this interpretation
+a realizator of
+{AIP} is exactly an element t of type A such that
+(P x) is realizable.
+
+Actually there are examples of functional types A and
+closed terms x such that (LA (zA x)) and x are not
+convertible.
+But this is not a problem for what we
+want to prove.
+
+The axiom subintro is realized by a term f of type
+A -+ A such that
+
+Let r be a variable of type 2 then R(CA(+),~)
+the following proposition :
+
+We take f = [x : A]z.
+
+(C : Data)(P : C + Prop)
+(f : A --, C)((x : A)‘R(P
+4
++ (P (r c f))
+It is easy to prove the following
+(a
+
+: A)R((Q
+
+(a
+
+: ~)R(~A(@>,
+
+a))
+
+(x : 4wP)
+
+is
+
+The axiom subelim is of type {AIP}
++ CAP.
+is realized by a term g of type A -* 2 such that
+
+--, (P (f 4))
+propositions
+
+-
+
+a(cA(+),
+
+(&A
+
+a))
+
+a)
+
+4
+
+@A
+
+a)))
+
+R((@
+
+(X
+
+A subset
+
+(x : A)(C
+
+7: I;
+
+subelim
+
+:
+
+subreduce :
+
+sub&d
+
+:
+
+(9
+
+3))
+
+: A + C)(LA x C f) =c (f z)
+is the following
+
+1; + P~oP)((x
+
+: A)(WP)
+
+(trivially
+
+prov-
+
+4 + (Q 4)
+
+Proposition
+4 Let A be an informative proposition
+(A of type Spec), th e f 011owing propositions are realizable :
+A + {r : E(A)(R(A, r)}
+
+x) + {AJP}
+
+{r : E(A)]R(A,
+
+x) + C) -+ C
+
+(x : A)(h : (P x))
+(C : Spec)(f : (x : A)(P x) + C)
+(subelim (subintro x h) C f) =C (f x h)
+
+(t : (AIPl)(&
+: IAlP) - Prop)
+((x : A)(h : (P x)) + (Q (subintro
+
+R(cAp,
+
+We may internalize
+the equivalence between the
+provability
+of an informative
+proposition
+A and the
+existence of a program in f(A) that realizes A.
+
+: Spec
+
+w?
+--f (C : Spec)((x : A)(P
+
+*
+
+It is very easy to prove the equivalence between
+CAP and {Alp}.
+The subset type avoid the use of
+injection and projection in the extracted programs.
+We shall write {x : A]P} with x free in P instead of
+(A][x : A]P).
+
+It is also possible to build a real subset type, it
+means a type {AIP} that is realized by objects of
+type A that realizes P. Assume that A is of type
+Data and that P is of type A + Prop. We want the
+following properties :
+
+: (x : A)(P
+
+: Data)(f
+
+Finally R(subind)
+able) proposition :
+
+Using existential quantiffication
+and non-informative
+propositions,
+we get a construction
+analogous with
+the subset type in some versions of Martin-LX’s
+type
+systems.
+
+subintro
+
+x)
+
+The axiom subreduce is realizable because (by definition of 6~) the following proposition is provable :
+
+type
+
+{AIP}
+
+: A)(W)
+
+It
+
+We have already shown that the term g = LA works.
+
+:
+
+Proposition
+3 The proposition CA(@) is realitable
+if and only if there exists some element Q of type A
+such that (a a) is realizable.
+
+3.5
+
+4 + (‘R(P) (r 4)
+
+r)} =+ A
+
+The axiom of choice is just a particular
+property.
+3.5.1
+
+x h)))
+
+4 (Q t)
+
+Axiom
+
+case of this
+
+of choice
+
+Using the previous results it is possible to realize the
+axiom of choice. In the environment :
+
+We show that it is possible to realize all these axioms.
+In order to realize {AIP)
+we need a type C and a
+predicate Q of type C --+ Prop. We take C = A
+
+A : Data,
+
+98
+
+B : Data
+
+B:A+Prop,
+
+type bool, 7Z( COND, P) is the following
+
+@:AABBPTo~
+
+The axiom of choice can be stated as follows :
+
+(f : A + B((z : A)(Q z) + (a x (f x)))
+
+It is easy to realize it by the identity
+A + B.
+
+function
+
++
+
+on
+
+(P
+
+e (T c
+
+Xl
+
+m>)
+
+It is very easy to prove the proposition 7Z( COND, e).
+In this case, the realization of the proposition appears
+already inside the proposition and we do not need the
+proof in order to find it.
+
+Remark
+This shows an example of proposition that
+is not provable in the Calculus but that may be realized. It is essential for q to be a non-informative
+proposition and for B to be a data type.
+
+It is possible, using the axiom COND to prove the
+following proposition :
+(A + B) 3 {e : booll(cond
+
+3.6
+
+Disjunctive
+
+propositions
+
+3.7
+
+Let A and B be non-informative
+propositions.
+Let
+A + B be the intuitionistic
+second order disjunction
+then :
+A+B
+
+=
+
+(C:Spec)(A-tC)+(B+C)-+C
+
+E(A+B)
+
+=
+
+(C: Data)C-+C-+C
+
+=
+
+boo1
+
+e A B)}
+
+numbers
+numbers as iterators
+
+(C : Dota)C
+
+is :
+
++ (C + C) + C.
+
+We define the two constructors zero (0) and the successor function (s). It is well known that there exists
+an operator of primitive recursion ret of type
+nut
+
+(C : Dala)C
+
+[Tl
+
+: nd](P
+
+$2
+
+-)
+
++ (nai + C + C) + C
+principle
+
+: ?&at
+((u
+
++
+
+on natural
+
+numbers,
+
+PTOp)
+
+: naw
+
+4
+
++
+
+(P
+
+(s
+
+4))
+
+n.
+
+Let C be of type Data, c of type C and f of type
+nal --+ C + C. It is possible to prove the following
+results :
+(ret
+
+-+ (P 4
+proposition
+
++
+
+Let N be the induction
+namely :
+
+(f’ : boo1 + PTOP)
+(A + (P true)) + (B -+ (P false))
+
+(n
+
+: nut)(N
+
+----i
+
+(Tee
+
+0
+
+c
+
+c f)
+
+=c
+
+c
+
+n)
+(s
+
+n)
+
+c
+
+c
+
+f)
+
+=c
+
+(f
+
+72 (ret
+
+n
+
+c
+
+c f))
+
+It is not possible to prove (n : nal)(N n) in the
+Calculus of Constructions
+neither to realize it. We
+need the fact that (n n&O S) is equal to n. This fact
+may be proved for closed terms. A similar relation
+may be false for other second order types.
+
+:
+
+cond(e, A, B)
+-+ (P : boo1 + Spec)
+(A + (P true)) + (B --, (P false))
+-
+
+natural
+
+nat -
+
+But there is a variant of the disjunction
+of two
+propositions introduced by S. Hayashi and which may
+be taken as a non-informative
+proposition.
+Let A and
+B be two non-informative
+propositions,
+and e be a
+boolean. Then we define the proposition “If e then A
+else B”. More precisely we defined cond(e, A, B) to
+be the following non-informative
+formula :
+
+informative
+
+The
+
+The type of the natural
+
+If ‘u proves an intuitionistic
+disjunction, then the extracted term will be a boolean. It is not possible to
+know what boolean it will be without looking at the
+proofofA+B.
+
+Let COND be the following
+
+:
+
+cond(e, R(A), R(B))
+---t (c : Daia)(P : boo1 + C + PTOP)
+((xl : C)R(A) --i (P lrue XI))
++ ((x2 : C)R(B) -t (P false x2))
+
+((2 : A)(* 2) + {Y : BI(@ x Y))>
++
+
+proposition
+
+We propose a solution that will work for every second order type defined by a specification of its constructors. We introduce using our subset type, a type
+NAT, of objects of type nat that satisfy N.
+
+P 4
+
+And we would like to take COND as an axiom. We
+need to find a realization of COND. We get easily that
+C( COND) = bool. And now with r a new variable of
+
+NAT
+
+99
+
+h
+
+{n : natl(N n)}
+
+Because we have proofs of
+(N o)
+
+and
+
+(U : xrat)(n/
+
+In particular
+it may contains non-terminating
+subterms. The fact that this term is normalizable comes
+from the provability
+of the judgement.
+The judgement a in A has to be read “Q realizes A”. The
+notion of realizability
+satisfies the fact that a realize
+tion terminates.
+
+U) + (A! (s a))
+
+it is easy to find a term; 0 of type NAT, such that
+e(O) = o and a term S of type NAT -+ NAT such
+that E(S) = s.
+
+The idea of separating types (what we call Spec)
+and propositions has been proposed for Martin-Liif’s
+systems [14]. It seems to be the right way to express
+the subset type. In Nuprl and ITT, there are no distinctions between proofs and programs. This distinction becomes necessary if we want to realize more
+axioms without getting an inconsistent environment.
+
+The terms of type NAT behaves like terms of type
+nut but they contain an extra logical information.
+Let
+Peano be the following proposition :
+(n : NAT)(P : NAT + Prop)
+(P 0) --t ((u : nal!)(P u) + (P (S u)))
++ (P n).
+Then Peano is realizable
+R(Pean0)
+
+= (72 : naZ)(N
+
+We are often more interested
+lowing proposition :
+(n : NAT)(P
+PJ
+
+n) +
+
+(N
+
+the fol-
+
+: NAT + Spec)
+
+5’ (CJ : nap
+n.
+
+Related
+
+71)
+
+in realizing
+
+4 + (P (S 4))
+
+This proposition is realized by the operator
+tive recursion rec.
+
+4
+
+Our notion of realizability
+is related to AF2 system. The system AF2 is a second order predicate
+logic. One difference is that in AF2, r realizes Vx.P
+is the proposition VZ. (r realizes P) (and not, V+.((r 2)
+realizes P)). To find this notion of realizability
+in (the
+extension to the hierarchy of type of) our system, it
+is sufficient to say that the first-order objects are in
+some class U of type Type. But the main difference
+is the way this realizability
+is used. To develop a
+program p in AF2, you first give an equational specification of this program. Suppose for example that p
+is a function on natural numbers, you have to realize
+the formula Vz.N(x)
++ N(p z), where N is (for example) the induction principle on natural numbers.
+The realization gives you a X-term that computes p.
+
+because :
+
+of primi-
+
+works
+Conclusion
+
+There are many relations between this work and
+PX [lo], Nuprl [3], ITT (Martin-LGf’s
+system [15])
+or AF2 [12,16].
+
+We have defined and proved sound an internal notion
+of realizability
+for a syntactic variant of the Calculus
+of Constructions.
+The critical point in such a notion is
+to have a definition that commutes with substitution.
+
+The idea of using a. syntactic
+notion of noninformative propositions in order to optimize the realizability comes from the isystem PX. This system has
+also a clear distinction between proofs and programs,
+and among the proofs between informative and noninformative
+ones (non-informative
+propositions
+are
+called “type zero”). In this system the realizations
+may not terminate.
+There is a predicate E in the
+logic whose meaning is termination.
+The definition
+of realizability
+is such that x realizes A =R E(z) is
+always provable.
+
+We think that the Calculus of ConstructZns
+with
+Realizations
+is an adequate “Programming
+Logic”.
+In particular
+it is necessary to distinguish
+between
+the programming and the proof language, and to distinguish inside the proof language between informative and non-informative
+propositions.
+Because the
+proposition that says when a program realizes a specification is a formula of the Calculus of Constructions,
+we may use the system in order to prove that some
+term is a realization of some proposition.
+
+In Nuprl [3], the extra information
+is hidden using
+the subset type {Z : AIP(z)}.
+In this system if a is of
+type {Z : All’(z)}
+then a ‘is also of type A. So given Q,
+the type of a is undecidable. In our system, there is a
+difference between the proof of {Z : Alp(z)}
+and the
+extracted term of type A,. In a judgement u in A in
+Nuprl, a may be an arbitrary term of the X-calculus.
+
+An experimental implementation
+of the system has
+been done, using the current implementation
+of the
+Calculus of Constructions
+realized at INRIA by G.
+Huet in the language CAML. There has been no difficulty to adapt our previous examples of development
+
+loo
+
+Syntax and 'I-/\\-".
+Inductive
+and [A,B:Prop]
+
+of programs (Quicksort for lists, a formating program
+. ..[13]) to this system. It is now possible to really get
+functional programs extracted from these proofs and
+to execute them.
+
+= conj
+Existential
+
+The system presented in this paper extracts programs typed in the system F, which contains only
+terminating
+terms. But our notion of realizability
+is
+quite independent of the programming language. In
+particular
+we may extend it with a fixpoint.
+Then
+the proof of termination
+will no more appear inside
+the program but will be a consequence of the realizability proposition.
+Such a treatment is related to P.
+Dybjer’s work [9] and to J.-L.. Krivine’s AF2 [12,16].
+We will explain this in a forthcoming paper.
+
+Equality
+
+: (A:Data)(x.y:A)(P:A->Spec)
+(cA>x=y)->(P x>->(P y).
+
+Let R be a total, reflexive
+data type A.
+
+example
+
+Syntax
+
+not
+
+Inductive
+
+on a
+
+List
+
+: Data
+
+= nil
+
+: List
+I cons : A->List->List.
+
+Axiom List-ind
+: (l:List)(P:List->Spec)
+(P nil)
+->((a:A)(m:List)
+(P m)->(P (cons a m)))
+->(P 1).
+
+: (C:Spec)c>-X.
+
+not CA:ProplA->(I.
+41--1’.
+disjunction
+
+relation
+
+The data type of lists of elements of A :
+
+Axiom nil-cons
+Informative
+propositions
+
+and transitive
+
+Variable A : Data.
+Variable R : A->A->Prop.
+Axiom Rtot : (x.y:A)<(R
+x y)3+((R
+y x13.
+Axiom Rrefl : (a:A)(R a a).
+Axiom Rtrans : (a,b,c:A)
+(R a b)->(R b c)->(R a c).
+
+Definition
+void (C:Prop)C.
+Syntax void “()“.
+
+Definition
+
+: A->Prop
+
+Axiom eq-spec
+
+and negation :
+
+Axiom except
+
+:
+
+Syntax eqd "<->-=-".
+[A:Data;x:A]
+Inductive
+eqd
+= refl,equal
+: <A>x=x.
+
+We give the complete development of an algorithm
+for the search of the smallest element in a non-empty
+list in the Calculus of Constructions
+with Realizations. This is a session for the machine. Comments
+are written in italics. The command Inductive
+is
+a “macro” that builds simultaneously
+a type and its
+constructors.
+Absurdity
+
+:
+
+Inductive
+sig CA:Data;P:A->Propl
+: Spec
+x)->(<A>Sig(P)).
+= exist
+: (x:A)(P
+
+I am grateful to Gerard Huet for supervising this work
+and to Thierry Coquand for many helpful discussions.
+
+A proved
+
+quantification
+
+Syntax sig "<->Sig(,)".
+
+Acknowledgements
+
+A
+
+: Prop
+
+: A ->B ->(A/\B).
+
+of
+
+two
+
+:
+
+(a:A)(m:List)'(<List>nil=(cons
+
+non-informative
+
+a m)).
+
+:
+
+Syntax sumbool “(,)+(,3”.
+Inductive
+sumbool CA,B:Propl
+
+= left
+I right
+
+: A ->((A)+{B))
+
+Non informative
+propositions :
+
+conjonction
+
+Definition
+of the predicate inL ((inL a 1) = a E 1):
+the smallest predicate such that a E a.m and
+: Spec
+
+a~ m 3
+
+: B->((A>+<B)).
+
+a~ b-m.
+
+Inductive
+inL [a:Al : List->Prop
+a m)
+= inL,tl
+: (b:A)(m:List)(inL
+->(inL a (cons b m))
+a (cons a III)).
+i inL_hd : (m:List)(inL
+
+of two non-informative
+
+101
+
+of the predicate in..,5 ((infL a 1) 3 a < 1):
+the smallest predicate such that a << nil and
+
+Proof
+Cl:Listl
+(List-.ind
+1 ErHin
+CH:'cList>nil=nill
+(except <AXig(Min
+nil)
+(H (refl,equal
+List nil)))
+[a:A] Cm:ListlEH:(ExMin
+m)]
+CHO:'<List>nil=(cons
+a m)]
+(nil-or-not
+m <A>Sig(Min (cons a m))
+[Hl:<List>nil=m]
+(eq-spec List nil m
+[x:Listl<A>Sig(Min
+(cons a x))
+Hl
+(exist A (Hin (cons a nil))
+a (unit a)))
+CHl:'CList>nil=ml
+(II Bl <A>Sig(Min (cons a m))
+Cx:A]CH2:(Min m x)1
+(Rtot a x <A>Sig(Min (cons a m))
+CH3:(R a x)1
+.(exist A (Min (cons a m))
+a (cons1 a x m H2 H3))
+CHS:(R x a)1
+(exist A (Hin (cons a m))
+x (cons2 a x m H2 H3)))))).
+
+Definition
+
+a << m A (R a b) +
+
+Inductive
+infL
+= infl-nil
+I infl-cons
+->(infL
+Lemma
+
+CL<< b.m.
+
+[a:A] : List->Prop
+: (iniL a nil)
+: (b:A)(m:List)(R
+a b)
+a m)->(infL
+a (cons b m)).
+
+: A list is or not equal to nil.
+
+Lemma nil-or-not
+(l:List){CList>~nil=l~+{~CList>nil=l)
+Proof
+[l:List]
+(List,ind
+1
+[x:List](<List>nil=x)+('<List>nil=x)
+(left
+<List>nil=nil
+'<List>nil=nil
+(refl,eq(ual
+List nil))
+[a:A] [m:List]
+[B:{<List>nil=m~+('~List>nil=m~l
+(right
+<List>nil=(cons
+a m)
+'<List>nil=(cons
+a m)
+(nil-,cons
+a m))).
+We do not write
+
+the explicit
+
+non informative
+
+lemmas
+
+Name Min [l:List]
+((infL
+Lemma unit
+Proof . . .
+
+proofs
+
+Ca:Al
+a l)/'\(inL
+
+(a:A)(Min
+
+The automatically
+
+of the following
+
+a)
+
+Lemma cons1 (a,x:A)(m:List)
+(Hin m x)->(R a x)
+->(Min (cons a m) a)
+Proof . . . .
+Lemma cons2
+
+Proof
+
+Vl : List.
+
+(a,x:A)(m:List)
+(Min m x)->(R x a)
+->(Min (cons a m) x)
+
+:
+1 # nil
+
+=S 3a : A.(a
+
+< 1 A a E 1)
+
+Name ExMin
+[l:List]('<List>nil=l)->cA>Sig(Min
+Theorem min-search
+
+(l:List)(ExMin
+
+is :
+
+* [Rtot :A->A->sumbool]
+List = (C:Data)C->(A-X-X)-X
+: Data
+nil
+= CC:Data]Ccl:ClCc2:A-X-Xlcl
+: List
+cons = [a:A][l:List]
+[C:Data][ci:C]
+[c2:A-X-X]
+(c2 a (1 C cl ~2))
+: A->List->List
+* [List,ind
+:
+List->(P:Data)P->(A->List->P->P)->P]
+nil-or-not
+==>
+Cl:Listl
+(List,ind
+1 sumbool
+left
+[a:A][m:List][H:sumbool]right)
+
+....
+
+To prove
+
+context
+
+* [except :(C:Data)Cl
+sumbool ==> (C:Data)C-X-X
+==> ~C:DatalCcl:ClCc2:Clcl
+left
+right
+==> CC:DatalCcl:C1~c2:Clc2
+sig
+==> CA:Dataj(C:Data)(A-X)-X
+exist
+==> [A:Data [x':A]
+[C:Data]Ccl:A-X](cl
+xJ)
+; :I[q-;;;;:(A:Data)A->A->(P:Data)P->P]
+
+a 1)).
+
+(cons a nil)
+
+extracted
+
+1).
+1)
+
+102
+
+ExMin
+min-search
+
+==> (sig
+==>
+
+References
+
+A)
+
+Cl :Listl
+
+PI M.J. Beeson. Foundations
+
+(List-ind
+1 ExMin
+(except (sig A))
+[a:A][m:List][H:ExMin]
+(nil-or-not
+m (sig
+
+ematics, Methamathematical
+Verlag, 1985.
+
+A)
+
+PI C. BGhm and A. Berarducci.
+
+Automatic synthesis of typed X-programs on term algebras. Theoretical Computer Science, 39, 1985.
+
+List nil m (sig A)
+(exist
+A a))
+(II (sig A)
+[x:AI(Rtot
+a x (sig A)
+(exist
+A a)
+(exist
+A x)))))
+(eq-spec
+
+PI R.L. Constable
+
+et al. Implementing
+Mathematics with the Nuprl Proof Development System.
+Prentice-Hall,
+1986.
+
+PI Th. Coquand.
+
+Metamathematical
+investigations
+of a calculus of constructions,
+part I: syntax.
+1987. To appear as INRIA Technical Report.
+
+We may replace eqspec by :
+CA:Datal Cx,y:Al
+
+CC:Datal Cx:Clx
+
+and get the following
+
+program
+
+:
+
+[51 Th. Coquand.
+
+Une Thkorie des Constructions.
+These de 3eme cycle, UniversitC Paris 7, 1985.
+
+Cl :Listl
+
+(List-ind
+1 ExMin
+(except (sig
+[a:Al
+
+Cm:Listl
+
+PI Th. Coquand and G. Huet. The calculus of con-
+
+A))
+A)
+
+(H (sig A)
+Cx:Al (Rtot
+
+with
+
+structions.
+
+CH:ExMinl
+
+(nil-or-not
+m (sig
+(exist A a)
+
+Relation
+
+PI Th.
+
+Coquand and G. Huet.
+a higher order proof system
+mathematics. In EUROCAL85,
+Linz, 1985. LNCS 203.
+
+There is an anal-
+
+types. For example the type sig is a type with one
+unary constructor.
+‘A sig
+
+= exist
+
+of
+
+min-search
+
+Program Verification
+in a Logical
+Theory of Constructions.
+Technical Report, Programming Methodology
+Group, Chalmers University of Technology and University of GBteborg, 1986.
+
+‘A;;
+
+let
+
+WI S. Hayashi and H. Nakano. PX, a Computational
+
+Logic. Technical Report, Research Institute for
+Mathematical
+Sciences, Kyoto University, 1987.
+
+WI W.A. Howard.
+
+The formulae-as-types
+notion of
+constructions.
+In J.P. Seldin and J.R. Hindley,
+editors, to H.B. Curry : Essays on Combinatory
+Logic, Lambda Calculus and Formalism., Aca
+demic Press, 1980. Unpublished
+1969 Manuscript.
+
+=
+
+function
+[I -> failaith
+la::m -> if m = nil
+
+"except"
+then
+else
+
+(exist
+
+Constructions:
+for mechanizing
+Springer-Verlag,
+
+PI P. Dybjer.
+
+In the second order X-calculus it is possible to apply
+a term of type (sig A) to a type C and a fonction of
+type A-X. This corresponds to the ML construction
+match. Thisanalogy holds also for lists and booleans.
+We remark that the operation of matching a boolean
+is just the construction
+if.
+We get explicitely
+the
+following program of type List->
+List sig
+let
+
+and Control, 76, 1988.
+
+tiques et informatiques formalis& dans le calcul
+des constructions.
+In The Paris Logic Group, editor, Logic Colloquium ‘85, North-Holland,
+1987.
+
+a x (sig A)
+(exist
+A a)
+(exist
+A x)))))
+
+an ML program
+
+Information
+
+171Th. Coquand and G. Huet. Concepts mathema-
+
+ogy between second order types and ML’s concrete
+
+type
+
+of Constructive MathStudies. Springer-
+
+a)
+
+H = (min-search m) in
+(match H with (exist x)-B
+if R a x then exist a
+else exist x);;
+
+WI J.-L.
+
+Krivine and M. Parigot.
+Programming
+with proofs. 1987. Preprint, presented at 6th
+symposium on Computation
+Theory, WendishRietz, Germany.
+
+103
+
+[13] C. Mohring. Algorithm development in the calculus of constructions.
+In Symposium on Logic
+in Computer Science, IEEE Computer Society
+Press, Cambridge, MA, 1986.
+[14] B. Nordstrijm
+and K. Petersson.
+Types and
+specifications.
+In R.E.A. Mason, editor, Information Processing /13, North-Holland,
+1983.
+[15] P. Martin-Lijf.
+Intwitionistic
+Type Theory. Studies in Proof Theory, Bibliopolis,
+1984.
+[16] M. Parigot. Programming with proofs : a second
+order type theory. In ESOP’88, Springer-Verlag,
+Nancy, 1988. LNCS.
+[17] A.S. ‘Tkoelstra, editor. Metamathematical
+Innesligation of Intuitionistic
+Arithmetic
+and Analysis. LNM 344, Springer-Verlag,
+1973.
+
+104
+
+

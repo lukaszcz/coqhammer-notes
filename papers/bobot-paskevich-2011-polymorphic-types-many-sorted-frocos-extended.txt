@@ -1,0 +1,1780 @@
+          Expressing Polymorphic Types in a Many-Sorted
+                            Language
+                                François Bobot, Andrei Paskevich
+
+
+
+      To cite this version:
+    François Bobot, Andrei Paskevich. Expressing Polymorphic Types in a Many-Sorted Language. [Re-
+    search Report] 2011. �inria-00591414v4�
+
+
+
+
+                                 HAL Id: inria-00591414
+                        https://hal.inria.fr/inria-00591414v4
+                                      Submitted on 26 Jul 2011
+
+
+
+
+    HAL is a multi-disciplinary open access               L’archive ouverte pluridisciplinaire HAL, est
+archive for the deposit and dissemination of sci-     destinée au dépôt et à la diffusion de documents
+entific research documents, whether they are pub-     scientifiques de niveau recherche, publiés ou non,
+lished or not. The documents may come from            émanant des établissements d’enseignement et de
+teaching and research institutions in France or       recherche français ou étrangers, des laboratoires
+abroad, or from public or private research centers.   publics ou privés.
+           Expressing Polymorphic Types in a
+                Many-Sorted Language
+                     François Bobot1,2 and Andrei Paskevich1,2
+               1
+                    LRI, Université Paris-Sud 11, CNRS, Orsay F-91405
+                2
+                    INRIA Saclay-Île de France, ProVal, Orsay F-91893
+
+
+       Abstract. In this paper, we study translation from a first-order logic
+       with polymorphic types à la ML (of which we give a formal description) to
+       a many-sorted or one-sorted logic as accepted by mainstream automated
+       theorem provers. We consider a three-stage scheme where the last stage
+       eliminates polymorphic types while adding the necessary “annotations”
+       to preserve soundness, and the first two stages serve to protect certain
+       terms so that they can keep their original unannotated form. This pro-
+       tection allows us to make use of provers’ built-in theories and operations.
+       We present two existing translation procedures as sound and complete
+       instances of this generic scheme. Our formulation generalizes over the
+       previous ones by allowing us to protect terms of arbitrary monomorphic
+       types. In particular, we can benefit from the built-in theory of arrays
+       in SMT solvers such as Z3, CVC3, and Yices. The proposed methods
+       are implemented in the Why3 tool and we compare their performance in
+       combination with several automated provers.
+
+
+1    Introduction
+
+Polymorphic types are a means of abstraction over families of different types;
+a polymorphic definition or proposition stands for a potentially infinite number
+of its type-specific instances. Type systems employing polymorphism arise natu-
+rally in programming languages and they are a prominent feature of interactive
+proof assistants such as Coq [17] or Isabelle/HOL [15].
+     However, a proof task written in a language with polymorphic types is today
+a difficult subject for automation. This is not because polymorphism handling
+in a prover is complicated or inefficient per se. As was demonstrated by the Alt-
+Ergo project [3], this only requires a straightforward extension of the unification
+procedure and does not impose any significant overhead. The fact is, advanced
+type systems have not yet become mainstream in automated deduction: SMT
+solvers use many-sorted languages such as SMT-LIB [1], and TPTP provers are
+content with one-sorted first-order language. Thus, to apply a mainstream prover
+to a problem expressed in a polymorphic language, we have to translate it into
+an equivalent monomorphic or even one-sorted problem.
+     The challenge is not new and a number of solutions is known, ranging from
+adding per-variable “type guards” (also known as “relativisation of quantifiers”,
+see [11] and [10, Sect. 3.0]), to throughout decoration of terms with their types
+[8, 5], to various flavours of type erasure [9, 13, 10]. The latter method is logically
+unsound, though adding type annotations can prevent certain unsound inference
+steps (see [13, Sect. 2.5,2.6] and [10, Sect. 3.1]).
+    An important feature of a polymorphism encoding method is special treat-
+ment of types and operations that are directly handled by provers’ built-in deci-
+sion procedures, e.g., for linear arithmetic or bit-vectors. The idea is to prevent
+the terms that can be interpreted by a prover from being modified by transla-
+tion, to preserve their original form [5, 10]. In what follows, we call this “type
+protection” to emphasize that we are interested in terms of particular types.
+    In this work, we aim to lift (or at least work around) several limitations we
+perceive in the previous approaches. Firstly, the existing type protection tech-
+niques only handle “simple” types, like integers or booleans, but not instances of
+polymorphic types, like lists of integers or arrays of reals. Yet decision procedures
+for such “complex” types are implemented in some SMT solvers; for example,
+Z3 [14], CVC3 [2], and Yices [6] have a built-in support for arrays. Secondly,
+type protection, as defined in [5], cannot be used to protect finite types such as
+booleans: given an axiom “every boolean is equal either to ‘true’ or to ‘false’”, one
+can derive that there are only two values in any encoded type, which can easily
+lead to a contradiction. Thirdly, while translation by type erasure with addition
+of type arguments to polymorphic symbols [10, Sect. 3.1] is less intrusive and
+more efficient than full term decoration [5], the former method is unsound and,
+according to [10], is only applicable in combination with provers that use trigger-
+based rather than unification-based instantiation. Such a requirement excludes
+the superposition-based provers and may be difficult to test when a third-party
+prover is used.
+    We begin with a formal presentation of first-order logic with polymorphic
+types (Section 2). In particular, we show that complete monomorphisation is
+undecidable, that is, we cannot effectively compute a finite set of monomorphic
+instances of a polymorphic formula F that is equisatisfiable to F . Then we
+introduce a generic three-stage scheme of polymorphism encoding (Section 3).
+In this scheme, we start by replacing interpreted polymorphic symbols (such as
+operations of access and update in arrays) with selected monomorphic instances.
+The translation proceeds then to type protection, which we consider as a separate
+transformation, and concludes with polymorphism elimination proper.
+    We present a sound and complete method of type instantiation with sym-
+bol discrimination that we use (in slightly different variants) both for the first
+and the second stage (Sections 3.1 and 3.2). Furthermore, we give a general-
+ized formulation of the type protection method from [5], free from the aforesaid
+restrictions (Section 3.3). As third-stage transformations, we consider full term
+decoration from [8, 5] (Section 3.4) and type erasure with added type annota-
+tions from [10, Sect. 3.1] (Section 3.5). We show the latter method to be sound
+on problems that admit models with infinite domains for every non-protected
+type and we discuss how this condition can be handled in practice.
+    We conclude by comparing the described techniques in combination with the
+SMT solvers Z3, CVC3, and Yices [6] on a set of about 4100 proof obligations
+in the Why3 tool [4] (Section 4).
+2    First-Order Logic With Polymorphic Types
+
+The logic FOLT , presented below, is an extension of classical first-order many-
+sorted logic. In FOLT , types are built from type constants (such as “integer”),
+type functions (such as “list of”), and type variables that stand for arbitrary
+monomorphic types. We do not admit quantifiers over type variables, neither
+in types, nor in formulas: a polymorphic formula is rather seen as a scheme,
+a potentially infinite conjunction of its monomorphic type instances. In other
+words, every type variable that occurs in a formula is bound by an implicit prenex
+universal quantifier. Basically, we use type polymorphism as a convenient way
+to write a set of polymorphic axioms — say, for lists or arrays — once, instead
+of copying them for every particular instance of these types.
+    The principal purpose of FOLT is to help specify and prove programs and
+its type system can be seen as the first-order fragment of the ML type system.
+The Why3 verification tool [4] is based upon FOLT with some extensions such
+as algebraic types. The papers [5] and [10] work in a similar setting, though the
+latter employs explicit quantifiers over type variables in logic formulas.
+
+Syntax. We define types as syntactical expressions built from type constructors
+of fixed arity (denoted with capital sans-serif letters) and type variables (denoted
+α, β, γ). For example, β, I, F(I, γ) are well-formed types. Type constructors of
+arity 0 are called type constants. A type that contains no type variables is called
+monomorphic type, closed type, or sort. A vector of types hT1 , . . . , Tn i is called
+type signature.
+     A type substitution is a mapping from type variables to types. A monomorphic
+type substitution maps every type variable either to itself or to a sort. A type
+T is said to match another type T 0 whenever there is a type substitution that
+instantiates T to T 0 . This notion is trivially extended to type signatures.
+     We use letters S and T for types, boldface letters S, T for type signatures,
+and Greek letters τ , θ, and π for type substitutions. We denote the set of available
+type variables with VT , the set of type constructors with FT , the set of all types
+built from VT and FT with T (FT , VT ), and the set of all sorts with T (FT ). We
+presume that VT is infinite and FT contains at least one type constant.
+     We use traditional first-order terms and formulas, built from variable sym-
+bols (denoted u, v, w), function symbols (denoted f, g, h), and predicate symbols
+(denoted p, q), with the following additions:
+
+ – Every term, be it a variable or a function application, carries an explicit
+   type, e.g.: w : C(I), f (u : α, v : L(α)) : L(α). We denote terms with letters s
+   and t, and, by abuse of notation, we sometimes write the type of a term to
+   the right of the letter: s : T1 , t : T2 , and so on.
+ – A variable is a variable symbol with a type, and we treat w : C(I) and w : C(α)
+   as two distinct variables even though they share the same variable symbol.
+ – To each function symbol of arity n we assign a type signature of length n+1.
+   A term of the form f (t1 : T1 , . . . , tn : Tn ) : T is well-formed if and only if the
+   type signature of f matches hT1 , . . . , Tn , T i.
+ – To each predicate symbol of arity n we give a type signature of length n. An
+   atomic formula of the form p(t1 : T1 , . . . , tn : Tn ) is well-formed if and only if
+   the type signature of p matches hT1 , . . . , Tn i.
+ – An atomic equality formula of the form t1 ≈ t2 is well-formed if and only if
+   the terms t1 , t2 have the same type.
+ – Quantifiers bind variables, i.e., typed variable symbols: ∀(u : α) p(u : α, u : C).
+   Here, the first argument of p is bound, but the second one is free.
+
+     We treat equality (≈), negation (¬), conjunction (∧), and the universal quan-
+tifier (∀) as logical symbols and we treat disjunction (∨), implication (⊃), equiv-
+alence (≡), disequality (6≈), and the existential quantifier (∃) as abbreviations.
+     We use letters x, y, z for variables, letters F, G, H for formulas, and Greek
+letters Γ, ∆ for sets of formulas. We denote the (infinite) set of variable symbols
+with V, the set of function symbols with F, and the set of predicate symbols
+with P. Given a term or a formula e, the set of type variables occurring in e is
+denoted FVT (e) and the set of free variables of e is denoted FV(e). If FVT (e) is
+empty, we call e monomorphic. If FV(e) is empty, we call e closed or ground.
+     Substitutions, denoted with letters σ and δ, apply to a term or a formula,
+replacing free variables with terms of the same type. The application of a sub-
+stitution σ to a term or a formula e is denoted eσ. The symbol ◦ denotes the
+composition of two (type) substitutions: x(σ ◦ δ) , xσδ.
+     Type substitutions apply only to closed formulas and ground terms; also, we
+require type instantiation to rename every bound variable symbol to some fresh
+variable symbol. In this way, we avoid variable collisions: for example, the type
+substitution [I/α] would not instantiate the formula ∀(u : α)∀(u : I) p(u : α, u : I) to
+∀(u : I)∀(u : I) p(u : I, u : I), but to ∀(u0 : I)∀(u00 : I) p(u0 : I, u00 : I). In our subsequent
+examples, we will not use a variable symbol in two different variables in the same
+formula to avoid confusion.
+     Throughout the rest of the paper, we illustrate our transformations on the
+following simple polymorphic formula (for the sake of readability, we omit the
+most obvious type annotations):
+
+            ∀(m : M(α, I)) ∀(c : α) get(set(m, c, 6) : M(α, I), c) : I ∗ 7 ≈ 42
+
+Here, the type I represents integers and the type M(α, β) is that of polymorphic
+α-to-β maps. The function symbol get is of type signature hM(α, β), α, βi and
+set is of type signature hM(α, β), α, β, M(α, β)i.
+
+Satisfiability. Given sets FT , F, P, an interpretation I is defined by three maps:
+
+ – to each sort S ∈ T (FT ), we assign a non-empty domain DSI ;
+ – to each symbol f ∈ F and each vector of sorts S = hS1 , . . . , Sn , Si matched
+   by the type signature of f , we assign a function fSI : DSI1 × · · · × DSIn → DSI ;
+ – to each symbol p ∈ P and each vector of sorts S = hS1 , . . . , Sn i matched by
+   the type signature of p, we assign a function pIS : DSI1 × · · · × DSIn → {>, ⊥},
+   where > and ⊥ stand for Boolean constants “true” and “false”, respectively.
+    We call type valuation a type substitution that instantiates every type vari-
+able in VT to a sort. Given a type valuation π, we call variable valuation under π
+a function that maps every variable u : T to some element of DTI π . We simply say
+variable valuation when the implied type valuation is known from the context
+or in a purely monomorphic setting, where every type is already closed.
+    Let π be a type valuation and ξ be a variable valuation under π. We evaluate
+terms and formulas according to the following equalities, where t : T stands for
+a vector of terms t1 : T1 , . . . , tn : Tn and ξ[u : T 7→ a] is a valuation that coincides
+with ξ everywhere except u : T , which is mapped to a.
+
+        Iπ,ξ (u : T ) , ξ(u : T )                  Iπ,ξ (t1 ≈ t2 ) , (Iπ,ξ (t1 ) = Iπ,ξ (t2 ))
+                            I
+Iπ,ξ (f (t : T)) : T ) ,   fhT,T iπ (Iπ,ξ (t))         Iπ,ξ (¬F ) , ¬ Iπ,ξ (F )
+     Iπ,ξ (p(t : T)) ,     pITπ (Iπ,ξ (t))          Iπ,ξ (F ∧ G) , Iπ,ξ (F ) ∧ Iπ,ξ (G)
+                                                                      ^
+                                                 Iπ,ξ (∀(u : T )F ) ,   Iπ,ξ[u : T 7→ a] (F )
+                                                                        I
+                                                                     a∈DT π
+
+
+   It is easy to see that evaluation of a term or a formula e under Iπ,ξ does not
+depend on the values of π and ξ on (type) variables that do not occur in e.
+
+Lemma 1. Let F be a formula and I be an interpretation. Let π1 and π2 be type
+valuations that coincide on every type variable in FVT (F ). Let ξ1 be a variable
+valuation under π1 and ξ2 be a variable valuation under π2 . Let us suppose
+that ξ1 (u : T ) = ξ2 (u : T ) for every variable u : T in FV(F ). Then Iπ1 ,ξ1 (F ) =
+Iπ2 ,ξ2 (F ).
+
+    In what follows, when we evaluate closed or monomorphic expressions, we
+often omit the variable valuation or the type valuation, respectively.
+
+Lemma 2. Let F be a closed formula and I be an interpretation. For any type
+valuation π, Iπ (F ) = I(F π).
+
+    As we said above, we treat type variables as implicitly universally quantified
+at the top of a polymorphic formula. Thus, a closed formula F is satisfied by
+I if and only if Iπ (F ) is true for every type valuation π. A closed formula is
+satisfiable if and only if it is satisfied by some interpretation, called a model of
+this formula. These definitions are trivially extended to sets of closed formulas.
+    To prove a polymorphic formula G in a polymorphic context Γ , we take a
+type substitution τ that replaces all type variables in G with fresh type constants
+and show that the set Γ, ¬Gτ is unsatisfiable. Generally speaking, the semantics
+of polymorphic formulas in FOLT is quite similar to that of first-order clauses,
+where the free variables are also implicitly universally quantified.
+    On monomorphic terms and formulas, our definitions correspond to the tra-
+ditional many-sorted logic with disjoint sorts. Moreover, by Lemma 2, we can
+see closed polymorphic formulas as mere “schemes” of their monomorphic type
+instances (of which there may be an infinite number). To put this precisely, we
+denote the set of all monomorphic type instances of a closed formula F with
+MI(F ). Similarly, given a set of closed formulas Γ , the set MI(Γ ) contains all
+monomorphic type instances of formulas in Γ . The trivial corollary of Lemma 2
+is that Γ is satisfiable in FOLT if and only if MI(Γ ) is so.
+
+Computing monomorphic instances? Of course, as soon as a closed formula F
+is non-monomorphic and there is at least one non-constant type constructor, F
+has infinitely many monomorphic type instances. But can’t we find out, in finite
+time, all sorts that are potentially relevant to the problem in question, and deal
+with a finite subset of instances, produced just with these sorts?
+    On one hand, this resembles an attempt to pre-compute the relevant ground
+instances in a set of first-order formulas — a problem well known to be unde-
+cidable. On the other hand, type handling does not need to be as hard as proof
+search in general, and complete monomorphisation is often possible in program-
+ming languages (e.g., C++ templates).
+
+Theorem 1. There is no computable function that maps an arbitrary closed
+formula F to an equisatisfiable finite set of monomorphic type instances of F
+(notice that such a set always exists by compactness).
+
+Proof. It turns out that our type system is expressive enough to encode an
+undecidable theory, namely, combinatory logic. Consider the following signature:
+
+  FT = { A(·, ·), S, K }   F = { A : hα, β, A(α, β)i, S : hSi, K : hKi }   P = { R : hα, βi }
+
+along with five axioms (for brevity, we omit some type annotations):
+
+              ∀(u : α) ∀(v : β) ∀(w : γ) ((R(u, v) ∧ R(v, w)) ⊃ R(u, w))
+
+     ∀(u : α) ∀(v : β) ∀(w : γ) (R(u, v) ⊃ R(A(u, w) : A(α, γ), A(v, w) : A(β, γ)))
+
+     ∀(u : α) ∀(v : β) ∀(w : γ) (R(u, v) ⊃ R(A(w, u) : A(γ, α), A(w, v) : A(γ, β)))
+
+                ∀(u : α) ∀(v : β) R(A(A(K, u), v) : A(A(K, α), β), u : α)
+
+   ∀(u : α) ∀(v : β) ∀(w : γ) R(A(A(A(S, u), v), w) : A(A(A(S, α), β), γ),
+
+                                          A(A(u, w), A(v, w)) : A(A(α, γ), A(β, γ)))
+
+Here the binary function symbol A stands for term application, and the binary
+predicate symbol R for CL-reducibility. Notice that every ground combinatory
+term is reflected in its type.
+    Now, if we were able to compute a finite set of potentially relevant closed
+types for an arbitrary reducibility problem in this theory, this would readily
+let us decide the problem itself, as we would thus obtain the set of potentially
+relevant ground terms. Since ground reducibility in CL is undecidable, complete
+monomorphisation in FOLT is undecidable, too.                                 tu
+3    Eliminating Polymorphic Types
+Being unable to select just a relevant monomorphic subset of a polymorphic
+problem, we have to resort to some form of encoding, converting the polymor-
+phic problem to an equisatisfiable monomorphic one. Such conversion inevitably
+implies merging many types into few sorts or just a single sort. This is undesirable
+if we target an automated prover equipped with special techniques (decision pro-
+cedures, unification modulo, etc.) for particular types, such as integers, booleans
+or arrays. These types ought to be separated from the rest, protected against
+this “type fusion”, expelled from polymorphism in the problem.
+    To this purpose, we slightly extend our language in order to be able to select
+the terms that will keep their (monomorphic) type through polymorphism elimi-
+nation. To every sort S in T (FT ) we associate a new protected sort S̄. The use of
+protected sorts is restricted: a protected sort can appear in the type signature of
+a symbol or as a type of a term, but it cannot occur under a type constructor or
+in the range of a type substitution. In other words, the only type that matches
+a protected sort S̄ is S̄ itself.
+    For example, get(v : M(I, I), c : I) : I is a malformed term, since the type signa-
+ture of get is hM(α, β), α, βi and M(α, β) does not match M(I, I). Similarly, the
+term get(v : M(I, Ī), c : I) : Ī is malformed, because β does not match Ī and also
+because M(I, Ī) is a malformed type expression. However, if we consider a “pro-
+tected specialization” of get, denoted get, with the type signature hM(I, I), Ī, Īi,
+the application get(v : M(I, I), c : Ī) : Ī is a well-formed term.
+    Concerning interpretation, every protected sort S̄ has its proper non-empty
+domain DSI . As with any type substitution, we restrict type valuations to non-
+protected sorts. Thus, a set {∀(u : α) ∀(v : α) u ≈ v, ∃(a : Ī) ∃(b : Ī) a 6≈ b} is satis-
+fiable. Indeed, the first formula requires the domain of every non-protected sort
+to be a singleton, but does not constrain the domains of protected sorts.
+    Using protected sorts, we can define a general three-stage scheme of encoding
+of polymorphic formulas, explained below from the end to the beginning.
+    The final, “type-fusing” stage takes a set of polymorphic formulas with pro-
+tected sorts and converts it into an equisatisfiable set of monomorphic formulas.
+A common requirement to the methods on this stage is preservation of terms
+with protected types: monomorphic protected fragments of the problem, e.g.,
+arithmetic expressions, must be sent to a prover as is. We present two “type-
+fusing” transformations, Dec and Exp, in Sections 3.4 and 3.5. Both methods
+have been previously described in the literature [8, 9, 13, 5, 10]. Our presentation
+is more general in that it permits to protect arbitrarily complex monomorphic
+types, such as “list of integers” or “integer-to-real map”. The ability to preserve
+such sorts is of more than purely theoretical interest: as we have already men-
+tioned, Z3, CVC3, and Yices provide built-in support for access and update
+operations on integer-indexed arrays.
+    The intermediate, “type-protecting” stage takes a set of polymorphic formu-
+las without protected sorts and converts it into an equisatisfiable set of formulas
+with protection. The methods on this stage take as a parameter the set of sorts
+that we wish to protect; we expect them to put protection over every occurrence
+of every sort from this set in the problem. In this paper, we present two type-
+protecting transformations, Par and Tw, in Sections 3.2 and 3.3. The latter
+method was introduced in [5]; we generalize it to complex sorts.
+    The first stage can be figuratively called “type-revealing”. Even if our type-
+protecting and type-fusing transformations are not limited to sort constants and
+can protect arbitrarily complex sorts, say, arrays of integers, we cannot readily
+benefit from this capacity. In an initial FOLT -problem, arrays are most probably
+formalized as a polymorphic type, with premises that apply to arrays of any
+type and with polymorphic function symbols for access and update. In order to
+produce interpreted monomorphic operations for Z3, CVC3, or Yices in the end,
+we must start by replacing, wherever possible, these function symbols with their
+monomorphic specializations. This is the purpose of the Dis transformation,
+presented in Section 3.1. We show in Section 4 that this “type revealing” brings
+a considerable improvement to provers’ results.
+
+
+3.1   Symbol Discrimination
+
+The Dis transformation involves producing a sufficient number of type instances
+of formulas in an initial problem Γ with subsequent discrimination of function
+and predicate symbols.
+    Let f be a function symbol of type signature S in the initial problem Γ . Let τ
+be a type substitution in the type variables of S. A fresh function symbol fτ with
+the type signature Sτ is called a specialization of f . We call fτ a monomorphic
+specialization if Sτ is monomorphic. Specializations of predicate symbols are
+defined in the same way.
+    Let W be a set of monomorphic specializations of function and predicate
+symbols in Γ . These are the instances that we want to “reveal” in the problem.
+The set W is fixed for the rest of this section; the Dis transformation is implicitly
+parametrized by it.
+    First of all, the Dis transformation modifies the signature of Γ :
+
+ 1. For every variable symbol u and type T , we add a new variable symbol uT .
+ 2. We add every function and predicate symbol from W .
+
+   Given an arbitrary type substitution θ, the discriminating transformation
+Disθ instantiates and converts terms and formulas into the new signature:
+
+ 1. Given a variable u : T , Disθ (u : T ) , uT : T θ.
+ 2. Consider a term t = f (t1 : T1 , . . . , tn : Tn ) : T . Let τ be the type substitution
+    that instantiates the type signature of the symbol f to hT1 θ, . . . , Tn θ, T θi. If
+    fτ belongs to W , then Disθ (t) , fτ (Disθ (t1 ) : T1 θ, . . . , Disθ (tn ) : Tn θ) : T θ.
+    Otherwise, Disθ (t) , f (Disθ (t1 ) : T1 θ, . . . , Disθ (tn ) : Tn θ) : T θ.
+ 3. Consider an atomic formula F = p(t1 : T1 , . . . , tn : Tn ). Let τ be the type
+    substitution that instantiates the type signature of p to hT1 θ, . . . , Tn θi. If pτ
+    is in W , then Disθ (F ) , pτ (Disθ (t1 ) : T1 θ, . . . , Disθ (tn ) : Tn θ). Otherwise,
+    Disθ (F ) , p(Disθ (t1 ) : T1 θ, . . . , Disθ (tn ) : Tn θ).
+    Equalities and complex formulas are converted in a natural way:
+
+  Disθ (t1 ≈ t2 ) , Disθ (t1 ) ≈ Disθ (t2 ) Disθ (F ∧ G) , Disθ (F ) ∧ Disθ (G)
+      Disθ (¬F ) , ¬ Disθ (F )                     Disθ (∀x F ) , ∀(Disθ (x)) Disθ (F )
+
+  Now, let F be a closed formula. The set of monomorphic type substitutions
+Θ(F ) is defined as follows:
+
+  Θ(F ) , { θ | F contains a term f (t1 : T1 , . . . , tn : Tn ) : T such that
+                θ only instantiates the variables of T = hT1 , . . . , Tn , T i and
+                W contains a specialization of f with the type signature Tθ }
+           ∪ { θ | F contains an atomic formula p(t1 : T1 , . . . , tn : Tn ) such that
+                   θ only instantiates the variables of T = hT1 , . . . , Tn i and
+                   W contains a specialization of p with the type signature Tθ }
+
+    We call two monomorphic type substitutions compatible if they do not substi-
+tute two different sorts for the same type variable. The union of two compatible
+monomorphic type substitutions is their composition (the order is irrelevant).
+We define Θ? (F ) as the closure of Θ(F ) with respect to finite unions of com-
+patible type substitutions. The empty union, i.e., the identity type substitution,
+also belongs to Θ? (F ).
+    Finally, Dis translates a closed formula F into a set of formulas:
+
+                          Dis(F ) , { Disθ (F ) | θ ∈ Θ? (F ) }
+
+   On our running example, assuming W = {get[I/α,I/β] , set[I/α,I/β] }, Dis pro-
+duces the following two formulas:
+
+         ∀(mM(α,I) : M(α, I)) ∀(cα : α) get(set(mM(α,I) , cα , 6), cα ) ∗ 7 ≈ 42
+  ∀(mM(α,I) : M(I, I)) ∀(cα : I) get[I/α,I/β] (set[I/α,I/β] (mM(α,I) , cα , 6), cα ) ∗ 7 ≈ 42
+
+The new symbol get[I/α,I/β] has the monomorphic type signature hM(I, I), I, Ii.
+
+Lemma 3. Let θ be a type substitution, t a term of type T , and F a formula.
+Then Disθ (t) is a well-formed term of type T θ and Disθ (F ) is a well-formed
+formula such that FV(Disθ (F )) = {Disθ (x) | x ∈ FV(F )} and FVT (Disθ (F )) =
+FVT (F )\dom(θ).
+
+Proof. The proof goes by induction on the structure of terms and formulas. The
+only interesting case is the application of a function symbol (predicate symbols
+are treated in the same way). Let t be a term of the form f (t1 : T1 , . . . , tn : Tn ) : T .
+Let τ be the type substitution that instantiates the type signature of f to
+hT1 θ, . . . , Tn θ, T θi. For every argument ti , Disθ (ti ) is a well-formed term of type
+Ti θ by the induction hypothesis. If fτ belongs to W , then its type signature is
+exactly hT1 θ, . . . , Tn θ, T θi. Otherwise, as τ witnesses, the type signature of f
+matches hT1 θ, . . . , Tn θ, T θi.                                                          t
+                                                                                            u
+Theorem 2 (Soundness of Dis). If a set of closed formulas Γ is satisfiable
+then Dis(Γ ) is satisfiable.
+Proof. Let M be a model of Γ . We are going to construct an interpretation I of
+Dis(Γ ) such that, for every type substitution θ, type valuation π, and variable
+valuation ξ in I, there exist a type valuation π 0 and a variable valuation ξ 0 in
+the original model M, such that:
+
+           Iπ,ξ (Disθ (t)) = Mπ0 ,ξ0 (t)             Iπ,ξ (Disθ (F )) = Mπ0 ,ξ0 (F )
+
+for every term t and formula F occurring in Γ . Since for every closed F ∈ Γ and
+every θ ∈ Θ? (F ), I satisfies Disθ (F ), I is a model of Dis(Γ ).
+    For any sort S in the new signature, we define the domain DSI , DSM .
+Moreover, every function and predicate symbol in Γ is interpreted in I exactly
+as in M. Every new function symbol fτ with the type signature S in Dis(Γ ) is
+interpreted as f on S in Γ : (fτ )IS , fSM . New predicate symbols are interpreted
+in the same way.
+    Now, let us consider some type valuation π, a variable valuation ξ in I, and
+a type substitution θ. We set π 0 to be θ ◦ π and we define ξ 0 (u : T ) , ξ(uT : T θ).
+Notice that for any type T in Γ , DTI θπ = DTMθπ = DTMπ0
+    Using this definitions, we proceed to prove the two equalities above. The proof
+goes by induction on the structure of terms and formulas. We consider three
+cases: a variable, a function application, and a universally quantified formula
+(other cases can be handled along the same lines).
+ 1. Consider a variable u : T occurring in Γ . We obtain:
+
+                Iπ,ξ (Disθ (u : T )) = ξ(uT : T θ) = ξ 0 (u : T ) = Mπ0 ,ξ0 (u : T )
+
+ 2. Consider a term t = f (t1 : T1 , . . . , tn : Tn ) : T and let T denote hT1 , . . . , Tn , T i.
+    Independently of whether W contains a specialization of f with the type
+    signature Tθ, the resulting function application is interpreted in I exactly
+    as f on Tθπ = Tπ 0 in M. Therefore, Iπ,ξ (Disθ (t)) = Mπ0 ,ξ0 (t).
+ 3. Consider a universally quantified formula ∀(u : T ) F . As we have shown
+    above, DTI θπ = DTMπ0 . Also, for any domain element a ∈ DTI θπ , the vari-
+    able valuation ξ[uT : T θ 7→ a] in I produces the valuation ξ 0 [u : T 7→ a] in M.
+    Thus:
+                                      ^
+        Iπ,ξ (Disθ (∀(u : T ) F )) =          Iπ,ξ[uT : T θ 7→ a] (Disθ (F ))
+                                          I
+                                       a∈DT θπ
+                                         ^
+                                     =        Mπ0 ,ξ0 [u : T 7→ a] (F ) = Mπ0 ,ξ0 (∀(u : T ) F )
+                                          M
+                                       a∈DT π0
+
+
+Thus, for every formula F in Γ , Dis(F ) is satisfied under I.                                     t
+                                                                                                   u
+Lemma 4. For any closed formula F and an arbitrary type valuation π, there
+exists a unique maximal (with respect to the set of instantiated type variables)
+type substitution in Θ? (F ) compatible with (i.e., included in) π.
+Proof. Consider the set S of all type substitutions in Θ? (F ) included in π. This
+set is necessarily finite, since F contains a finite number of type variables. The
+type substitutions in S are pairwise compatible. Therefore, S is a complete upper
+semi-lattice and its maximal element is included in π.                           t
+                                                                                 u
+
+Theorem 3 (Completeness of Dis). For every set of closed formulas Γ , if
+Dis(Γ ) is satisfiable then Γ is satisfiable.
+
+Proof. Let M be a model of Dis(Γ ). We are going to construct an interpretation
+I of Γ such that for every closed formula H in Γ , every type valuation π, and
+every variable valuation ξ in I, there exist a type substitution θ ∈ Θ? (H), a type
+valuation π 0 , and a variable valuation ξ 0 in the original model M such that:
+
+          Iπ,ξ (t) = Mπ0 ,ξ0 (Disθ (t))               Iπ,ξ (F ) = Mπ0 ,ξ0 (Disθ (F ))
+
+for every term t and formula F occurring in H. Since for every θ ∈ Θ? (H), the
+model M satisfies Disθ (H), the initial formula H is satisfied under I.
+    For any sort S in the signature of Γ , we set DSI , DSM . Consider a function
+symbol f in Γ , a vector of sorts T = hT1 , . . . , Tn , T i, and a type substitution τ
+that instantiates the type signature of f to T. If the monomorphic specialization
+                                I
+fτ belongs to W , we define fT    , (fτ )M                     I      M
+                                         T . Otherwise, fT , fT . The predicate
+symbols are interpreted in the same way.
+    Now, consider a formula H in Γ , a type valuation π, and a variable valuation
+ξ in I. By Lemma 4, Θ? (H) contains a maximal monomorphic type substitution
+θ compatible with π (and thus included in π). We set π 0 , π, so that θ ◦ π 0 = π.
+For every variable u : T occurring in H, we set ξ 0 (uT : T θ) , ξ(u : T ). Indeed for
+every type in F , DTI π = DTMπ = DTMθπ0 . By Lemma 1, it is sufficient to define ξ 0
+on variables that occur in Dis(H).
+    Using this definitions, we proceed to prove the two equalities above. The proof
+goes by induction on the structure of terms and formulas. We consider three
+cases: a variable, a function application, and a universally quantified formula
+(other cases can be handled along the same lines).
+
+ 1. Consider a variable u : T occurring in H. We obtain:
+
+              Iπ,ξ (u : T ) = ξ(u : T ) = ξ 0 (uT : T θ)) = Mπ0 ,ξ0 (Disθ (u : T ))
+
+ 2. Consider a term t = f (t1 : T1 , . . . , tn : Tn ) : T occurring in H. Let T denote
+    hT1 , . . . , Tn , T i and let τ be the type substitution that instantiates the type
+    signature of f to Tθ. Suppose that the specialization fτ belongs to W . Thus
+    Disθ replaces f with fτ and Tπ = Tθ. We obtain:
+                          I
+              Iπ,ξ (t) = fTπ (Iπ,ξ (t1 ), . . . , Iπ,ξ (tn ))
+                       = (fτ )M
+                              Tθπ 0 (Mπ 0 ,ξ 0 (Disθ (t1 )), . . . , Mπ 0 ,ξ 0 (Disθ (tn )))
+                       = Mπ0 ,ξ0 (fτ (Disθ (t1 ), . . . , Disθ (tn )))
+                       = Mπ0 ,ξ0 (Disθ (t))
+      Now, let us assume that fτ does not belong to W , so that Disθ keeps the
+      symbol f in t. Then we can show that there is no monomorphic specialization
+      of f in W with the type signature Tπ. Indeed, if there is one, then the
+      restriction of π to the type variables of T belongs to Θ(H). This restriction
+      is compatible with θ, since both of them are included in π. As θ is maximal,
+      this restriction is also included in θ. This gives us Tπ = Tθ, which leads to
+      a contradiction. We obtain:
+                             I
+                 Iπ,ξ (t) = fTπ (Iπ,ξ (t1 ), . . . , Iπ,ξ (tn ))
+                             M
+                          = fTθπ 0 (Mπ 0 ,ξ 0 (Disθ (t1 )), . . . , Mπ 0 ,ξ 0 (Disθ (tn )))
+
+                          = Mπ0 ,ξ0 (f (Disθ (t1 ), . . . , Disθ (tn )))
+                          = Mπ0 ,ξ0 (Disθ (t))
+
+3. Consider a universally quantified formula ∀(u : T ) F . As we have seen above,
+   DTI π = DTMθπ0 . Also, for any a ∈ DTMθπ0 , the variable valuation ξ[u : T 7→ a]
+   in I produces the valuation ξ 0 [uT : T θ 7→ a] in M. We obtain:
+                               ^
+       Iπ,ξ (∀(u : T ) F ) =        Iπ,ξ[u : T 7→ a] (F )
+                               I
+                            a∈DT π
+                               ^
+                          =          Mπ0 ,ξ0 [uT : T θ 7→ a] (Disθ (F ))
+                              M
+                           a∈DT θπ 0
+
+                          = Mπ0 ,ξ0 (∀(uT : T θ) Disθ (F )) = Mπ0 ,ξ0 (Disθ (∀(u : T ) F ))
+
+Thus, for every formula H in Γ , H is satisfied under I.                                      t
+                                                                                              u
+
+    The definition of Dis can be generalized to a case where W admits polymor-
+phic specializations. This requires W to be closed with respect to unification
+of type signatures, so that we can always choose the most refined specializa-
+tion symbol during discrimination. The substitutions in the set Θ(F ) must be
+considered modulo renaming of type variables in the signatures of specialization
+symbols. Finally, the union of two substitutions would be their most general
+common refinement. However, since our transformations target monomorphic
+theorem provers, we find this generalization of lesser practical interest and do
+not pursue it in this paper.
+
+
+3.2     Partial Monomorphisation
+
+It turns out that the above-presented approach of type instantiation with symbol
+discrimination can be advanced to actually protect types in the sense of the
+introduction to Section 3.
+    Let U be a set of sorts that we want to preserve across our type-eliminating
+transformations. The set U is fixed for the rest of this section and the Par
+transformation is parametrized by it. Given a set of polymorphic types M , we
+define a set of monomorphic substitutions Θ(M ) as follows:
+           Θ(M ) , { θ | M contains a type T such that
+                         θ only instantiates the type variables of T and
+                         T θ belongs to U }
+The closure of Θ(M ) with respect to finite unions, denoted Θ? (M ), is defined
+as in the previous section. Recall that the identity substitution always belongs
+to the closure.
+Lemma 5. Let M be a set of polymorphic types and π a type substitution. Then
+there exists a unique monomorphic type substitution θ ∈ Θ? (M ) such that:
+ – θ is included in π (that is, for every α, either αθ = α or αθ = απ);
+ – for every type T ∈ M , T π ∈ U if and only if T θ ∈ U .
+Proof. Let M 0 be the set of types from M that are instantiated “into U ” by π.
+Let θ be the restriction of π onto the type variables occurring in M 0 . It is easy to
+see that θ is a finite union of substitutions in Θ(M ) that instantiate individual
+types in M 0 into U . Indeed, all of these individual substitutions are included in
+π and thus are compatible. Now, let T be an arbitrary type in M . If T π belongs
+to U , then T ∈ M 0 and hence T θ = T π. If T θ belongs to U , then T π ∈ U , too,
+since all types in U are closed and θ is included in π.
+    Now, suppose that there is another monomorphic substitution θ0 in Θ? (M )
+that satisfies both conditions. Since both θ and θ0 are included in π, they cannot
+substitute two different sorts for the same type variable. Also, θ0 must coincide
+with θ (and π) on every type variable in M 0 . Therefore, θ is included in θ0 . If
+θ0 differs from θ, then there exists some type variable α outside M 0 instantiated
+by θ0 . By definition of Θ(M ), there must therefore exist a type T ∈ M \M 0 such
+that T θ0 ∈ U . This contradicts the second condition.                               t
+                                                                                     u
+    Given a type T , the transformed type [T ] is defined as follows: if T ∈ U , we
+set [T ] , T , otherwise [T ] , T . Now, let f be a function symbol of type signature
+hS1 , . . . , Sn , Si in Γ . Let τ be a type substitution in Θ? ({S1 , . . . , Sn , S}). A fresh
+function symbol f¯τ with the type signature h[S1 τ ], . . . , [Sn τ ], [Sτ ]i will be called
+a protected specialization of f . Protected specializations of predicate symbols are
+defined in the same way.
+    The idea is to produce every specialization that makes protected sorts appear
+in the type signature. For example, let M be {M(I, I)}. Then the symbol get with
+the type signature hM(α, β), α, βi induces five protected specializations:
+                                get[] : hM(α, β), α, βi
+                         get[I/α,I/β] : hM(I, I), I, Ii
+                        get[M(I,I)/α] : hM(M(I, I), β), M(I, I), βi
+                        get[M(I,I)/β] : hM(α, M(I, I)), α, M(I, I)i
+                get[M(I,I)/α,M(I,I)/β] : hM(M(I, I), M(I, I)), M(I, I), M(I, I)i
+    The Par transformation modifies the signature of a transformed theory:
+ 1. For every variable symbol u and type T , we add a new variable symbol uT .
+ 2. We replace every function and predicate symbol with the set of all its pro-
+    tected specializations.
+   Given an arbitrary substitution θ, the transformation Parθ instantiates and
+converts terms and formulas into the new signature:
+ 1. Given a variable u : T , Parθ (u : T ) , uT :[T θ].
+ 2. Consider a term t = f (t1 : T1 , . . . , tn : Tn ) : T . By Lemma 5, there is a unique
+    protected specialization f¯τ whose signature matches h[T1 θ], . . . , [Tn θ], [T θ]i.
+    Indeed, if Ti θ is in U , then the only type that matches [Ti θ] is [Ti θ] itself.
+    Then Parθ (t) , f¯τ (Parθ (t1 ), . . . , Parθ (tn )) :[T θ].
+ 3. Consider an atomic formula F = p(t1 : T1 , . . . , tn : Tn ). By Lemma 5, there is
+    one protected specialization p̄τ whose signature matches h[T1 θ], . . . , [Tn θ]i.
+    Then Parθ (F ) , p̄τ (Parθ (t1 ), . . . , Parθ (tn )).
+    Equalities and complex formulas are converted in a natural way:
+
+Parθ (t1 ≈ t2 ) , Parθ (t1 ) ≈ Parθ (t2 ) Parθ (F ∧ G) , Parθ (F ) ∧ Parθ (G)
+    Parθ (¬F ) , ¬ Parθ (F )                       Parθ (∀x F ) , ∀(Parθ (x)) Parθ (F )
+
+    Finally, Par translates a closed formula F into a set of formulas:
+
+                         Par(F ) , { Parθ (F ) | θ ∈ Θ? (M ) }
+
+where M is the set of types of all terms that occur in F .
+   On our running example, supposing that U = {I}, Par produces the following
+two formulas (via Par[ ] and Par[I/α] , respectively):
+
+     ∀(mM(α,I) : M(α, I)) ∀(cα : α) get[I/β] (set[I/β] (mM(α,I) , cα , 6), cα ) ∗ 7 ≈ 42
+  ∀(mM(α,I) : M(I, I)) ∀(cα : Ī) get[I/α,I/β] (set[I/α,I/β] (mM(α,I) , cα , 6), cα ) ∗ 7 ≈ 42
+
+The new symbol get[I/β] has the type signature hM(α, I), α, Īi and get[I/α,I/β] has
+the monomorphic type signature hM(I, I), Ī, Īi.
+Lemma 6. Let θ be a type substitution, t a term of type T , and F a for-
+mula. Then Parθ (t) is a well-formed term of type [T θ] and Parθ (F ) is a
+well-formed formula such that FV(Parθ (F )) = {Parθ (x) | x ∈ FV(F )} and
+FVT (Parθ (F )) = FVT (F )\dom(θ).
+Proof. The proof goes by induction on the structure of terms and formulas. The
+only interesting case is the application of a function symbol (predicate symbols
+are treated in the same way). Let t be a term of the form f (t1 : T1 , . . . , tn : Tn ) : T .
+For every ti , Parθ (ti ) is a well-formed term of type [Ti θ] by the induction hy-
+pothesis. By definition, the type signature of f¯τ matches h[T1 θ], . . . , [Tn θ], [T θ]i.
+Thus, Parθ (t) is a well-formed term of type [T θ].                                         t
+                                                                                            u
+Theorem 4 (Soundness of Par). If a set of closed formulas Γ is satisfiable
+then Par(Γ ) is satisfiable.
+Proof. Let M be a model of Γ . We are going to construct an interpretation I of
+Par(Γ ) such that, for every type substitution θ, type valuation π, and variable
+valuation ξ in I, there exist a type valuation π 0 and a variable valuation ξ 0 in
+the original model M, such that:
+
+          Iπ,ξ (Parθ (t)) = Mπ0 ,ξ0 (t)                Iπ,ξ (Parθ (F )) = Mπ0 ,ξ0 (F )
+
+for every term t and formula F occurring in Γ . Since for every closed F ∈ Γ and
+every θ, I satisfies Parθ (F ), I is a model of Par(Γ ).
+    For any sort S in Γ , we define DSI , DSM and DSI , DSM . Then we give
+an interpretation to the function and predicate symbols in Par(Γ ). Consider a
+function symbol f from Γ and its protected specialization f¯τ . Denoting the type
+signature of f with S, the type signature of f¯τ is [Sτ ]. Let T be a vector of sorts
+such that T = [Sτ ]τ 0 for some type substitution τ 0 . Then we interpret f¯τ on T
+in I exactly as f is interpreted on Sτ τ 0 in M. This is correct, as Sτ τ 0 is just T
+with protection removed. Predicate symbols are interpreted in the same way.
+    Now, let us consider some type substitution θ, a type valuation π, and a
+variable valuation ξ in I. We set π 0 , θ ◦ π and we set ξ 0 (u : T ) , ξ(uT :[T θ]).
+                                      I        M         M
+Notice that for any type T in Γ , D[T   θ]π = DT θπ = DT π 0 .
+    Using this definitions, we proceed to prove the two equalities above. The proof
+goes by induction on the structure of terms and formulas. We consider three
+cases: a variable, a function application, and a universally quantified formula
+(other cases can be handled along the same lines).
+ 1. Consider a variable u : T occurring in Γ . We obtain:
+
+               Iπ,ξ (Parθ (u : T )) = ξ(uT :[T θ]) = ξ 0 (u : T ) = Mπ0 ,ξ0 (u : T )
+
+ 2. Consider a term t = f (t1 : T1 , . . . , tn : Tn ) : T . Let fτ be the protected special-
+    ization of f whose type signature matches [Tθ], where T = hT1 , . . . , Tn , T i.
+
+            Iπ,ξ (Parθ (t)) = Iπ,ξ (f¯τ (Parθ (t1 ), . . . , Parθ (tn )) :[T θ])
+                             = (fτ )I[Tθ]π (Iπ,ξ (Parθ (t1 )), . . . , Iπ,ξ (Parθ (tn )))
+                                M
+                             = fTθπ (Mπ0 ,ξ0 (t1 ), . . . , Mπ0 ,ξ0 (tn ))
+                                M
+                             = fTπ 0 (Mπ 0 ,ξ 0 (t1 ), . . . , Mπ 0 ,ξ 0 (tn ))
+
+                             = Mπ0 ,ξ0 (t)
+
+ 3. Consider a universally quantified formula ∀(u : T ) F . As we have shown
+             I         M                                                 I
+    above, D[T θ]π = DT π 0 . Also, for any domain element a ∈ D[T θ]π , the variable
+                                                                     0
+    valuation ξ[uT :[T θ] 7→ a] in I produces the valuation ξ [u : T 7→ a] in M.
+                                     ^
+       Iπ,ξ (Parθ (∀(u : T ) F )) =       Iπ,ξ[uT :[T θ] 7→ a] (Parθ (F ))
+                                        I
+                                     a∈D[T θ]π
+                                         ^
+                                    =          Mπ0 ,ξ0 [u : T 7→ a] (F ) = Mπ0 ,ξ0 (∀(u : T ) F )
+                                         M
+                                      a∈DT π0
+Thus, for every formula F in Γ , Par(F ) is satisfied under I.                                t
+                                                                                              u
+
+Theorem 5 (Completeness of Par). For every set of closed formulas Γ , if
+Par(Γ ) is satisfiable then Γ is satisfiable.
+
+Proof. Let M be a model of Par(Γ ). We are going to construct an inter-
+pretation I of Γ such that for every formula H in Γ , every type valuation
+π, and every variable interpretation ξ in I, there exist a type substitution
+θ ∈ Θ? ({T | T is the type of a term in H }), a type valuation π 0 , and a variable
+valuation ξ 0 in the original model M such that:
+
+         Iπ,ξ (t) = Mπ0 ,ξ0 (Parθ (t))              Iπ,ξ (F ) = Mπ0 ,ξ0 (Parθ (F ))
+
+for every term t and formula F occurring in H.
+    For any sort S in the signature of Γ , we set DSI , D[S] M
+                                                                . Consider a function
+symbol f in Γ and a vector of sorts T = hT1 , . . . , Tn , T i matched by the type
+signature of f . By Lemma 5, there is a unique protected specialization f¯τ whose
+type signature matches the sort vector [T]. Then we define fT      I
+                                                                     , (f¯τ )M
+                                                                             [T] . The
+predicate symbols are interpreted in the same way.
+    Now, consider a formula H from Γ , a type valuation π, and a variable valua-
+tion ξ in I. Let M be the set of types of all terms occurring in H. By Lemma 5,
+there exists a unique monomorphic type substitution θ ∈ Θ? (M ) such that θ is
+included in π and for every type T ∈ M , T π ∈ U if and only if T θ ∈ U . We
+set π 0 , π, so that θ ◦ π 0 = π. Let a variable u : T occur in H. If it occurs in
+H as a term, then T ∈ M and we set ξ 0 (uT :[T θ]) , ξ(u : T ). Indeed, for every
+type T in M , DTI π = D[T  M        M
+                             π] = D[T θ]π 0 by definition of θ. Otherwise, if u : T is
+only bound by a quantifier in H but does not occur under this quantifier, we
+can safely ignore it in variable valuations by Lemma 1.
+    Using this definitions, we proceed to prove the two equalities above. The proof
+goes by induction on the structure of terms and formulas. We consider three
+cases: a variable, a function application, and a universally quantified formula
+(other cases can be handled along the same lines).
+ 1. Consider a variable u : T occurring in H as a term.
+
+              Iπ,ξ (u : T ) = ξ(u : T ) = ξ 0 (uT :[T θ]) = Mπ0 ,ξ0 (Parθ (u : T ))
+
+ 2. Consider a term t = f (t1 : T1 , . . . , tn : Tn ) : T occurring in H and let T denote
+    hT1 , . . . , Tn , T i. Let f¯τ be the protected specialization of f whose type sig-
+    nature matches [Tθ]. By definition of θ, [Tθ] matches [Tπ]. Then f¯τ is also
+    the only protected specialization of f whose type signature matches [Tπ].
+                      I
+          Iπ,ξ (t) = fTπ  (Iπ,ξ (t1 ), . . . , Iπ,ξ (tn ))
+                      ¯
+                   = (fτ )M (Mπ0 ,ξ0 (Parθ (t1 )), . . . , Mπ0 ,ξ0 (Parθ (tn )))
+                           [Tπ]
+
+                   = (f¯τ )M
+                           [Tθ]π 0 (Mπ 0 ,ξ 0 (Parθ (t1 )), . . . , Mπ 0 ,ξ 0 (Parθ (tn )))
+
+                   = Mπ0 ,ξ0 (f¯τ (Parθ (t1 ), . . . , Parθ (tn ))) = Mπ0 ,ξ0 (Parθ (t))
+ 3. Consider a universally quantified formula ∀(u : T ) F occurring in H. We can
+    assume that u : T occurs in F and T ∈ M . Then DTI π = D[T    M
+                                                                     θ]π 0 . Also, for
+                           M
+    any element a ∈ D[T θ]π0 , the variable valuation ξ[u : T 7→ a] in I produces
+    the valuation ξ 0 [uT :[T θ] 7→ a] in M. We obtain:
+                           ^
+     Iπ,ξ (∀(u : T ) F ) =     Iπ,ξ[u : T 7→ a] (F )
+                          I
+                       a∈DT π
+                          ^
+                      =        Mπ0 ,ξ0 [uT :[T θ] 7→ a] (Parθ (F ))
+                         M
+                      a∈D[T θ]π 0
+
+                      = Mπ0 ,ξ0 (∀(uT :[T θ]) Parθ (F )) = Mπ0 ,ξ0 (Parθ (∀(u : T ) F ))
+
+Thus, for every formula H in Γ , H is satisfied under I.                              t
+                                                                                      u
+
+    In practice, the Par transformation behaves reasonably well on small sets U ,
+containing two or three sorts. If we try to protect more — say, every sort constant
+occurring in the problem — the exponential growth due to type instantiation
+(w.r.t. the number of type variables in a formula) quickly makes the proof search
+infeasible. Therefore, we do not consider Par as a practical alternative to the Tw
+method, presented in Section 3.3. Yet, in our view, the existence of an alternative
+type protection technique justifies the separation of type protection from type
+fusion and shows that the notion of protected sort gives a good independent
+characterization of the boundary between the two stages.
+
+
+3.3   Twin Sorts
+
+The Tw transformation converts a set of formulas into an equisatisfiable set
+with protected sorts. It applies a pair of conversion functions to pass, wherever
+necessary, from a protected sort to a non-protected one and vice versa.
+   Let U be a set of sorts that we want to protect as in the previous section.
+Given a type T , the transformed type [T ] is T if T ∈ U , and T otherwise. Then
+Tw modifies the signature of a transformed theory as follows:
+
+ 1. We replace every function symbol f of type signature hS1 , . . . , Sn , Si with a
+    symbol f¯ of type signature h[S1 ], . . . , [Sn ], [S]i.
+ 2. We replace every predicate symbol p of type signature hS1 , . . . , Sn i with a
+    symbol p̄ of type signature h[S1 ], . . . , [Sn ]i.
+ 3. For every sort T ∈ U , we add a pair of “bridge” function symbols toT : hT , T i
+    and fromT : hT, T i.
+
+    Then we convert terms and atomic formulas into the new signature. Our aim
+is to forbid a polymorphic type in a symbol’s type signature being instantiated
+into a type from U . Whenever such instantiation takes place, a bridge function
+is applied. In more precise terms:
+
+ 1. Given a variable u : T , Tw(u : T ) , u :[T ].
+ 2. Consider a term t = f (t1 : T1 , . . . , tn : Tn ) : T and let hS1 , . . . , Sn , Si be the
+    type signature of f .
+                           (
+                       0    toTi (Tw(ti )) : Ti if Ti ∈ U and Si ∈          / U,
+       For every ti , ti ,
+                            Tw(ti )                     if Ti ∈
+                                                              / U or Si ∈ U .
+                        (
+                         f¯(t01 , . . . , t0n ) :[T ]                   if T ∈
+                                                                             / U or S ∈ U ,
+           Then Tw(t) ,
+                         fromT (f¯(t01 , . . . , t0n ) : T ) : T        if T ∈ U and S ∈/ U.
+
+ 3. Consider a formula p(t1 : T1 , . . . , tn : Tn ) and let hS1 , . . . , Sn i be the type
+    signature of p. For every argument ti , we define t0i as in the previous case.
+    Then, Tw(p(t1 : T1 , . . . , tn : Tn )) , p̄(t01 , . . . , t0n ).
+
+Equalities and complex formulas are converted in a natural way:
+
+     Tw(t1 ≈ t2 ) , Tw(t1 ) ≈ Tw(t2 )                 Tw(F ∧ G) , Tw(F ) ∧ Tw(G)
+         Tw(¬F ) , ¬ Tw(F )                            Tw(∀x F ) , ∀(Tw(x)) Tw(F )
+
+Finally, we convert the formulas in Γ and add axioms for the bridge functions:
+
+             Tw(Γ ) , { Tw(F ) | F ∈ Γ }
+                           ∪ { ∀(v : T ) fromT (toT (v : T )) ≈ v : T | T ∈ U }
+                           ∪ { ∀(u : T ) toT (fromT (u : T )) ≈ u : T | T ∈ U }
+
+   Assuming U = {I}, the running example is transformed as follows. Notice
+that 6, 7, and 42 have the type Ī and the type signature of ∗ is hĪ, Ī, Īi.
+
+         ∀(m : M(α, I)) ∀(c : α) fromI (get(set(m, c, toI (6) : I), c) : I) ∗ 7 ≈ 42
+
+Lemma 7. For every term t of type T , Tw(t) is a well-formed term of type [T ],
+and for every formula F , Tw(F ) is a well-formed formula with the same free
+variables (modulo conversion of their types) and type variables.
+
+Proof. The proof goes by induction on the structure of terms and formulas. The
+only interesting case is the application of a function symbol (predicate symbols
+are treated in the same way). The conservation of free (type) variables is trivial.
+     Let t be a term of the form f (t1 : T1 , . . . , tn : Tn ) : T . Let hS1 , . . . , Sn , Si be the
+type signature of f and τ the type substitution that instantiates hS1 , . . . , Sn , Si
+to hT1 , . . . , Tn , T i. For every argument ti , Tw(ti ) is a well-formed term of type
+[Ti ] by the induction hypothesis, and there are three cases to consider:
+
+ 1. Ti ∈ U and Si ∈  / U . Then Tw(ti ) has the type T i and toTi (Tw(ti )) : Ti is a
+    well-formed term. Notice that the i-th element of the type signature of f¯ is
+    [Si ] = Si , and Si τ = Ti .
+ 2. Si ∈ U . Then Si is closed, so Ti = Si , and [Ti ] = [Si ] = [Si ]τ .
+ 3. Si ∈/ U and Ti ∈ / U . Then [Si ]τ = Si τ = Ti = [Ti ].
+Then we apply f¯ to t01 , . . . , t0n using τ to instantiate the type signature of f¯.
+Again, we have three possible cases:
+ 1. T ∈ U and S ∈      / U . Since Sτ = T , we obtain [S]τ = Sτ = T . Then the term
+    fromT (f¯(t01 , . . . , t0n ) : T ) : T is well-formed and has the type [T ] = T .
+ 2. S ∈ U . Then S is closed, so T = S and [T ] = [S] = [S]τ .
+ 3. S ∈
+      / U and T ∈      / U . Then [S]τ = Sτ = T = [T ].
+Thus, Tw(t) is a well-formed term of type [T ].                                             t
+                                                                                            u
+Theorem 6 (Soundness of Tw). If a set of closed formulas Γ is satisfiable
+then Tw(Γ ) is satisfiable.
+Proof. Let M be a model of Γ . We are going to construct an interpretation I
+of Tw(Γ ) such that, for every type valuation π and every variable valuation ξ
+in I, there exist a type valuation π 0 and a variable valuation ξ 0 in the original
+model M, such that:
+          Iπ,ξ (Tw(t)) = Mπ0 ,ξ0 (t)              Iπ,ξ (Tw(F )) = Mπ0 ,ξ0 (F )
+for every term t and formula F occurring in Γ .
+    First of all, let us denote with ] [ the “protection erasure” operation: for any
+protected sort S̄, ]S̄[ , S and for any non-protected type T , ]T̄ [ , T . Obviously,
+for any type T in the initial signature, ][T ][ = T . On the other hand, it is not
+generally true that []T [] = T .
+    For any sort S in the initial signature, we define DSI , DSM and DSI , DSM .
+Then we give an interpretation to the function and predicate symbols in Tw(Γ ).
+Apart from the bridge function symbols, every symbol in the new signature
+originates from some initial symbol, as described above. Consider a function
+symbol f with the type signature S in the initial set Γ . In Tw(Γ ), it is replaced
+with the symbol f¯ of type signature [S]. Let T be a sort vector matched by [S].
+It is easy to see that the “unprotected” sort vector ]T[ is matched by S. Thus
+we can define f¯T  I       M
+                      , f]T[ . Predicate symbols in Tw(Γ ) are interpreted in the
+same way. Finally, for every sort T ∈ U , the function symbols toT and fromT
+are interpreted as identities. This finishes the definition of the interpretation I.
+    Now let us take a type valuation π and a variable valuation ξ in I. We set
+π 0 , π and ξ 0 (u : T ) , ξ(u :[T ]). By construction, D[T
+                                                          I       I        M
+                                                            ]π = DT π = DT π 0 .
+    Using this definitions, we can proceed to prove the two equalities above. The
+proof goes by induction on the structure of terms and formulas. We will con-
+sider three cases: a variable, a function application, and a universally quantified
+formula (other cases can be handled along the same lines).
+ 1. Let u : T be a variable occurring in Γ .
+        Iπ,ξ (Tw(u : T )) = Iπ,ξ (u :[T ]) = ξ(u :[T ]) = ξ 0 (u : T ) = Mπ0 ,ξ0 (u : T )
+ 2. Consider a term t = f (t1 : T1 , . . . , tn : Tn ) : T . The transformed term Tw(t)
+    is an application of the function symbol f¯ to the transformed arguments
+    Tw(t1 ), . . . , Tw(tn ) with added, where necessary, functions to and from .
+    By the induction hypothesis and knowing that
+     – function symbols to and from are interpreted in I as identities, and
+     – f¯ on a vector sort T is interpreted in I as f on ]T[ in M,
+    we can conclude that Iπ,ξ (Tw(t)) = Mπ0 ,ξ0 (t).
+ 3. Consider a universally quantified formula ∀(u : T ) F from Γ . As we know,
+      I          M                                          I
+    D[T ]π = DT π 0 . Moreover, for any element a ∈ D[T ]π , the variable valuation
+                                                     0
+    ξ[u :[T ] 7→ a] in I produces the valuation ξ [u : T 7→ a] in M. We obtain:
+                                    ^
+         Iπ,ξ (Tw(∀(u : T ) F )) =     Iπ,ξ[u :[T ] 7→ a] (Tw(F ))
+                                      I
+                                   a∈D[T ]π
+                                      ^
+                                  =       Mπ0 ,ξ0 [u : T 7→ a] (F ) = Mπ0 ,ξ0 (∀(u : T ) F )
+                                      M
+                                   a∈DT π0
+
+
+Thus, for every formula F in Γ , Tw(F ) is satisfiedunder I. The bijection axioms
+for to and from are trivially satisfied, too, since both function symbols are
+interpreted as identities.                                                      t
+                                                                                u
+Theorem 7 (Completeness of Tw). For every set of closed formulas Γ , if
+Tw(Γ ) is satisfiable then Γ is satisfiable.
+Proof. Let M be a model of Tw(Γ ). Due to the bijection axioms for bridge
+functions, we can assume without loss of generality that, for every sort T ∈ U ,
+DTM = DTM and both toT and fromT are interpreted in M as identities.
+   We are going to construct an interpretation I of Γ such that, for every type
+valuation π and every variable valuation ξ in I, there exist a valuation π 0 and a
+variable valuation ξ 0 in the original model M, such that:
+          Iπ,ξ (t) = Mπ0 ,ξ0 (Tw(t))               Iπ,ξ (F ) = Mπ0 ,ξ0 (Tw(F ))
+for every term t and formula F occurring in Γ .
+     For any sort S in the signature of Γ , we define DSI , DSM . Then for any
+type T and its closed type instance T τ , DTI τ = D[T  M
+                                                         ]τ . Indeed, if T ∈ U , then
+   I      I      M        M      M
+DT τ = DT = DT = DT = D[T ]τ , otherwise [T ] = T .
+     Every function symbol f (predicate symbol p) of type signature S in Γ is
+interpreted on a closed sort vector Sτ in I exactly as the corresponding symbol
+f¯ (respectively, p̄) on [S]τ in M. This concludes the definition of I.
+     Now, consider a type valuation π and a variable valuation ξ in I. We set
+π 0 , π and ξ 0 (u :[T ]) , ξ(u : T ) for every variable u : T occurring in Γ . By
+Lemma 1, it suffices to define ξ 0 on variables that occur in transformed formulas.
+Also recall that DTI π = D[T M       M
+                               ]π = D[T ]π 0 .
+     Using this definitions, we can proceed to prove the two equalities above. The
+proof goes by induction on the structure of terms and formulas. We will con-
+sider three cases: a variable, a function application, and a universally quantified
+formula (other cases can be handled along the same lines).
+ 1. Let u : T be a variable occurring in Γ . We obtain:
+       Iπ,ξ (u : T ) = ξ(u : T ) = ξ 0 (u :[T ]) = Mπ0 ,ξ0 (u :[T ]) = Mπ0 ,ξ0 (Tw(u : T ))
+2. Consider a term t = f (t1 : T1 , . . . , tn : Tn ) : T . Let S = hS1 , . . . , Sn , Si be the
+   type signature of f and τ a type substitution such that Sτ = hT1 , . . . , Tn , T i.
+   The term Tw(t) is of the form f¯(t01 :[S1 ]τ, . . . , t0n :[Sn ]τ ) :[S]τ , possibly under
+   fromT , where every t0i is Tw(ti ), possibly under toTi . Knowing that:
+     – bridge function symbols are interpreted in M as identities, and
+     – f is interpreted on Sτ in I as f¯ on [S]τ in M,
+   we can conclude that Iπ,ξ (t) = Mπ0 ,ξ0 (Tw(t)).
+3. Consider a universally quantified formula ∀(u : T ) F . For any a ∈ DTI π , the
+   valuation ξ[u : T 7→ a] in I produces the valuation ξ 0 [u :[T ] 7→ a] in M.
+                            ^
+      Iπ,ξ (∀(u : T ) F ) =     Iπ,ξ[u : T 7→ a] (F )
+                                I
+                             a∈DT π
+                               ^
+                           =          Mπ0 ,ξ0 [u :[T ] 7→ a] (Tw(F ))
+                               M
+                            a∈D[T ]π 0
+
+                           = Mπ0 ,ξ0 (∀(u :[T ]) Tw(F )) = Mπ0 ,ξ0 (Tw(∀(u : T ) F ))
+
+Thus, for every formula F in Γ , F is satisfied under I.                                      t
+                                                                                              u
+
+
+3.4     Decorated Terms
+
+The Dec transformation converts a polymorphic problem with protected sorts
+into an equisatisfiable monomorphic problem. Roughly speaking, in order to
+preserve type information, it decorates every term with its type, which itself is
+transformed to a term of a special sort.
+    First of all, we introduce three fresh sort constants U, D, and T. The first
+one is assigned to undecorated terms, the second one to decorated terms, and
+the third one to the terms representing types. To transform the type signatures
+of function and predicate symbols, we use the following operations on types:
+               (                                    (
+          −       T if T is protected,          +     T if T is protected,
+      [T ] ,                                [T ] ,
+                  D otherwise                         U otherwise
+
+      Now, the signature of the resulting theory is defined as follows:
+
+1. The set of type constructors is extended with U, D, T.
+2. We replace every function symbol f of type signature hS1 , . . . , Sn , Si with a
+   symbol fˆ with the monomorphic type signature h[S1 ]− , . . . , [Sn ]− , [S]+ i.
+3. We replace every predicate symbol p of type signature hS1 , . . . , Sn i with a
+   symbol p̂ with the monomorphic type signature h[S1 ]− , . . . , [Sn ]− i.
+4. For every variable symbol u and type T , we add a new variable symbol uT .
+5. For every type variable α ∈ VT , we add a new variable symbol v α .
+6. For every type constructor F ∈ FT , we add a new function symbol F of the
+   same arity and with type signature hT, . . . , T, Ti.
+7. We add a new “decoration” function symbol deco :hT, U, Di.
+   The Dec transformation applies to non-protected types, translating them to
+terms of type T:
+
+  Dec(α) , v α : T           Dec(F(T1 , . . . , Tn )) , F(Dec(T1 ), . . . , Dec(Tn )) : T
+
+   In the next definition, t stands for a vector of terms, S̄ for a protected sort,
+and T for a non-protected type. The Dec transformation applies to terms:
+
+                    Dec(u : S̄) , uS : S̄
+                   Dec(u : T ) , deco(Dec(T ), uT : U) : D
+                 Dec(f (t) : S̄) , fˆ(Dec(t)) : S̄
+                 Dec(f (t) : T ) , deco(Dec(T ), fˆ(Dec(t)) : U) : D
+
+and formulas (here, {α1 , . . . , αm } = FVT (H)):
+
+     Dec(p(t)) , p̂(Dec(t))                           Dec(¬F ) , ¬ Dec(F )
+  Dec(t1 ≈ t2 ) , Dec(t1 ) ≈ Dec(t2 ) Dec(∀(u : S̄)F ) , ∀(uS : S̄) Dec(F )
+   Dec(F ∧ G) , Dec(F ) ∧ Dec(G) Dec(∀(u : T )F ) , ∀(uT : U) Dec(F )
+
+                    Dec◦ (H) , ∀(v α1 : T) . . . ∀(v αm : T) Dec(H)
+    On the running example, assuming U = {I}, the transformations Par and
+Dec◦ produce the following monomorphic formulas (for the sake of clarity, we
+“forget” the variable subscripts added by Par):
+
+  ∀(v α : T) ∀(mM(α,I) : U) ∀(cα : U) get[I/β] (deco(M(v α , I),
+      set[I/β] (deco(M(v α , I), mM(α,I) ), deco(v α , cα ), 6)), deco(v α , cα )) ∗ 7 ≈ 42
+
+
+  ∀(mM(I,I) : U) ∀(cI : Ī) get[I/α,I/β] (deco(M(I, I),
+                               set[I/α,I/β] (deco(M(I, I), mM(I,I) ), cI , 6)), cI ) ∗ 7 ≈ 42
+
+whereas Tw and Dec◦ produce:
+
+  ∀(v α : T) ∀(mM(α,I) : U) ∀(cα : U) fromI deco I, get(deco(M(v α , I),
+           set(deco(M(v α , I), mM(α,I) ), deco(v α , cα ), deco(I, toI (6)))),
+                                                             deco(v α , cα )) ∗ 7 ≈ 42
+                                                                             
+
+The second axiom of bridge functions toI and fromI becomes
+
+              ∀(uI : U) deco(I, toI (fromI (deco(I, uI )))) ≈ deco(I, uI )
+
+Due to the outer application of deco on the both sides of equality, our translation
+is sound even when we protect finite types, such as booleans. Without this
+additional decoration (as in [5, Eq. (8)]), the finiteness of a protected sort implies
+the finiteness of the whole sort U.
+Lemma 8. For every term t of type T , Dec(t) is a well-formed monomorphic
+term of type [T ]− . For every formula F , Dec(F ) is a well-formed monomorphic
+formula. Also, FV(Dec(t)) = {uT :[T ]+ | u : T ∈ FV(t)} ∪ {v α : T | α ∈ FVT (t)}
+and FV(Dec(F )) = {uT :[T ]+ | u : T ∈ FV(F )} ∪ {v α : T | α ∈ FVT (F )}. For
+every closed formula F , Dec◦ (F ) is a well-formed closed monomorphic formula.
+Proof. The last claim easily follows from the second one. The proof of the first
+two statements goes by induction on the structure of terms and formulas. The
+only interesting case is the application of a function symbol (predicate symbols
+are treated in the same way).
+     Consider a term t = f (t1 : T1 , . . . , tn : Tn ) : T . Let Si denote the i-th sort in the
+type signature of f . We have two possible cases: either Si and Ti are protected
+and Si = Ti , or both Si and Ti are non-protected, by the definition of matching
+with protected types. Therefore, [Ti ]− = [Si ]− for every i ∈ [1, n].
+     Now, let S be the type of the value in the type signature of f . By the same
+argument, either S and T are protected and S = T , or both S and T are non-
+protected. Then [T ]+ = [S]+ and the term t0 = fˆ(Dec(t1 ), . . . , Dec(tn )) :[T ]+
+is well-formed.
+     Finally, if T is protected, then Dec(t) = t0 and [T ]− = T = [T ]+ . Notice that
+the type T does not contain type variables. Otherwise, if T is non-protected, then
+[T ]+ = U and Dec(t) = deco(Dec(T ), t0 ) : D is a well-formed term of type [T ]− .
+Furthermore, every type variable α occurring in T appears as a free variable
+v α : T in the first argument of deco in Dec(t).                                               t
+                                                                                               u
+Theorem 8 (Soundness of Dec). If a set of closed formulas with protected
+sorts Γ is satisfiable then Dec◦ (Γ ) is satisfiable.
+Proof. Let M be a model of Γ . We are going to construct an interpretation I
+of Dec◦ (Γ ) such that, for every variable valuation ξ in I, there exist a type
+valuation π 0 and a variable valuation ξ 0 in the original model M, such that:
+
+        Iξ (Dec(t : T )) = hT π 0 , Mπ0 ,ξ0 (t)i        Iξ (Dec(F )) = Mπ0 ,ξ0 (F )
+
+for every term t and formula F occurring in Γ . We do not need to consider type
+valuations in I, since the result of Dec◦ is entirely monomorphic. As soon as
+these two equalities are proved, it is easy to show that for every closed H ∈ Γ ,
+the interpretation I satisfies Dec◦ (H):
+                               ^                  ^
+              I(Dec◦ (H)) =      Iξ (Dec(H)) =      Mπ0 ,ξ0 (H) = >
+                                    ξ                     ξ
+
+   For every sort S in the initial signature, protected or not, we keep its domain,
+pairing its elements with S:
+
+                                     DSI , {S} × DSM
+
+The domain of D is defined as a dependent sum over non-protected sorts:
+                          I
+                         DD , { hS, ci | S ∈ T (FT ), c ∈ DSM }
+The domain of U is the set of all functions that map every non-protected sort S
+in T (FT ) to an element of DSM :
+                               DUI , { S ∈ T (FT ) 7−→ c ∈ DSM }
+Finally, the domain of T is the set of all non-protected sorts: DTI , T (FT ).
+   Then we give an interpretation to the function and predicate symbols in
+Dec◦ (Γ ). Let f be a function symbol in Γ of type signature S = hS1 , . . . , Sn , Si.
+The symbol fˆ has the type signature S0 = h[S1 ]− , . . . , [Sn ]− , [S]+ i and this is
+the only sort vector to interpret fˆ on, since it is monomorphic. Firstly, suppose
+that S is protected. Then we define:
+
+  fˆSI0 (hT1 , c1 i, . . . , hTn , cn i) ,
+                           (
+                                    M
+                              hS, fhT  1 ,...,Tn ,Si
+                                                     (c1 , . . . , cn )i if S matches hT1 , . . . , Tn , Si,
+                           hS, eS i                                  otherwise,
+
+where eS is an arbitrary but fixed element of DSM . Otherwise, if S is non-pro-
+tected, we set:
+
+  fˆSI0 (hT1 , c1 i, . . . , hTn , cn i) ,
+                                (
+                                     M
+                                    fhT 1 ,...,Tn ,T i
+                                                       (c1 , . . . , cn ) if S matches hT1 , . . . , Tn , T i,
+          λT ∈ T (FT ) .
+                                    eT                                    otherwise,
+
+where eT is an arbitrary but fixed element of DTM . Similarly, let p be a predicate
+symbol in Γ of type signature S = hS1 , . . . , Sn i. The symbol p̂ has the type
+signature S0 = h[S1 ]− , . . . , [Sn ]− i, and we set:
+
+  p̂IS0 (hT1 , c1 i, . . . , hTn , cn i) ,
+                                       (
+                                         pM
+                                          hT1 ,...,Tn i (c1 , . . . , cn ) if S matches hT1 , . . . , Tn i,
+                                       >                                otherwise.
+The symbol deco is interpreted as follows:
+                                  decoIhT,U,Di (T, h) , hT, h(T )i
+Finally, the type-representing function symbols are interpreted exactly as the
+original type constructors:
+                             FIhT,...,Ti (T1 , . . . , Tn ) , F(T1 , . . . , Tn )
+    Now, consider a variable valuation ξ in I. For every type variable α, we set
+απ 0 , ξ(v α : T). Every type in DTI is a non-protected sort, so π 0 is a type valu--
+ation. Moreover, for every non-protected type T , we have Iξ (Dec(T )) = T π 0 .
+    Then, for any variable u : T in Γ , we set:
+                    (
+                      c                 if T is protected and ξ(uT : T ) = hT, ci,
+     ξ 0 (u : T ) ,
+                      ξ(uT : U)(T π 0 ) otherwise.
+   We proceed to prove the two main equalities, and, once again, the proof goes
+by induction on the structure of terms and formulas. We consider four cases: a
+variable, a function application, an equality, and a universally quantified formula.
+ 1. Let u : T occur in Γ . If T is protected, then Iξ (Dec(u : T )) = Iξ (uT : T ) =
+    ξ(uT : T ) = hT, ξ 0 (u : T )i = hT, Mπ0 ,ξ0 (u : T )i. Otherwise, if T is a non-
+    protected type, we have:
+
+       Iξ (Dec(u : T )) = Iξ (deco(Dec(T ), uT : U) : D) =
+             decoIhT,U,Di (Iξ (Dec(T )), Iξ (uT : U)) = hT π 0 , ξ(uT : U)(T π 0 )i =
+                                                         hT π 0 , ξ 0 (u : T )i = hT π 0 , Mπ0 ,ξ0 (u : T )i
+
+ 2. Consider a term t = f (t1 : T1 , . . . , tn : Tn ) : T . Let S = hS1 , . . . , Sn , Si be the
+    type signature of f and S0 = h[S1 ]− , . . . , [Sn ]− , [S]+ i. If T is protected, then
+
+       Iξ (Dec(t)) = fˆSI0 Iξ (Dec(t1 )), . . . , Iξ (Dec(tn )) =
+                                                                      
+
+                   fˆI0 hT1 π 0 , Mπ0 ,ξ0 (t1 )i, . . . , hTn π 0 , Mπ0 ,ξ0 (tn )i =
+                                                                                  
+                         S
+                    M
+               hT, fhT   0         0
+                      1 π ,...,Tn π ,T i
+                                         (Mπ0 ,ξ0 (t1 ), . . . , Mπ0 ,ξ0 (tn ))i = hT π 0 , Mπ0 ,ξ0 (t)i
+
+    Now, suppose that T is non-protected. We obtain:
+
+       Iξ (Dec(t)) = Iξ (deco(Dec(T ), fˆ(Dec(t1 ), . . . , Dec(tn )) : U) : D) =
+               decoIhT,U,Di T π 0 , fˆSI0 Iξ (Dec(t1 )), . . . , Iξ (Dec(tn )) =
+                                                                                         
+
+             hT π 0 , fˆSI0 hT1 π 0 , Mπ0 ,ξ0 (t1 )i, . . . , hTn π 0 , Mπ0 ,ξ0 (tn )i (T π 0 )i =
+                                                                                      
+
+          hT π 0 , fhT
+                    M
+                          0         0
+                                                                                             0
+                                         0 (Mπ 0 ,ξ 0 (t1 ), . . . , Mπ 0 ,ξ 0 (tn ))i = hT π , Mπ 0 ,ξ 0 (t)i
+                       1 π ,...,Tn π ,T π i
+
+
+ 3. Consider an equality formula t1 ≈ t2 . Let T be the type of t1 and t2 . By
+    induction hypothesis, Iξ (Dec(t1 )) = hT π 0 , Mπ0 ,ξ0 (t1 )i and Iξ (Dec(t2 )) =
+    hT π 0 , Mπ0 ,ξ0 (t2 )i. Obviously, these two are equal if and only if Mπ0 ,ξ0 (t1 )
+    and Mπ0 ,ξ0 (t2 ) are equal.
+ 4. Consider a universally quantified formula ∀(u : S) F , where S is protected. By
+    construction, DSI = {S} × DSM . Let us take an arbitrary element hS, ci ∈ DSI .
+    According to the definition above, the variable valuation ξ[uS : S 7→ hS, ci]
+    will produce in M the same type valuation π 0 and the variable valuation
+    ξ 0 [u : S 7→ c]. We obtain:
+                                       ^
+            Iξ (Dec(∀(u : S) F )) =         Iξ[uS : S 7→ hS,ci] (Dec(F ))
+                                                I
+                                         hS,ci∈DS
+                                            ^
+                                       =          Mπ0 ,ξ0 [u : S 7→ c] (F ) = Mπ0 ,ξ0 (∀(u : S) F )
+                                              M
+                                           c∈DS
+
+
+ 5. Consider a formula ∀(u : T ) F , where T is a non-protected type. After the
+    transformation, the variable symbol uT acquires the type U. Any element of
+    DUI is a function that maps any non-protected sort S to some element of DSM .
+    However, we are only interested in the value of this function on T π 0 , since for
+    any two functions h, h0 ∈ DUI that coincide on T π 0 , Iξ[uT : U 7→ h] (Dec(F )) =
+    Iξ[uT : U 7→ h0 ] (Dec(F )). Indeed, uT : U can only occur in Dec(F ) inside a
+    term deco(Dec(T ), uT : U) : D. Since Dec(F ) does not contain quantifiers
+    over T, the term Dec(T ) will always evaluate to T π 0 . Therefore, the term
+    deco(Dec(T ), uT : U) : D will evaluate to hT π 0 , h(T π 0 )i in both cases.
+    For any c ∈ DTMπ0 , let hc denote an arbitrary but fixed function in DUI that
+    maps T π 0 to c. The valuation ξ[uT : U 7→ hc ] produces in M the same type
+    valuation π 0 and the variable valuation ξ 0 [u : T 7→ c]. We obtain:
+                                     ^
+         Iξ (Dec(∀(u : T ) F )) =        Iξ[uT : U 7→ h] (Dec(F ))
+                                    h∈DUI
+                                     ^
+                                =           Iξ[uT : U 7→ hc ] (Dec(F ))
+                                     M
+                                  c∈DT π0
+                                     ^
+                                =           Mπ0 ,ξ0 [u : T 7→ c] (F ) = Mπ0 ,ξ0 (∀(u : T ) F )
+                                     M
+                                  c∈DT π0
+
+
+Thus, for every formula F in Γ , Dec◦ (F ) is satisfied under I.                                 t
+                                                                                                 u
+
+Theorem 9 (Completeness of Dec). For every set of closed formulas with
+protected sorts Γ , if Dec◦ (Γ ) is satisfiable then Γ is satisfiable.
+
+Proof. Let M be a model of Dec◦ (Γ ). We are going to construct an interpreta-
+tion I of Γ such that, for every type valuation π and every variable valuation ξ
+in I, there exists a variable valuation ξ 0 in the original model M such that:
+
+            Iπ,ξ (t) = Mξ0 (Dec(t))                  Iπ,ξ (F ) = Mξ0 (Dec(F ))
+
+for every term t and formula F occurring in Γ . Since Dec◦ (F ) is the universal
+closure of Dec(F ), the second equality suffices to show Iπ (F ) for every F ∈ Γ .
+    For any sort S in the signature of Γ , we set:
+                  (
+             I      DSM                              if S is protected,
+           DS ,          M                      M
+                    decohT,U,Di (M(Dec(S)), DU ) otherwise,
+
+In the second case, we speak about the image of decoM on the domain of U.
+We omit the variable valuation when evaluating Dec(S), as this term does not
+contain variables. Notice that for every non-protected sort S, DSI ⊆ DD         M
+                                                                                   .
+   Consider a function symbol f in Γ of type signature S = hS1 , . . . , Sn , Si. Let
+S0 stand for the type signature of fˆ, h[S1 ]− , . . . , [Sn ]− , [S]+ i. The symbol f is
+then interpreted in I on a sort vector Sτ as follows:
+                  (
+         I          fˆSM0 (c)                                   if S is protected,
+       fSτ (c) ,                                  ˆM0 (c)) otherwise.
+                    decoM  hT,U,Di (M(Dec(Sτ )), f  S
+Notice that every argument ci from c belongs either to DSMi (if the sort Si is
+                    M
+protected) or to DD     (if it is not), and thus the interpretation is well-defined.
+Furthermore, every predicate symbol p of type signature S = hS1 , . . . , Sn i is
+interpreted in I on Sτ as p̂M h[S1 ]− ,...,[Sn ]− i on the same arguments. This concludes
+the definition of the interpretation I.
+    Now, consider some type valuation π and a variable valuation ξ in I. For
+every variable occurring in Dec◦ (Γ ), we define (assuming that S is a protected
+sort and T is a non-protected type):
+
+                                ξ 0 (v α : T) , M(Dec(απ))
+                                ξ 0 (uS : S) , ξ(u : S)
+                                ξ 0 (uT : U) , bξ(u : T )
+
+where, for any a ∈ DTI π , ba is an arbitrary but fixed element of DUM such that
+
+                            decoM
+                                hT,U,Di (M(Dec(T π)), ba ) = a
+
+By definition of DTI π , there exists at least one such element. Notice that as T is
+non-protected, T π is non-protected, too. Also, Mξ0 (Dec(T )) = M(Dec(T π)).
+   The proof of the equalities above goes by induction on the structure of terms
+and formulas. We will consider three cases: a variable, a function application,
+and a universally quantified formula.
+ 1. Let u : T be a variable occurring in Γ . If T is a protected sort, we have
+    Iπ,ξ (u : T ) = ξ(u : T ) = ξ 0 (uT : T ) = Mξ0 (Dec(u : T )). If T is a non-protec-
+    ted type, we obtain:
+
+      Iπ,ξ (u : T ) = ξ(u : T ) = decoM
+                                      hT,U,Di (M(Dec(T π)), bξ(u : T ) )
+                                                                0
+                                = decoM
+                                      hT,U,Di (Mξ 0 (Dec(T )), ξ (uT : U))
+
+                                = Mξ0 (deco(Dec(T ), uT : U) : D) = Mξ0 (Dec(u : T ))
+
+ 2. Consider a term t = f (t1 : T1 , . . . , tn : Tn ) : T in Γ . Let S = hS1 , . . . , Sn , Si be
+    the type signature of f and S0 be the type signature of fˆ. If S is a protected
+    sort, then f is interpreted on hT1 , . . . , Tn , T iπ in I exactly as fˆ on S0 in M,
+    thus Iπ,ξ (t) = Mξ0 (Dec(t)). Assume that S is non-protected. Denoting the
+    list of arguments with t, we get:
+
+                   I
+       Iπ,ξ (t) = fTπ (Iπ,ξ (t)) = decoM                     ˆM
+                                       hT,U,Di (M(Dec(T π)), fS0 (Iπ,ξ (t))) =
+
+                  decoM                        ˆM
+                      hT,U,Di (Mξ 0 (Dec(T )), fS0 (Mξ 0 (Dec(t)))) = Mξ 0 (Dec(t))
+
+ 3. Consider a universal formula ∀(u : T ) F . The case of protected T is trivial, so
+    we assume that T is non-protected. Let b and b0 be two elements of DUM such
+                                                                            0
+    that decoM                                  M
+              hT,U,Di (M(Dec(T π)), b) = decohT,U,Di (M(Dec(T π)), b ). We can
+    show that Mξ0 [uT : U 7→ b] (Dec(F )) = Mξ0 [uT : U 7→ b0 ] (Dec(F )). Indeed, the
+    variable uT : U can only occur in Dec(F ) in terms deco(Dec(T ), uT : U) : D.
+      Since Dec(F ) does not contain quantifiers over T, the term Dec(T ) will
+      always evaluate to M(Dec(T π)).
+      Let a be an arbitrary element of DTI π . The type valuation π and the variable
+      valuation ξ[u : T 7→ a] produce in M the variable valuation ξ 0 [uT : U 7→ ba ].
+                                 ^
+           Iπ,ξ (∀(u : T ) F ) =    Iπ,ξ[u : T 7→ a] (F )
+                                  I
+                               a∈DT π
+                                ^
+                           =            Mξ0 [uT : U 7→ ba ] (Dec(F ))
+                                  I
+                               a∈DT π
+                                ^
+                           =           Mξ0 [uT : U 7→ b] (Dec(F ))
+                               b∈DUM
+
+                           = Mξ0 (∀(uT : U) Dec(F )) = Mξ0 (Dec(∀(u : T ) F ))
+
+Thus, for every formula F in Γ , F is satisfied under I.                                   t
+                                                                                           u
+
+3.5     Explicit Polymorphism
+The Exp transformation is similar to Dec except that instead of attaching an
+explicit type annotation to every term, we add type-representing arguments to
+polymorphic symbols. This allows for much lighter modifications in the original
+problem. However, the method is only sound on problems that admit a model
+where every non-protected sort has an infinite domain.
+   We introduce fresh sort constants U and T. The first one replaces non-
+protected types and the second one, as in Dec, is the sort of type-representing
+terms. For any type T , we define [T ] to be T if T is protected, and U otherwise.
+Then Exp modifies the signature of a transformed theory in the following way:
+ 1. The set of type constructors is extended with U and T.
+ 2. Let f be a function symbol of signature S = hS1 , . . . , Sn , Si and α1 , . . . , αr
+    be the free type variables of S. We replace f with a function symbol fˆ of
+    arity r + n with monomorphic type signature hT, . . . , T, [S1 ], . . . , [Sn ], [S]i.
+ 3. Let p be a predicate symbol of signature S = hS1 , . . . , Sn i and α1 , . . . , αr be
+    the free type variables of S. We replace p with a predicate symbol p̂ of arity
+    r + n with monomorphic type signature hT, . . . , T, [S1 ], . . . , [Sn ]i.
+ 4. For every variable symbol u and type T , we add a new variable symbol uT .
+ 5. For every type variable α ∈ VT , we add a new variable symbol v α .
+ 6. For every type constructor F ∈ FT , we add a new function symbol F of the
+    same arity and with type signature hT, . . . , T, Ti.
+   The Exp transformation applies to non-protected types, translating them to
+terms of type T, exactly as Dec:
+
+   Exp(α) , v α : T         Exp(F(T1 , . . . , Tn )) , F(Exp(T1 ), . . . , Exp(Tn )) : T
+
+   The Exp transformation applies to terms and formulas. In the definition
+below, t stands for a list of terms; α1 , . . . , αr are the type variables of the type
+signature of f and p; the type signature of f and p is instantiated with a type
+substitution τ ; and β1 , . . . , βm are the type variables of H:
+
+              Exp(u : T ) , uT : [T ]
+            Exp(f (t) : T ) , fˆ(Exp(α1 τ ), . . . , Exp(αr τ ), Exp(t)) :[T ]
+                 Exp(p(t)) , p̂(Exp(α1 τ ), . . . , Exp(αr τ ), Exp(t))
+             Exp(t1 ≈ t2 ) , Exp(t1 ) ≈ Exp(t2 )
+                 Exp(¬F ) , ¬ Exp(F )
+              Exp(F ∧ G) , Exp(F ) ∧ Exp(G)
+                Exp(∀x F ) , ∀(Exp(x)) Exp(F )
+                  Exp◦ (H) , ∀(v β1 : T) . . . ∀(v βm : T) Exp(H)
+
+   On the running example, assuming U = {I}, the transformations Par and
+Exp◦ produce the following formulas (for the sake of clarity, we “forget” the
+variable subscripts added by Par):
+
+     ∀(v α : T) ∀(mM(α,I) : U) ∀(cα : U) get[I/β] (v α ,
+                                                set[I/β] (v α , mM(α,I) , cα , 6), cα ) ∗ 7 ≈ 42
+       ∀(mM(I,I) : U) ∀(cI : Ī) get[I/α,I/β] (set[I/α,I/β] (mM(I,I) , cI , 6), cI ) ∗ 7 ≈ 42
+
+and Tw and Exp◦ give:
+
+  ∀(v α : T) ∀(mM(α,I) : U) ∀(cα : U) fromI (get(v α , I,
+                                           set(v α , I, mM(α,I) , cα , toI (6)), cα )) ∗ 7 ≈ 42
+
+Lemma 9. For every term t of type T , Exp(t) is a well-formed monomorphic
+term of type [T ]. For every formula F , Exp(F ) is a well-formed monomorphic
+formula. Also, FV(Exp(t)) = {uT :[T ] | u : T ∈ FV(t)}∪{v α : T | α ∈ FVT (t)} and
+FV(Exp(F )) = {uT :[T ] | u : T ∈ FV(F )} ∪ {v α : T | α ∈ FVT (F )}. Finally, for
+every closed formula F , Exp◦ (F ) is a well-formed closed monomorphic formula.
+Proof. The last claim easily follows from the second one. The proof of the first
+two statements goes by induction on the structure of terms and formulas. The
+only interesting case is the application of a function symbol (predicate symbols
+are treated in the same way).
+   Consider a term t = f (t1 : T1 , . . . , tn : Tn ) : T . Let Si denote the i-th sort in the
+type signature of f . We have two possible cases: either Si and Ti are protected
+and Si = Ti , or both Si and Ti are non-protected, by the definition of matching
+with protected types. Therefore, [Ti ] = [Si ] for every i ∈ [1, n].
+   Now, let S be the type of the value in the type signature of f . By the same
+argument, either S and T are protected and S = T , or both S and T are non-
+protected. Therefore, [T ] = [S] and the application is well-formed.
+   Finally, every type variable α occurring in hT1 , . . . , Tn , T i appears as a free
+variable v α : T in the supplementary “type” arguments of fˆ in Exp(t).                      t
+                                                                                             u
+Theorem 10 (Soundness of Exp). If a set of closed formulas with protected
+sorts Γ is satisfiable so that every non-protected sort has an infinite domain in
+the model, then Exp◦ (Γ ) is satisfiable.
+Proof. Every model of Γ is a model of the set of monomorphic type instances
+MI(Γ ) and vice versa. In this set, protected sorts require no special treatment
+and the whole problem is reduced to many-sorted logic. Let M be a model of
+Γ such that, for every non-protected sort S, the domain DSM is infinite. By
+Löwenheim-Skolem theorem for many-sorted logic [11, Sect. 7.6], we can assume
+that the domain of every non-protected sort is simply N.
+     We are going to construct an interpretation I of Exp◦ (Γ ) such that, for every
+variable valuation ξ in I, there exist a type valuation π 0 and a variable valuation
+ξ 0 in the original model M, such that:
+
+            Iξ (Exp(t)) = Mπ0 ,ξ0 (t)                          Iξ (Exp(F )) = Mπ0 ,ξ0 (F )
+
+for every term t and formula F occurring in Γ . We do not need to consider type
+valuations in I, since the result of Exp◦ is entirely monomorphic. As soon as
+these two equalities are proved, it is easy to show that for every closed formula
+H ∈ Γ , the interpretation I satisfies Exp◦ (H). Indeed,
+                              ^                   ^
+              I(Exp◦ (H)) =      Iξ (Exp(H)) =      Mπ0 ,ξ0 (H) = >
+                                         ξ                           ξ
+
+    For every sort S in the initial signature, protected or not, we keep its domain:
+DSI , DSM . The domain of U is the set of natural numbers: DUI , N. The domain
+of T is the set of non-protected sorts: DTI , T (FT ).
+    Then we give an interpretation to the function and predicate symbols in
+Exp◦ (Γ ). Let f be a function symbol in Γ of type signature S = hS1 , . . . , Sn , Si
+and α1 , . . . , αr be the type variables in S. The symbol fˆ has the arity r + n and
+the type signature S0 = hT, . . . , T, [S1 ], . . . , [Sn ], [S]i and this is the only sort
+vector to interpret fˆ on, since it is monomorphic. We define:
+
+                      fˆSI0 (T1 , . . . , Tr , c1 , . . . , cn ) , fSτ
+                                                                    M
+                                                                       (c1 , . . . , cn )
+
+where τ is the type substitution [T1 /α1 , . . . , Tr /αr ]. Notice that every type S in
+                I       M
+S verifies D[S]     = DSτ . Indeed, either S is protected and [S] = S = Sτ , or both
+                                        I
+S and Sτ are non-protected and D[S]         = DUI = N = DSτ      M
+                                                                   .
+   Similarly, let p be a predicate symbol in Γ of type signature S = hS1 , . . . , Sn i
+and α1 , . . . , αr be the type variables in S. The symbol p̂ has the arity r + n and
+the type signature S0 = hT, . . . , T, [S1 ], . . . , [Sn ]i. Then we set:
+
+             p̂IS0 (T1 , . . . , Tr , c1 , . . . , cn ) , pM
+                                                           S[T1 /α1 ,...,Tr /αr ] (c1 , . . . , cn )
+
+Finally, the type-representing function symbols are interpreted exactly as the
+original type constructors:
+
+                            FIhT,...,Ti (T1 , . . . , Tn ) , F(T1 , . . . , Tn )
+    Now, let us consider a variable valuation ξ in I. For any type variable α, we
+set απ 0 , ξ(v α : T). For any variable u : T in Γ , we set ξ 0 (u : T ) , ξ(uT :[T ]).
+As we have shown above, DTMπ0 = D[T  I
+                                       ] . Also, for every non-protected type T , we
+                        0
+have Iξ (Exp(T )) = T π .
+    The proof of the two main equalities goes by induction on the structure of
+terms and formulas. We consider three cases: a variable, a function application,
+and a universally quantified formula.
+ 1. Let u : T be a variable in Γ . We obtain:
+
+         Iξ (Exp(u : T )) = Iξ (uT :[T ]) = ξ(uT :[T ]) = ξ 0 (u : T ) = Mπ0 ,ξ0 (u : T )
+
+ 2. Consider a term t = f (t1 : T1 , . . . , tn : Tn ) : T . Let S = hS1 , . . . , Sn , Si be the
+    type signature of f and α1 , . . . , αr be the type variables of S. Let S0 be the
+    type signature of fˆ. Finally, let τ be the type substitution that instantiates
+    S to hT1 , . . . , Tn , T i. We obtain:
+
+      Iξ (Exp(t)) = Iξ (fˆ(Exp(α1 τ ), . . . , Exp(αr τ ), Exp(t1 ), . . . , Exp(tn )) :[S])
+                  = fˆI0 (α1 τ π 0 , . . . , αr τ π 0 , Mπ0 ,ξ0 (t1 ), . . . , Mπ0 ,ξ0 (tn ))
+                         S
+                       M
+                    = fSτ π 0 (Mπ 0 ,ξ 0 (t1 ), . . . , Mπ 0 ,ξ 0 (tn )) = Mπ 0 ,ξ 0 (t)
+
+ 3. Consider a universally quantified formula ∀(u : T ) F . Let us take an arbitrary
+                  I       M
+    element c ∈ D[T ] = DT π 0 . The variable valuation ξ[uT :[T ] 7→ c] produces in
+    M the same type valuation π 0 and the variable valuation ξ 0 [u : T 7→ c].
+                                  ^
+        Iξ (Exp(∀(u : T ) F )) =      Iξ[uT :[T ] 7→ c] (Exp(F ))
+                                          I
+                                       c∈D[T ]
+                                         ^
+                                     =           Mπ0 ,ξ0 [u : T 7→ c] (F ) = Mπ0 ,ξ0 (∀(u : T ) F )
+                                          M
+                                       c∈DT π0
+
+
+Thus, for every formula F in Γ , Exp◦ (F ) is satisfied under I.                                      t
+                                                                                                      u
+
+Theorem 11 (Completeness of Exp). For every set of closed formulas with
+protected sorts Γ , if Exp◦ (Γ ) is satisfiable then Γ is satisfiable.
+
+Proof. Let M be a model of Exp◦ (Γ ). We are going to construct an interpreta-
+tion I of Γ such that, for every type valuation π and every variable valuation ξ
+in I, there exists a variable valuation ξ 0 in the original model M, such that:
+
+             Iπ,ξ (t) = Mξ0 (Exp(t))                       Iπ,ξ (F ) = Mξ0 (Exp(F ))
+
+for every term t and formula F occurring in Γ . Since Exp◦ (F ) is the universal
+closure of Exp(F ), the second equality suffices to show Iπ (F ) for every F ∈ Γ .
+    For any sort S in the signature of Γ , we set DSI , D[S]   M
+                                                                  .
+    Consider a function symbol f in Γ of type signature S = hS1 , . . . , Sn , Si and
+let α1 , . . . , αr be the type variables of S. Let S0 stand for the type signature of
+fˆ, hT, . . . , T, [S1 ], . . . , [Sn ], [S]i. The symbol f is then interpreted in I on a sort
+vector Sτ as follows:
+                 I
+                fSτ (c) , fˆSM0 (M(Exp(α1 τ )), . . . , M(Exp(αr τ )), c).
+We omit the variable valuation when evaluating Exp(αi τ ), as these terms do not
+contain variables. Notice that every argument ci from c belongs either to DSMi
+(if the sort Si is protected) or to DUM (if it is not), and thus the interpretation
+is well-defined.
+    Similarly, let p be a predicate symbol in Γ of type signature S = hS1 , . . . , Sn i.
+Let α1 , . . . , αr be the type variables of S and S0 be the type signature of p̂. The
+symbol p is then interpreted in I on a sort vector Sτ as follows:
+                pISτ (c) , p̂M
+                             S0 (M(Exp(α1 τ )), . . . , M(Exp(αr τ )), c).
+
+This concludes the definition of interpretation I.
+   Now, let us consider some type valuation π and a variable valuation ξ in I.
+For every variable occurring in Exp◦ (Γ ), we define:
+            ξ 0 (v α : T) , M(Exp(απ))                     ξ 0 (uT :[T ]) , ξ(u : T )
+Notice that Mξ0 (Exp(T )) = M(Exp(T π)) and DTI π = D[T  M
+                                                           ].
+   The proof of the equalities above goes by induction on the structure of terms
+and formulas. We consider three cases: a variable, a function application, and a
+universally quantified formula.
+ 1. Let u : T be a variable occurring in Γ . We obtain:
+        Iπ,ξ (u : T ) = ξ(u : T ) = ξ 0 (uT :[T ]) = Mξ0 (uT :[T ]) = Mξ0 (Exp(u : T ))
+ 2. Consider a term t = f (t1 : T1 , . . . , tn : Tn ) : T in Γ . Let S = hS1 , . . . , Sn , Si
+    be the type signature of f , let α1 , . . . , αr be the type variables of S, let S0
+    be the type signature of fˆ, and τ the type substitution that instantiates S
+    to hT1 , . . . , Tn , T i. Denoting the list of arguments with t, we get:
+                   I
+       Iπ,ξ (t) = fSτ π (Iπ,ξ (t))
+                  ˆM
+                = f 0 (M(Exp(α1 τ π)), . . . , M(Exp(αr τ π)), Iπ,ξ (t))
+                   S
+
+               = fˆSM0 (Mξ0 (Exp(α1 τ )), . . . , Mξ0 (Exp(αr τ )), Mξ0 (Exp(t)))
+               = Mξ0 (fˆ(Exp(α1 τ ), . . . , Exp(αr τ ), Exp(t)) :[S]) = Mξ0 (Exp(t))
+ 3. Consider a universal formula ∀(u : T ) F . Let a be some element of DTI π . The
+    type valuation π and the variable valuation ξ[u : T 7→ a] produces in M the
+    variable valuation ξ 0 [uT :[T ] 7→ a]. We obtain:
+                               ^
+         Iπ,ξ (∀(u : T ) F ) =        Iπ,ξ[u : T 7→ a] (F )
+                                   I
+                                a∈DT π
+                                  ^
+                            =             Mξ0 [uT :[T ] 7→ a] (Exp(F ))
+                                   M
+                                a∈D[T ]
+
+                            = Mξ0 (∀(uT :[T ]) Exp(F )) = Mξ0 (Exp(∀(u : T ) F ))
+Thus, for every formula F in Γ , F is satisfied under I.                           t
+                                                                                   u
+
+    From a practical point of view, Theorem 10 is not comforting. Given a FOLT -
+problem Γ , we cannot effectively decide which sorts admit infinite models and
+which do not (one can postulate a bijection between a given sort and the domain
+of a partial-recursive function). A practical way out could consist in a small
+language extension: for every type/sort, we specify explicitly whether it is finite
+or infinite. We proceed from the assumption that the author of any given problem
+knows the intended model of every type.
+    In Why3 [4], every type is declared either as abstract or algebraic (i.e., a sum
+of products). We postulate that abstract types are all infinite and we analyse the
+definitions of algebraic types to find out which of their monomorphic instances
+admit infinite models. For example, given the standard algebraic definitions of
+booleans (B), lists (L(α)), and pairs (P(α, β)), we can conclude that the sorts B
+and P(B, B) are finite and I, L(B), and P(I, B) are infinite.
+    Once we know the finite sorts, can we transform a problem to eliminate them,
+so that Exp (or a similar method) can be applied? Meng and Paulson propose
+to filter out the premises implying the finiteness of sorts [13, Sect. 2.8]; however,
+we need an infallible filter to ensure the soundness of type erasure. We have
+implemented an alternative solution which consists in putting a special “projec-
+tion” function projT over every variable and function symbol of a finite type T .
+Thus, the premise ∀(x : B)(x ≈ True ∨ x ≈ False) becomes ∀(x : B)(projB (x) ≈
+projB (True) ∨ projB (x) ≈ projB (False)) and the domain of B does not need to
+be finite anymore, as we confine ourselves to the range of projB . This method
+is still potentially unsound, as one can state the finiteness of a sort with a poly-
+morphic axiom, where no projection would apply. Precisely, let isUnit :hαi be
+a unary predicate. Then the formulas ∀(x : α)(isUnit(x) ⊃ ∀(y : α)(y ≈ x)) and
+∀(x : A) isUnit(x) imply that the sort A has a single inhabitant. Today, we know
+of no way to use Exp soundly on polymorphic problems with finite sorts.
+    The last remark to make is that Exp provides a path towards one-sorted
+languages. Indeed, in a monomorphic setting, Theorem 10 comes to: “if every
+sort admits an infinite domain, then we can safely erase the sort annotations”.
+Thus, if we want to use a TPTP prover such as Vampire [16] or SPASS [18],
+we start by translating a proof task to the many-sorted language, using any of
+the methods described above. Then we eliminate the protected finite sorts (if
+any) using projections; in absence of polymorphism, this is a sound and complete
+transformation. And finally, we apply Exp assuming that all types are non-pro-
+tected, which amounts to simply erasing all sorts.
+
+
+4   Experiments and Conclusion
+
+In our experiments, we wanted to compare the impact of different “paths”
+of polymorphism encoding on the performance of three well-established SMT
+solvers. We omit the Par transformation (see the remark in the end of Sec-
+tion 3.2) and we add the classical type encoding technique with per-variable
+“type guards” [11]. Our implementation of this method (denoted Grd below)
+closely follows the description given in [10, Sect. 3.0].
+    We run our tests on 4123 verification conditions generated by the Why plat-
+form from 166 programs, which originate from Caduceus [7], Jessie [12], or di-
+rectly from Why. Translated tasks were sent to Z3, CVC3, and Yices with a
+time limit of 60 seconds. On the whole, 3993 proof obligations were proved
+by at least one prover. The initial Why3 files and our results are available at
+http://why3.lri.fr/download/polyfol_encoding.tar.gz.
+    We have tested the encodings Tw+Dec, Tw+Exp, and Tw+Grd, both
+with and without Dis. In the latter case, these methods correspond to what is
+described in [5] and [10]; the set U of sorts to protect in Tw is set to contain
+only integers and reals, which are natively supported by the three provers. In
+presence of Dis, we put in the set W every monomorphic specialization that
+occurs in the goal formula along with the specializations of access and update
+operations on every monomorphic array type in the goal; we also protect every
+sort in the goal (as well as integers and reals). This configuration of Dis and Tw
+gives better results comparing to other configurations that we tried, e.g., collect
+the specializations and the sorts to protect from the whole proof task.
+
+
+  Z3 (3809) Tw+Grd           Tw+Exp Tw+Dec Dis+Tw+Grd Dis+Tw+Exp
+Dis+Tw+Dec +203 −36          +20 −49 +66 −37 +18  −5  +26   −30
+Dis+Tw+Exp +191 −20          +13 −38 +63 −30 +35  −18
+Dis+Tw+Grd +195 −41          +11 −53 +59 −43
+  Tw+Dec    +157 −19         +15 −73
+  Tw+Exp    +211 −15
+
+CVC3 (3756) Tw+Grd           Tw+Exp Tw+Dec Dis+Tw+Grd Dis+Tw+Exp
+Dis+Tw+Dec +269 −20          +0 −26 +84 −19  +66  −4   +0   −6
+Dis+Tw+Exp +272 −17          +0 −20 +88 −17  +69  −1
+Dis+Tw+Grd +204 −17          +1 −89 +46 −43
+  Tw+Dec    +188 −4          +0 −91
+  Tw+Exp    +275 −0
+
+ Yices (3717) Tw+Grd         Tw+Exp Tw+Dec Dis+Tw+Grd Dis+Tw+Exp
+Dis+Tw+Dec +882 −6           +13 −276 +379 −79 +204 −2 +3  −272
+Dis+Tw+Exp +1149 −4          +39 −33 +574 −5   +472 −1
+Dis+Tw+Grd +684 −10          +6 −471 +241 −143
+  Tw+Dec      +577 −1        +5 −568
+  Tw+Exp      +1140 −1
+
+
+      Table 1. Experimental comparison of polymorphism encoding methods
+
+
+
+
+   Our results are given in Table 1. To the right of the prover’s name, we put
+the number of goals proved by at least one encoding method. In every cell we
+specify the number of goals proved by one encoding but not by the other one.
+For example, with CVC3, the encoding by Dis+Tw+Dec allows us to prove 84
+goals that were not proved by Tw+Dec. On the other hand, with Tw+Dec,
+CVC3 proves 19 goals that were not proved with Dis+Tw+Dec.
+     On the average, symbol discrimination increases the number of premises by a
+factor of 1.8 (ranging from 1 to 10 on some examples). Nevertheless, adding the
+Dis phase allows us to prove more goals in every case except for Z3 and CVC3
+with Exp. In particular, the Grd transformation is remarkably helped by Dis.
+Apart from the possibility to use the built-in support for arrays, the effectiveness
+of Dis is also explained by the fact that we protect the sorts that occur in
+the selected monomorphic specializations. Thus, the new premises generated by
+Dis are not only instantiated to the relevant sorts, they are also liberated from
+decorations imposed by the third, type-fusing, stage. This effect is less important
+in the case of Exp, because this transformation, unlike Dec and Grd, adds very
+little clutter to the encoded formulas in the first place.
+     Also notice that type protection, Tw, is crucially important: if we protect no
+types at all, we prevent provers from using their built-in theories, and the total
+number of goals proved (using only Exp, Dec, or Grd) drops to 1861.
+     The comparison between Exp, Dec, and Grd shows that Exp is generally
+more efficient than Dec which in its turn is more efficient than Grd. This is quite
+different from the results given in [10], where Exp and Grd have roughly the
+same performance. We have not yet identified whether this discrepancy comes
+from the difference in our test cases or in our implementations.
+
+Conclusion. In the present paper, we described first-order logic with polymor-
+phic types and introduced generic notions to define and reason about practical
+methods of polymorphism elimination. Using these notions, we generalized and
+proved two translation techniques known from literature. We also proposed to
+combine type protection with symbol discrimination. As our experiments show,
+this improves the performance of automated proof search and allows us to use
+built-in theories of complex types, such as arrays, in SMT solvers. One interest-
+ing problem we would like to resolve in the future is protection of polymorphic
+types, allowing to merge all monomorphic instances of a given complex type in
+a single protected sort. We also believe that better heuristics to choose the sets
+W and U can be devised, and further experiments are in order.
+
+
+References
+ 1. Barrett, C., Stump, A., Tinelli, C.: The SMT-LIB Standard: Version 2.0. Tech.
+    rep., Department of Computer Science, The University of Iowa (2010)
+ 2. Barrett, C., Tinelli, C.: CVC3. In: CAV’07. LNCS, vol. 4590, pp. 298–302. Springer
+    (2007)
+ 3. Bobot, F., Conchon, S., Contejean, E., Lescuyer, S.: Implementing polymorphism
+    in SMT solvers. In: SMT’08. ACM ICPS, vol. 367, pp. 1–5 (2008)
+ 4. Bobot, F., Filliâtre, J.C., Marché, C., Paskevich, A.: Why3: Shepherd your herd of
+    provers. In: Boogie 2011 (co-loc. with CADE-23). Wrocław, Poland (August 2011)
+ 5. Couchot, J.F., Lescuyer, S.: Handling polymorphism in automated deduction. In:
+    CADE-21. LNAI, vol. 4603, pp. 263–278. Springer (2007)
+ 6. Dutertre, B., de Moura, L.: The YICES SMT solver. Tech. rep., SRI International
+    (2006)
+ 7. Filliâtre, J.C., Marché, C.: Multi-prover verification of C programs. In: ICFEM’04.
+    LNCS, vol. 3308, pp. 15–29. Springer (2004)
+ 8. Hurd, J.: An LCF-style interface between HOL and first-order logic. In: CADE-18.
+    LNAI, vol. 2392, pp. 134–138. Springer (2002)
+ 9. Hurd, J.: First-order proof tactics in higher-order logic theorem provers. In: Design
+    and Application of Strategies/Tactics in Higher Order Logics. pp. 56–68. NASA
+    Technical Report NASA/CP-2003-212448 (2003)
+10. Leino, K.R.M., Rümmer, P.: A polymorphic intermediate verification language:
+    Design and logical encoding. In: TACAS’10. LNCS, vol. 6015, pp. 312–327. Springer
+    (2010)
+11. Manzano, M.: Extensions of First-Order Logic, Cambridge Tracts in Theoretical
+    Computer Science, vol. 19. Cambridge University Press (1996)
+12. Marché, C., Moy, Y.: Jessie plug-in (2010), http://frama-c.com/jessie.html
+13. Meng, J., Paulson, L.C.: Translating higher-order clauses to first-order clauses.
+    Journal of Automated Reasoning 40(1), 35–60 (2008)
+14. de Moura, L., Bjørner, N.: Z3: An efficient SMT solver. In: TACAS’08. LNCS, vol.
+    4963, pp. 337–340. Springer (2008)
+15. Nipkow, T., Paulson, L.C., Wenzel, M.: Isabelle/HOL — A Proof Assistant for
+    Higher-Order Logic, LNCS, vol. 2283. Springer (2002)
+16. Riazanov, A., Voronkov, A.: Vampire 1.1. In: IJCAR’01. LNCS, vol. 2083, pp.
+    376–380. Springer (2001)
+17. The Coq Development Team: The Coq Proof Assistant Reference Manual – Version
+    V8.0 (2004), http://coq.inria.fr
+18. Weidenbach, C., Dimova, D., Fietzke, A., Kumar, R., Suda, M., Wischnewski, P.:
+    SPASS version 3.5. In: CADE-22. LNCS, vol. 5663, pp. 140–145. Springer (2009)
+

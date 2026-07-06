@@ -1,0 +1,960 @@
+Optimized Encodings of Fragments of Type
+Theory in First Order Logic
+Tanel Tammet and Jan M. Smith
+Department of Computing Science,
+Chalmers University of Technology and Univ. of Goteborg,
+S-41296 Goteborg, Sweden.
+e-mail: ftammet, smithg@cs.chalmers.se
+
+Abstract. The paper presents sound and complete translations of sev-
+
+eral fragments of Martin-Lof's monomorphic type theory to rst order
+predicate calculus. The translations are optimised for the purpose of
+automated theorem proving in the mentioned fragments. The implementation of the theorem prover Gandalf and several experimental results
+are described.
+
+1 Introduction
+The subject of this paper is the problem of automated theorem proving in
+Martin-Lof's monomorphic type theory [16, 8], which is the underlying logic
+of the interactive proof development system ALF [2, 11].
+In the scope of our paper the task of automated theorem proving in type
+theory is understood as demonstrating that a certain type is inhabited by constructing a term of that type. The problem of inhabitedness of a type A is
+understood in the following way: given a list of judgements (these may be
+constant declarations, explicit de nitions and de ning equalities), nd a term a
+such that a 2 A is derivable from . The term a is explicitly constructed and,
+hence, the judgement a 2 A can be checked by ALF.
+Direct usage of type theory for automated reasoning poses serious problems
+due to the higher-order nature of the theory, requiring the use of higher-order
+uni cation. Since the latter is undecidable, theorem provers for higher-order logics use either an incomplete uni cation procedure or special incremental techniques. However, it is often the case that large parts of the theories represented
+in the type framework are essentially rst-order. We argue that in such cases
+it is advantageous to use rst-order techniques, due to the higher eciency of
+specialised rst order proof search methods as compared to methods usable in
+the general higher-order case.
+We consider the question of axiomatizing the problem of inhabitedness of a
+type as a formula both in the Horn fragment of the standard rst-order logic
+(where classical and intuitionistic logic coincide) and in full rst-order intuitionistic logic, denoted later by F1 and F2 . The presented translations are shown to
+be sound and complete.
+
+Translations of Martin-Lof's type theory to theories based on predicate logic
+have been considered earlier by Aczel [1] and Smith [17], but with purposes different from automated theorem proving. Our translation is also similar to the
+translation given by Felty and Miller [9] of the logical framework LF to the
+logic hh! of hereditary Harrop formulas with quanti cation at all non-predicate
+types. However, our work di ers from theirs in that we consider translations of
+fragments of type theory into rst order logic and that our main interest is in
+optimizing the translation for enhancing the eciency of automated proof search
+for the problem of inhabitedness.
+While it is not realistic to expect that fully automated methods will manage most of the hard tasks in theorem-proving, we believe that the automated
+methods can be used as a powerful tool when developing proofs interactively in
+a proof sytem like ALF. T. Tammet has implemented a resolution-based theorem prover for the fragments F1 and F2 described in the paper. The prover
+takes advantage of the optimised translations we introduce and is designed for
+use together with the system ALF, which incorporates the pattern-matching extension of the underlying monomorphic type theory [8, 11]. Pattern-matching is
+implemented in the special part of the prover devoted to searching for structural
+induction proofs.
+The paper is structured as follows: the sections 2 and 3 give a brief overview
+of Martin-Lof's type theory and the resolution method. Section 4 is the central
+part of the paper, starting with the basic translation to the Horn fragment of
+rst order predicate calculus and nally introducing our optimisations to the
+translation. Section 5 describes the implementation of the equality predicate
+and section 6 extends the translation from Horn clauses to the full intuitionistic
+logic. Finally, section 7 presents experiments with the implementation.
+
+2 Martin-Lof's Type Theory
+In type theory we can form judgements of the forms
+
+{ A type, A is a type,
+{ A = B, A and B are equal types,
+{ a 2 A, a is an object in the type A,
+{ a = b 2 A, a and b are equal objects in the type A.
+In general, a judgement is made in a context, i.e., a list of assumptions x1 2
+A1 ; : : :; xn 2 An where for j  n, Aj may depend on x1; : : :; xj 1.
+There are basically two ways of introducing types in Martin-Lof's type theory: function types and inductively de ned sets. Because of the possibility of
+introducing sets by induction, type theory is an open theory; it is in this sense
+that the theory may serve as a logical framework.
+We denote the type of sets by Set. Given a set A we may form the type El(A)
+2 Set We will write A instead of
+of its elements; hence we have the rule ElA(A)
+type
+
+El(A), since it will always be clear from the context whether we mean A as a set
+(i.e., as an object in Set) or as a type.
+
+If A is a type and B is a family of types for x 2 A, then we can form the
+type of functions (x 2 A)B from A to B.
+A type B type [x 2 A]
+(x 2 A)B type
+All free occurrences of x in B become bound in (x 2 A)B. Given a function in
+(x 2 A)B we may apply it on an object in A:
+c 2 (x 2 A)B a 2 A
+c(a) 2 B fa=xg
+where B fa=xg denotes the result of substituting a for all free occurances of x in
+B. A basic way of forming functions is by abstraction:
+b 2 B [x 2 A]
+[x]b 2 (x 2 A)B
+A function applied on an object is de ned by the ordinary -rule.
+a 2 A b 2 B [x 2 A]
+([x]b)(a) = bfa=xg 2 B fa=xg
+We also have the usual -, - and -rules as well as substituition rules. We
+will often use the notation (A)B when B does not contain any free occurrences
+of x. In order to increase the readability, we will write (x1 2 A1 ; : : :; xn 2 An )B
+instead of (x1 2 A1) : : :(xn 2 An )B and b(a1 ; : : :; an) instead of b(a1 ) : : :(an ).
+Similarly, we will write [x1] : : :[xn]e as [x1; : : :; xn]e.
+The generality of type theory as a logical framework comes from the possibilities of introducing new constants. It is in this way that we can introduce the
+usual mathematical objects like natural numbers, functions, tuples etc. as well
+as sets expressing propositions. There are two kinds of constants: primitive and
+de ned.
+A set is de ned by its introduction rules, i.e., by giving a collection of primitive constants with appropriate types. For example, the set of natural numbers
+is de ned by declaring the constants N 2 Set, 0 2 N,
+succ 2 (N)N.
+A de ned constant can either be explicitly or implicitly de ned. We declare an
+explicitly de ned constant c by giving a de nition of it: c = a 2 A For instance,
+we can make the following explicit de nitions: 1 = succ(0) 2 N, IN = [x]x 2 (N)N
+and de ne I = [A; x]x 2 (A 2 Set; A)A as the monomorphic identity function
+which when applied to an arbitrary set A yields the identity function on A.
+We declare an implicitly de ned constant by showing what de niens it has
+when we apply it to its arguments. An implicit de nition may be recursive. The
+implicit constant +, expressing addition of natural numbers, is introduced by
++ 2 (N; N)N; +(0; y) = y, +(succ(x); y) = succ(+(x; y)).
+
+The de nition of + is an example of an implicit constant de ned by patternmatching on the possible constructors of the set N. In Martin-Lof's original
+formulation, implicitely de ned constants were only possible to introduce by
+primitive recursion schemes. We will, however, use the more general formulation
+with pattern-matching, proposed by Coquand [7]. For our approach to automated theorem proving in type theory, pattern-matching is important since it
+often makes it possible to avoid higher order functions.
+A basic idea of type theory is the so called Curry-Howard correspondence
+between propositions and sets: a proposition is represented as the set of its
+proofs. Hence, the type of propositions is identi ed with the type Set. Variables
+are used as names of assumptions and constants are used as rules. To apply a rule
+to a number of subproofs is done by applying a constant to the corresponding
+subproof objects.
+A theory is presented by a list of typings and de nitions of constants. When
+we read the constant as a name of a rule, then a primitive constant is usually a
+formation or introduction rule, an implicitly de ned constant is an elimination
+rule (with the contraction rule expressed as the step from the de niendum to
+the de niens) and nally, an explicitly de ned constant is a lemma or derived
+rule.
+
+3 The Resolution Calculus
+We will de ne some standard notions of the resolution method, restricting us
+to the Horn fragment where classical and intuitionistic provability coincide. For
+further details see, for example, [6] or [4].
+An atom is a predicate symbol applied to zero or more terms. A positive
+literal is an atom. A negative literal is an atom preceded by the negation sign. A
+clause is a nite set of literals. All variables in a clause are interpreted as being
+universally quanti ed. In classical logic a clause fL1 ; L2; : : :; Lng is interpreted
+as the disjunction L1 _ L2 _ : : : _ Ln. A clause, literal, atom or a term is said
+to be ground if it contains no variables. A clause is said to be a singleton clause
+if it only contains a single literal. A Horn clause is a clause which contains at
+most one positive literal. We will often write Horn clauses as sequents, since this
+interpretation suits intuitionistic logic; a sequent L1; : : :; Ln ) L is considered
+to be the same as a clause f:L1; : : :; :Ln; Lg.
+New clauses are derived by the rule of hyperresolution
+L1 ; : : :; Ln ) L ) L01
+: : : ) L0n  = mgu(L ; L0 ) : : :mgu(L ; L0 )
+1 1
+n n
+) L
+where mgu(L; L0 ) denote the most general uni er of the terms or literals L
+and L0 .
+
+4 Translating Non-Nested Function Types
+In this section we will consider the fragment F1 of type theory which corresponds
+to Horn clauses. Our goals are:
+
+1. give a sound and complete translation of the fragment F1 to Horn clauses,
+2. optimise the translation for the purposes of automated theorem proving,
+keeping soundness and completeness,
+3. extend the translation to a wider fragment than F1 , taking full rst order
+intuitionistic logic as target logic.
+A function type is a type of the form (x1 2 A1; : : :; xn 2 An)B, where n > 0.
+De nition A type C belongs to the type fragment F1 if either C does not contain
+function types or C has the form (x1 2 A1; : : :; xn 2 An)B where none of Ai and
+B is or contains a function type.
+We say that a judgement belongs to the judgement fragment F1 if the type
+of the judgement belongs to F1 . When we speak about the fragment F1 in the
+following, it will always be clear from the context whether we mean the type
+fragment or the judgement fragment.
+Example 1. The type (X 2 Set; x 2 X; y 2 X)X, corresponding to the implication
+X ! (X ! X), is in F1 . The type (X 2 Set; x 2 X; y 2 (z 2 X)X)X, corresponding
+to X ! ((X ! X) ! X) contains a function type (z 2 X)X in its third argument,
+thus it is not in the fragment F1 .
+
+4.1 Translating Judgements and the Goal
+
+We use a two-place rst-order predicate In and a rst-order equality predicate
+= to translate judgements.
+The intended meaning of In(a; A) is that the term a is an element of the set
+denoted by the term A, i.e., a 2 A. Each judgement in F1 is encoded as a clause
+in the Horn fragment of rst-order logic without quanti ers. All the ( rst-order)
+variables in a clause are understood as being universally quanti ed.
+{ Application terms. An application term a  f(g1 ; : : :; gn) is translated
+by full uncurrying. So, in case f is a composite term h(l1 ; : : :; lk ), then one
+step of uncurrying gives a term h(l1 ; : : :; lk ; g1; : : :; gn) for a. For instance,
+the term f (x; y)(g(x)) is translated as f(x; y; g(x)).
+Notice that in the fragment F1, all the occurrences of a function symbol in
+the translated terms will have the same number of arguments. The last fact
+justi es the syntactic correctness of the translation into rst-order language
+without an extra layer of encoding for application terms.
+{ Expressions declaring primitive constants. A primitive constant f 2
+(x1 2 A1 ; : : :; xn 2 An )B such as suc 2 (N)N is translated as the clause
+In(x1 ; A01); : : :; In(xn ; A0n) ) In(f(x1 ; : : :; xn); B 0 ), where each xi is a variable, f is a constant symbol, A0i and B 0 are translations of Ai and B, respectively.
+The only variables in the resulting clause are xi (1  i  n). Notice that in
+the translation of an expression in the fragment F1, the leftmost symbol of
+each subterm is a function symbol. This justi es the syntactic correctness of
+the translation into rst-order language.
+
+{ Expressions de ning implicit constants. The de nition f(t1 ; : : :; tn) =
+g(h1 ; : : :; hk ); of an implicit constant f, is translated as the clause ) F 0 =
+
+G0, where F 0 and G0 are translations of f(t1 ; : : :; tn) and g(h1 ; : : :; hk ), respectively.
+{ Explicit de nitions and equality of types. Explicit de nitions c = a 2 A
+and judgements of the form A = B where A and B are types are not translated at all. Instead, all the type theory expressions containing occurrences
+of the left side c of some explicit de nition or the left side A of an asserted
+equality of types are normalized by expanding the de nition and reducing
+the resulting redexes before doing the translation.
+{ The inhabitedness problem: Given a list of judgements , show the
+inhabitedness of a type G  (x1 2 A1; : : :; xn 2 An)B. We are moreover only
+interested in the case when B is not the constant Set.
+In order to avoid n explicit abstraction steps in the nal part of the derivation, we use the pattern-matching formulation of the abstraction term inhabiting G. Thus we assume that G is a type of a (new) implicitly de ned
+constant g. The constant g is essentially the name of the function term we
+use instead of the explicit lambda-term x1 ; : : :; xn:t. Our goal is to construct a term t (corresponding to the body of the abstraction term) for the
+right hand side of the equation g(x1; : : :; xn) = t which de nes a function
+inhabiting G.
+Let   fc1 =xn; : : :; cn=xng be a substitution replacing the variables in G by
+new constant symbols (Skolem constants) c1 ; : : :; cn not occurring anywhere
+in G or in any of the judgements in . The goal will be encoded as the
+problem of deriving a substitution instance of the clause ) In(x; B 0 ) from
+the set of clauses 0 [ E [ A0 , where B 0 is the translation of B, 0 is the set
+of translations of all the elements of , E is the standard axiomatization of
+equivalence and substitutivity of equality for 0 [ A0 [ B 0 , and A0 is the set
+of clauses
+) In(c1 ; A01); : : :; ) In(cn ; A0n);
+where each A0i is a translation of Ai . The variable x in ) In(x; B 0 ) is the
+variable to be uni ed, i.e., at the place of x we will obtain the inhabiting
+term. The operation of replacing the variables in G by the new constants is
+a speci c instance of the Skolemization procedure and, unlike full Skolemization, is correct for intuitionistic logic, see [12] and [13].
+A substitution instance of ) In(x; B 0 ) is derivable from the set 0 [ E [ A0
+if and only if the clause set 0 [ E [ A0 [fIn(x; B 0 ) )g is refutable. We will
+say that the translation of the goal type G is the clause set A0 [fIn(x; B 0) )
+g [ E 0, where E 0 is the set of equality substitution axioms for the function
+symbols in A [ B.
+There are well-known techniques enabling us to always construct the required
+substitution instance of ) In(x; B 0 ) from the resolution refutation of Horn
+clause sets like 0 [ E [ A0 [ fIn(x; B 0) )g; see [6] and [5]. It is easy to
+see that any refutation from a Horn clause set where In(x; B 0 ) ) is a
+single clause containing no positive literals will end with the hyperresolution
+
+step with premisses being the input clause In(x; B 0 ) ) and some derived
+clause ) In(t; r). Due to the speci c form of the clause sets obtained by
+the translations of type theory judgements, the terms t and r will moreover
+always be ground.
+After nding the refutation we thus have an instance of the clause )
+In(x; B 0 ) with a ground term t replacing the variable x. The function body
+g is built of t by replacing the Skolem constant symbols c1 ; : : :; cn in t by
+the variables x1; : : :; xn, respectively.
+Example 2. In this example, we introduce an inductively de ned predicate Leq,
+expressing the less than or equal relation on the natural numbers (we will add
+numbers for easier reference).
+N 2 Set
+02N
+s 2 (x 2 N)N
+Leq 2 (x; y 2 N)Set
+leq0 2 (x 2 N)Leq(0; x)
+leqs 2 (x; y 2 N; z 2 Leq(x; y))Leq(s(x); s(y))
+
+(1)
+(2)
+(3)
+(4)
+(5)
+(6)
+We denote these declarations by . Consider the task of nding a term
+inhabiting the following type C:
+(x 2 N)Leq(s(0); s(s(s(x))))
+The translation T r( ) of is the following clause set:
+1: ) In(N; Set)
+2: ) In(0; N)
+3: In(x; N) ) In(s(x); N)
+4: In(x; N); In(y; N) ) In(Leq(x; y); Set)
+5: In(x; N) ) In(leq0 (x); Leq(0; x))
+6: In(x; N); In(y; N); In(z; Leq(x; y)) ) In(leqs (x; y; z); Leq(s(x); s(y)))
+where x, y and z are the only variables. The translation of the goal is the following
+clause set C 0:
+7: ) In(c; N)
+8: In(u; Leq(s(0); s(s(s(c))))) )
+where u is a variable and c is a new constant symbol. We want to show that the
+clause set T r( ) [ C 0 is refutable and nd a term t such that the set Tr( ) [
+C 0ft=ug would also be refutable. Indeed, there exists the following resolution
+refutation:
+9 (from 3,7): ) In(s(c); N)
+10 (from 3,9): ) In(s(s(c)); N)
+
+11 (from 5,10): ) In(leq0 (s(s(c))); Leq(0; s(s(c))))
+12 (from 6,2,10,11): ) In(leqs (0; s(s(c)); leq0 (s(s(c)))); Leq(s(0); s(s(s(c)))))
+13 (from 8,12): )
+giving us the term leqs (0; s(s(c)); leq0 (s(s(c)))) as the required substitution instance for u in In(u; Leq(s(0); s(s(s(c))))). By replacing the new constant c with
+a variable x we get the term leqs (0; s(s(x)); leq0 (s(s(x)))) as the body of a function inhabiting the type (x 2 N)Leq(s(0); s(s(s(x)))).
+We will below present an optimization leading to a smaller input clause set
+which will avoid the explicit derivation of 9, 10 and 11 in the present example.
+
+4.2 Translating Derivation Rules
+Type Formation Rules For our purposes, the set of assumptions and the goal
+
+can be assumed to be already correctly formed types. Because the derivation
+rules of type theory preserve type correctness, we can ignore type formation
+rules without losing soundness.
+Notice that our translation preserves the subformula structure. Concerning
+completeness, we see that we may ignore type construction rules as long as we
+only need types that are syntactically subtypes of the assumptions and the goal.
+Since F1 corresponds to a fragment of rst-order logic and since the normal form
+of any derivation in rst-order logic has the subformula property, we may, hence,
+ignore type construction rules.
+
+The Application rule and the Substitution Rules These are the main
+
+rules for our purposes. It is easy to see that for the fragment F1 the application
+rule
+c 2 (x 2 A)B a 2 A
+c(a) 2 B fa=xg
+can be assumed to have a \multiple form" instantiating all the arguments of a
+function at once:
+c 2 (x1 2 A1; : : :; xn 2 An)B a1 2 A1 : : : an 2 An
+c(a1 ; : : :; an) 2 B fa1=x1; : : :; an=xng
+Indeed, since in F1 function types do not occur as argument types of functions,
+if the result of a single-step application rule is a function, then this function can
+only be used as a left premiss of an application rule.
+The translated form of the multiple application rule is:
+In(x1 ; A1); : : :; In(xn ; An) ) In(c(x1 ; : : :; xn); B)
+) In(a
+: : :1 ; A1)
+) In(an ; An)
+) In(c(a1 ; : : :; an); B fa1=x1; : : :; an=xng)
+
+The last rule is an instance of the hyperresolution rule combining multiple
+modus ponens with limited substitution { only most general uni ers can be
+substituted:
+F1; : : :; Fn ) F
+) F10 : : : ) Fn0  = mgu(F ; F 0 ) : : :mgu(F ; F 0 )
+1 1
+n n
+) F
+
+4.3 Soundness and Completeness of the Translation
+We will denote the result of translating a judgement or a list of judgements A
+as T r(A). We will denote the set of clauses obtained by translating a goal type
+A as T rg(A).
+We will show soundness and completeness of the translation and the hyperresolution calculus with respect to the fragment F1 of type theory. By soundness
+we mean that if there is a hyperresolution refutation of Trg(G) [ Tr( ) for a
+goal type G and a list of judgements , then there is a term t and type theory
+proof of t 2 G from . By completeness we mean that if there is a type theory
+proof from showing that some term inhabits a certain type G, then there is a
+hyperresolution refutation of Trg(G) [ Tr( ).
+
+Lemma 1. Removing all the equality rules of type theory except -conversion
+(see section 2) preserves completeness for the fragment F1 .
+Proof. All the equality rules except -conversion are covered by the standard
+
+rst-order axiomatizationof equivalence and substitutivity properties of the rstorder equality predicate.
+
+Lemma 2. The type theory calculus obtained by removing the abstraction rule
+and the -conversion rule preserves completeness for the fragment F1.
+
+Proof. It is easy to see that for the fragment F1 the abstraction rule is unnec-
+
+essary. The reason is that F1 corresponds to a fragment of rst-order logic, and
+since the latter is cut-free, we have the subformula property, guaranteeing completeness without introducing any assumptions which are not subformulas of the
+conclusion.
+Since we do not have assumptions, that is, formulas of the form b 2 B[x 2 A] in
+the fragment F1, and the abstraction rule is unnecessary, then the -conversion
+rule (corresponding to the cut rule in rst-order logic)
+a 2 A b 2 B[x 2 A]
+((x)b)(a) = bfa=xg2 B fa=xg
+is also unnecessary.
+The following is the standard lifting lemma of the theory of resolution calculus. (see e.g. [6]):
+
+Lemma 3. Let A and B be two clauses A  fA1 ; : : :; Ang and B 
+fB1 ; : : :; Bn g. Let A0 and B 0 be two clauses with the following properties:
+A0 = A [ A00 , B 0 = B [ B 00 where  and  are substitutions, A00 and B 00
+
+are arbitrary clauses. Whenever a new clause C 0 can be derived from A0 and
+B 0 by resolution, there exists a clause C derivable from A and B such that
+C 0 = C [ C 00, where  is a subsitution and C 00 is a clause.
+
+Lemma 4. The hyperresolution rule applied to the translation of type theory
+judgements is sound and complete for type theory with only application and substitution as derivation rules.
+
+Proof. The proof of soundness is by induction on the size of derivation. The
+
+base case is immediate. The induction step is also obvious, since every hyperresolution application corresponds to a derivation in type theory containing only
+substitutions and applications.
+The proof of completeness is also by induction on the size of derivation.
+Again, the base case is obvious. For the induction step, assume that we have a
+substitution or application in type theory from premisses with conclusion F.
+We have to show that there is a corresponding hyperresolution derivation from
+the clause set Tr( 0) giving a clause Tr(F 0) such that is a set of substitution
+instances of 0 and F is a substitution instance of F 0. The substitution step
+is obvious: take the translation of the unchanged premiss of the substitution
+derivation. The application step follows from the lifting lemma.
+
+Theorem 5. The translation and hyperresolution are sound and complete with
+respect to the fragment F1 of type theory.
+
+Proof. Follows from the previous lemmas in this section.
+
+4.4 Optimizing the Translation
+We introduce two optimizations of our translation of the fragment F1 . The optimized translations do not allow to get a proof term directly. However, from
+the proof of the optimized translation it is possible to eciently construct the
+proof of the unoptimized translation, which gives the required proof term. Such
+an algorithm is implemented in our prover Gandalf.
+
+The First Optimization: O1 Let be a list of type theory judgements in the
+fragment F1 and let G be a goal type in the fragment F1. Observe that all the
+positive singleton clauses in Tr( ) [ Trg(G) are ground and all the variables in
+a positive literal of any non-singleton clause C in Tr( ) [ Trg(G) occur as rst
+arguments in the negative literals of C. Therefore any nonemtpy clause derived
+from T r( ) [ Trg(G) by hyperresolution is a singleton ground clause.
+
+We present an optimization O1 for translations of type theory judgements,
+which is crucial for improving the eciency of automated proof search. The point
+of O1 is allowing the derivation of non-ground singleton clauses, each covering a
+
+possibly in nite set of ground singleton clauses derivable from the non-optimized
+clause set.
+The optimization O1 is obtained by replacing all atoms with the binary predicate In by an atom with a unary predicate Inh, always discarding the rst
+argument of In.
+The encoded goal clause G  ) In(x; B) turns into a ground clause
+O1(G)  ) Inh(B). After we have found a rst-order derivation of the clause
+O1(G) from the set of optimized assumption clauses O1( ), we construct the
+corresponding derivation of a substitution instance of the non-optimized G from
+the set of non-optimized assumptions .
+Example 3. Consider the set of judgements A obtained by translating the type
+theory judgements in example 2. The optimization O1 applied to the clauses in
+example 2 will give the following clause set O1(A).
+1': ) Inh(Set)
+2': ) Inh(N)
+3': Inh(N) ) Inh(N)
+4': Inh(N); Inh(N) ) Inh(Set)
+5': Inh(N) ) Inh(Leq(0; x))
+6': Inh(N); Inh(N); Inh(Leq(x; y)) ) Inh(Leq(s(x); s(y)))
+7': ) Inh(N)
+8': Inh(Leq(s(0); s(s(s(c))))) )
+There exists the following resolution refutation from O1(A):
+11' (from 2',5'): ) Inh(Leq(0; x)
+12' (from 2',2',11',6'): ) Inh(Leq(s(0); s(x)))
+13' (from 8',12'): )
+
+The crucial importance of the optimization O1 stands in that whereas hyperresolution derives only ground clauses from the the unoptimised translation,
+then from the optimised translation it is possible to derive new clauses containing variables. Such clauses stand for generally in nite sets of ground clauses
+derivable from the unoptimised translation.
+In the example above, we can derive a non-ground clause )
+Inh(leq(s(0); s(x))) from the clauses 2', 5' and 6', covering the in nite set of clauses ) In(p1 ; leq(s(0); s(0))); ) In(p2 ; leq(s(0); s(s(0)))); )
+In(p3 ; leq(s(0); s(s(s(0))))); : : :g derivable from A.
+We now build a new clause set Ai from the unoptimized clause set A in the
+example above by replacing the clause 8 : In(u; leq(s(0); s(s(s(c))))) ) with
+the clause 8i : In(u; leq(s(0); si (c))) ) where si (c) stands for the term where s
+is applied i times. The shortest hyperresolution refutation of Ai consists of i + 3
+hyperresolution steps. The shortest hyperresolution refutation of O1(Ai ) consists
+always of 3 steps, regardless of i. Due to the optimization we avoid deriving the
+previously necessary sequent ) In(si (c); N).
+
+Let be a clause set in the fragment F1, let G be a goal type in F1. Tr( )
+is a translated form of and Trg(G) is the translated form of G. O1(Tr( )) is
+the optimized form of Tr( ).
+For the simplicity of presentation we will assume that equality is not present
+in or G and that Trg(G) consists of a sole negative singleton clause. The case
+with the equality will be treated later in Section 5. It is always possible to reformulate G and as G0 and 0 by assuming that all the positive singleton clauses
+in the original Trg(G) are members of Tr( 0). The reformulated Trg(G0 ) then
+consists of a sole negative singleton clause, which can be used in the hyperresolution refutation of Tr( 0) [ Trg(G0 ) only for the last inference, the derivation
+of the empty clause.
+
+Soundness and completeness of the optimization O1 The rst order
+
+language of Tr( ) is not typed. However, due to the construction of Tr( ),
+all the terms occurring in the clauses of Tr( ) can be seen as being typed by .
+Every variable x occuring in a clause C in Tr( ) occurs in a literal In(x; tx ) in
+C, corresponding to a judgement x 2 tx in .
+In the following we consider all the variables, constants, function symbols and
+terms (brie y: objects) in Tr( ) to be typed. The type of an object in Tr( ) is
+determined by . The type of an object in O1(Tr( )) is the same as the type
+of a corresponding object in Tr( ). A term t constructed from objects in Tr( )
+is type-correct i the term t0 corresponding to t in type theory is type-correct in
+the context of .
+By  `h C we denote that a clause C is derivable from the clause set  by
+hyperresolution. Since any clause C such that Tr( ) `h C is ground, it is easy
+to see that C is type-correct.
+Di erently from Tr( ), it is possible to derive non-ground clauses from
+O1 (T r( )). We extend the notion of type-correctness to clauses C such that
+O1 (T r( )) `h C. Each variable x occurring in C can be traced (renaming
+taken into account) through the derivation tree of C to the occurrence of some
+variable y in O1(Tr( )). Thus we can say that it has a type of the variable y
+and we will extend the notion of type-correctness to the clauses derived from
+O1 (T r( )).
+
+Lemma 6. Consider a variable x occurring inside O1 (Tr( )). Either x occurs
+
+as an argument of the predicate Inh, in which case it has a universal type Set or
+x is an argument ai of some term f(a1 ; : : :; an) occurring inside O1(Tr( )). In
+the last case the type of x is determined by the function symbol f , the position
+i of ai in the term and and a subset of arguments   fa1; : : :; ang such that
+ai 62 . There exists a re exive ordering d of the elements of fa1; : : :; ang,
+such that whenever ak d al (1  k; l  n), the type of al cannot depend on the
+type of ak .
+Proof. Follows from the rules of monomorphic type theory as a syntactic prop-
+
+erty.
+
+Theorem7. The optimization O1 preserves soundness and completeness.
+Proof. Let
+
+be a clause set in the fragment F1, let Tr( ) be a translated form
+of and let O1(T r( )) be the optimized form of Tr( ).
+Completeness:if Tr( ) `h C holds, then there is such a clause C 0 and such
+a substitution  that C = C 0 and O1 (Tr( )) `h O1 (C 0) holds. Consequently,
+if T r( ) [ T rg(G) is refutable, then O1 (Tr( )) [ O1(Trg(G)) is refutable.
+The proof is easy, since O1 does nothing but removes the rst argument of
+each predicate symbol. Let D be a hyperresolution derivation of C from Tr( ).
+Construct a new derivation D0 by removing the rst arguments from each occurrence of the predicate Inh in D and replacing Inh with In. Then D0 is a
+substitution instance of a derivation giving O1(C 0 ) from O1(Tr( )). Therefore,
+due to the completeness of hyperresolution, O1(Tr( )) `h O1(C 0 ) holds.
+Soundness: If O1(Tr( )) `h C holds, then C is type-correct.
+Hence (due to the completeness of Tr( ) for type theory), if O1(Tr( )) [
+O1(T rg(G)) is refutable, then Tr( ) [ Trg(G) is refutable.
+Proof. We use induction over the hyperresolution derivation for the optimized
+case. The proof relies on that we are using monomorphic type theory where the
+previous lemma holds and that any applied substitution is a most general uni er
+of two existing terms.
+Base case: obvious.
+Induction step. Consider the hyperresolution rule:
+L1 ; : : :; Ln ) L ) L01 : : : ) L0n  = mgu(L ; L0 ) : : :mgu(L ; L0 )
+1 1
+n n
+) L
+The literal L has a form Inh(r). The induction step is proved by showing that
+r, hence also L, is type-correct.
+The proof is by induction over the substitution  which is ordered by the dependency ordering d . Base case is obvious, we proceed to proving the induction
+step.
+As an induction hypothesis we assume that there is a subset  of  such
+that r is type-correct and for each fs=vg in  and fp=ug in   holds v d
+u. Essentially, we construct the substitution by starting from the d -smallest
+variables and proceeding according to the ordering d .
+An element t=x of   is obtained by unifying a variable x in a literal Li 
+with the term t in L0i , where   . We have:
+8u; p; v; s:(fp=ug  ( ) & fs=vg  ) ) u d v
+The variable x either occurs as a sole argument in the literal Inh(x), in which
+case x has a universal type Set or as an argument ai of some surrounding term
+f(a1 ; : : :; an).
+In the rst case also t occurs as a sole argument of Inh(t), the type of t is
+Set and thus rft=xg is type-correct.
+Consider the second case. Here also the term t occurs as an i-th argument of
+a surrounding term f(a01 ; : : :; a0n). Both the leading function symbol f and the
+
+position index i in the surrounding term are the same for x and t. Thus either
+both the types of x and t do no depend on other terms or they both depend
+on a subset of arguments in the surrounding term. Consider the case where the
+types of x and t do not depend on other terms. In that case the type of t is the
+same as the type of x and thus rft=xg is type-correct.
+Consider the case where the types of x and t depend on other terms. Due
+to the previous lemma all these depended-upon terms form a subset of pairwise
+corresponding arguments D of f(a1 ; : : :; an) and D0 of f(a01 ; : : :; a0n). The previous lemma shows that there exists a dependency ordering d so that the types
+of the elements of D and D0 do not depend on the types of x and t. Thus we
+can assume that D = D0 = D = D0 , i.e, the terms corresponding to D and
+D0 in Li and L0i are already uni ed by . Hence the type of t in L0i  is the same
+as the type of x in Li , thus rft=xg is type-correct.
+Observe that in some sense the unrestricted substitution rule (i.e. a substitution rule which uses arbitrary substitutions, not only these obtained by
+uni cation) would make the optimized calculus unsound in respect to the type
+theory, although the refutability of a set O1(Tr( )) with unrestricted substitution added as a derivation rule would still be equivalent to the refutability of
+T r( ).
+
+The Second Optimization: O2 The second optimization O2 is applicable only
+to such clause sets which have been already optimized by O1. O2 is obtained by
+removing certain clauses and some atoms on the left sides of other clauses. It
+is essentially a preprocessing phase pre-applying obvious hyperresolution steps
+and removing redundant clauses and literals.
+De nition We say that a type f 2 (x1 2 A1; : : :; xn 2 An)Set is essentially
+independent in a given list of judgements i it can be shown that f(x1 ; : : :; xn)
+is inhabited for any substitution  such that f(x1 ; : : :; xn) is correctly formed
+regarding types. We will call such f an essentially independent constructor
+For example, the special type Set, the type of natural numbers N 2 Set,
+0 2 N,
+s 2 (x 2 N)N and the parameterized list type List 2 (x 2 Set)Set,
+nil 2 (x 2 Set)List(x), cons 2 (x 2 Set; y 2 x; z 2 List(x))List(x) are easily shown
+to be essentially independent. As a negative example, the type Leq used in the
+
+previous examples is not essentially independent.
+The optimization O2 takes a set of assumptions of the form given by the
+optimization O1 . It returns a modi ed set of assumptions and the goal where for
+any input judgement clause s  Inh(A1 ); : : :; Inh(Am ) ) Inh(B) the following
+is done:
+{ if B is a composite term with an essentially independent constructor as a
+leading function symbol, remove the clause s.
+{ remove any premiss Inh(Ai) such that Ai has an essentially independent
+constructor as a leading function symbol.
+
+Example 4. Take the O1-optimized clause set S from the example 3. You may
+
+also want to look at the original untranslated list of type theory judgements and
+the goal in the example 2. The result of the optimization S2 applied to S is the
+following set of three clauses:
+5": ) Inh(Leq(0; x))
+6": Inh(Leq(x; y)) ) Inh(Leq(s(x); s(y)))
+8": Inh(Leq(s(0); s(s(s(c))))) )
+The last clause set has a short refutation:
+1 (from 6", 5") ) Inh(Leq(s(0); s(x))
+2 (from 8", 1) )
+In case the type term A in the goal clause G ) Inh(A) has an essentially
+independent leading function symbol, then the problem of constructing an element of A reduces to the simple problem of using the procedure of checking
+essential independency for constructing an element of A.
+Soundness and completeness of the optimization O2 follow from the de nition
+of essentially independent types.
+
+5 Building In Equality
+For the Horn fragment where the translation of the F1 class belongs, the explicit
+axiomatization of the equality predicate (except the re exivity axiom x = x
+which must be preserved) can be replaced by the following restricted form of
+paramodulation without losing completeness (see eg. [10]).
+) L[t] ) t0 = g  = mgu(t; t0 )
+) L[g]
+where L[g] is obtained by replacing one occurrence of the term t in L[t] by the
+term g. The term t (the term paramodulated into) in the paramodulation rule is
+prohibited to be a variable. The equality predicate in the rule is assumed to be
+commutative, i.e., t0 = g is the same as g = t0 .
+The de nitional equality predicate = in type theory extended with patternmatching (as in Alf) is always assumed to de ne a terminating and con uent
+rewrite relation E. Thus we do not lose completeness in case we treat such
+equality axioms as rewrite rules, ie. if we rewrite any term in any derived rstorder clause modulo the rewriting relation E. See [10]). However, we will still
+need to keep the paramodulation rule to guarantee completeness.
+The soundness and completeness of using the paramodulation (or rewrite
+rules) for the O1-optimized translations of type theory judgements is proved analogously to the earlier proof of soundness and completeness of the O1-optimized
+translation.
+Note that the other type of equality often used in the applications of type
+theory, the propositional equality Id, is not de nable in F1. However, we can
+build the propositional equality directly into the rst order calculus.
+
+We will use the following special form of the paramodulation rule along with
+the re exivity axiom ) Id(A; x; x) instead of the standard equivalence and
+substitution rule schemes for Id:
+) L[t] ) Id(A; t0 ; g)  = mgu(t; t0 )
+) L[g]
+where L[g] is obtained by replacing one occurrence of the term t in L[t] by
+the term g. The terms t and t0 in the paramodulation rule are prohibited to
+be variables. Id is assumed to be commutative, i.e., Id(A; t0; g) is the same as
+Id(A; g; t0 ).
+
+6 Translating Nested Function Types
+6.1 The General Case
+Consider full type theory. We obtain the translation Tri by modifying and extending the translation Tr given for the fragment F1 to the implicational fragment of rst-order intuitionistic logic as a target logic.
+{ Application terms. f(g1 ; g2; : : :; gn) is translated as
+ap(: : :ap(ap(Tri(f); Tri(g1 )); Tri(g2)); : : :); Tri(gn )), where Tri(t) denotes
+the result of the translation of t.
+{ Abstraction terms. An abstraction term [x]t is translated by Schon nkel's
+abstraction algorithm:
+[x]x ! I
+[x]M ! ap(K; Tri(M)) if M is a variable or constant, M 6= x.
+[x](MN) ! ap(ap(S; [x]Tri(M)); [x]Tri(N)).
+where I; S; K are special constants.
+{ Type judgements. A judgement t 2 (x 2 A)B is translated as 8x:Tri(x 2
+A) ) Tri(ap(t; x) 2 B). A judgement t 2 C where C is not a function
+type is translated as Inh(Tri(t); Tri(C)). Constants and variables remain
+unchanged by the translation.
+{ Goal. The goal G1 ; : : :; Gn `tt? 2 B of nding a term inhabiting B in the
+context of judgements G1; : : :; Gn is translated as a formula Tri(G1 ) )
+(: : :(T ri(Gn ) ) 9x:Tri(x 2 B)) : : :).
+{ Target logic. An implicational fragment of rst-order intuitionistic logic
+with the equality predicate plus the standard equalities S= ; K= ; I= for combinators S; K; I: ap(I; x) = x, ap(ap(K; x); y) = x, ap(ap(ap(S; x); y); z) =
+ap(ap(x; z); ap(y; z)).
+It is known (see [3]) that the Schon nkel's abstraction algorithm combined with
+the beforementioned equality rules for S; K; I simulates weak -reduction of
+lambda calculus ([x]MN) = M fN=xg but not the  rule: M = M 0 ) [x]M =
+[x]M 0.
+From the view of automated theorem proving the main problem with using
+the equalities S= ; K= ; I= stands in that these equalities signi cantly expand the
+
+search space of proving a type theory goal. In the following we will consider
+a fragment where S= ; K= ; I= can be avoided without resorting to higher order
+uni cation.
+
+6.2 Translating Types with Independent Nested Function Types
+The following fragment F2 is a superset of the previously considered fragment
+F1. The motivation for considering F2 stems from the fact that the problems
+arising in the general case disappear, but since F2 corresponds to the implicational fragment of full rst-order intuitionistic logic, it is strong enough to allow
+synthesis of conditional programs.
+
+De nition An independent function type is a type with the form (x 2 A)B such
+that x does not occur in B .
+A type C in type theory belongs to the type fragment F2 i C is either not a
+function type or it has a form (x 2 A)B such that the following two cases hold:
+1. B belongs to the type fragment F2
+2. A is not a function type or A is an independent function type and x does
+not occur in B .
+A type theory judgement C belongs to the judgement fragment F2 if C does not
+contain a type outside the type fragment F2.
+The translation Tr0 for F2 is obtained from the previously considered translation T ri by applying an optimization O1 (literals of the form In(t; g) are converted to the form Inh(g)). Soundness and completeness proofs of the translation
+are obtained from the analogous proofs for the fragment F1. The most convenient way to extend these proofs is to use the resolution method for intuitionistic
+logic proposed by G.Mints, see [14] and [15].
+In addition to the optimization O1, we will apply the analogue of the optimization O2 to the formula given by the translation Tri.
+We note that the introduction and elimination rules for disjunction and conjunction can be de ned in F2. These connectives will be on the di erent level
+than implication, but we can enhance the eciency of the prover by building
+these connectives into the target logic, much like we can build propositional
+equality into target logic.
+Since quanti ers cannot be de ned in F2 , we can handle those only by building them into the target logic, ie. considering full intuitionistic logic instead of
+the implicational fragment.
+
+7 Experiments with the Implementation
+T.Tammet has implemented an automated theorem prover Gandalf, which looks
+for type theory proofs in the fragments F1 and F2. It uses all the optimizations
+presented in the paper and (for the fragment F1 ) builds the proof term which
+
+can be later checked by the ALF proofchecker. In order to be able to build the
+proof term, Gandalf keeps track of all the necessary information while looking
+for the rst order proofs. In essence, the proof of the optimized version of the
+problem is used for constructing the proof of the unoptimized version, and the
+proof term is obtained from the latter.
+Gandalf is written in Scheme and compiled to C. The timings presented in
+the following are obtained by running Gandalf on a SUN SS-10.
+Gandalf takes a le containing type theory judgements and possibly several
+goal types, written in ALF syntax. It converts the judgements and goals to
+rst order language using the translation and optimizations described in the
+previous sections. After that it starts looking for proofs. Gandalf organizes proof
+search by iterative deepening on runtime. Suppose the input le contains a list
+of judgements and a list of goal types G1; : : :; Gn. Gandalf will take the rst
+time limit t1 and allocate t1=n seconds for the attempt to prove G1. In case it
+fails, Gandalf will proceed to G2 , etc. In case it succeeds, all the following proof
+search subtasks will treat G1 as a judgement, the remaining time from t1 will be
+divided between goals G2 ; : : :; Gn and Gandalf will proceed to the next goal G2.
+In case a proof search attempt has been conducted for each goal G1; : : :; Gn and
+for some of these no proof is found, Gandalf will take a new time limit t2 = f  t1
+for some factor f and will perform a new interation for yet unproved goals with
+the new time limit t2 .
+Consider the task of proving a separate subgoal G: (x1 2 A1 ; : : :; xn 2 An)B.
+Gandalf will attempt to use structural induction, i.e., pattern-matching, for proving G. It will consider each argument type Ai in G, nding all these judgements in which are introduction rules for Ai , that is, which are of the form
+(y1 2 B1 ; : : :; yn 2 Bm )C with C and Ai being uni able. It will then generate a
+set T of di erent proof search tasks for G, each element of T corresponding to a
+subset of variables x1; : : :; xn being inducted upon. To every element (induction
+case) of the task in T it adds the induction assumptions. Induction assumptions
+are generated from the subterms of the pattern of the inductive case at hand.
+Only these assumptions are considered which are structurally smaller than the
+pattern of the particular induction case.
+A certain amount of time will be allocated for proof search for each element
+of T . In case Gandalf manages to prove some element E of T , it has found the
+proof for G and it will continue with the next open goal from the set G1; : : :; Gn.
+Consider the task of proving an element E in the set of proof search tasks
+for G. Each such element generally consists of a number of pure rst order proof
+tasks R1; : : :; Rk, each Ri corresponding to one case of structual induction. E is
+proved only if each of R1; : : :; Rk has been proved.
+In case Gandalf nds a proof for some goal Gi, it will construct a sound
+type theory proof of Gi, using the ALF syntax. Each inductive case will have
+its own separate proof. Each such separate proof is constructed from the proof
+found for the corresponding rst order clause set. In order to make this possible,
+Gandalf keeps track of all the necessary information while looking for the rst
+order proofs.
+
+The current implementation of Gandalf is only able to to construct type
+theory proofs for the fragment F1. The part constructing type theory proofs
+from the resolution proofs for the intuitionistic fragment F2 is being worked
+upon.
+Gandalf does not attempt to construct lemmas. Thus it is completely up to
+the user to include all the necessary lemmas in the input le. Selecting lemmas
+to be proved (and later used for the main proof) is one of the main mechanisms
+available to the user in order to guide the blind search of Gandalf.
+In addition to the selection of lemmas, there are a number of ags and parameters the user can give to Gandalf in order to guide the proof search. For
+example, it is possible to indicate that no induction should be used for a certain
+goal or that a certain subset of variables has to be inducted upon, etc.
+
+7.1 Example. Correctness of Toy Compiler
+
+The following example encodes the problem of proving correctness of a simple
+compiler. The example is presented in [8] with a proof created by a human user
+(C.Coquand) in interaction with the ALF system. We present a proof found by
+the Gandalf system using a number of crucial hints given to Gandalf by the
+human user.
+We want to compute a polynomial expression build of multiplication, addition, basic integers and one variable on a simple stack machine. The instructions
+for this machine are:
+{ Duplication of the top of the stack.
+{ Reversal of the top items on the stack.
+{ Replacement of the top items on the stack by an item that is their sum (resp.
+product).
+{ Replacement of the top item n on the stack by a given item n0.
+The problem is to compile a given polynomial expression e(x) to a list l of intructions such that if we execute l on the stack, then the result of this computation
+is the stack with the value of the expression e(x) pushed to the top.
+The evaluation function is represented as a type theoretic function
+Eval 2 (Expr; N)N such that Eval(e; n) gives the value of the expression e when its
+unique variable is set equal to value n. The execution function which computes
+a nal stack from the input stack and a list of instructions is represented as an
+inductively de ned relation EXEC between a list of instructions and two stacks,
+re ecting operational semantics. This de nition uses an auxiliary relation Exec
+between a single instruction and two stacks.
+The proof of the main theorem thm requires a lemma showing that EXEC is
+a transitive relation. Gandalf does not attempt to create lemmas automatically,
+thus lemma is present in the input le along with the assumption that it is
+already proved.
+N : Set,
+
+0 : N,
+
+s : (N)N
+
+plus : (N;N)N,
+
+mult : (N;N)N
+
+List : (Set)Set
+nil : (t:Set)List(t)
+cons : (t:Set; x:t; y:List(t))List(t)
+Stack : Set,
+
+null: Stack,
+
+push:(N;r)Stack
+
+Instr : Set
+Dup : Instr, Rev : Instr, Add : Instr, Mul : Instr, Lit : (N)Instr
+Expr : Set,
+Sum : (Expr;Expr)Expr,
+Pro : (Expr;Expr)Expr
+Num : (N)Expr
+Arg : Expr
+Eval : (Expr;N)N
+Eval(Sum(e1,e2),n)=plus(Eval(e1,n),Eval(e2,n))
+Eval(Pro(f1,f2),n)=mult(Eval(f1,n),Eval(f2,n))
+Eval(Num(n1),n)=n1
+Eval(Arg,n)=n
+append : (List(Instr);List(Instr))List(Instr)
+append(nil(Instr),x)=x
+append(cons(Instr,x,y),z)=cons(Instr,x,append(y,z))
+append(x,nil(Instr))=x
+Exec : (Instr;Stack;Stack)Set
+Exec_Dup : (n:N;r:Stack)
+Exec(Dup,push(n,r),push(n,push(n,r)))
+Exec_Rev : (n1,n2:N;r:Stack)
+Exec(Rev,push(n1,push(n2,r)),push(n2,push(n1,r)))
+Exec_Add : (n1,n2:N;r:Stack)
+Exec(Add,push(n1,push(n2,r)),push(plus(n1,n2),r))
+Exec_Mul : (n1,n2:N;r:Stack)
+Exec(Mul,push(n1,push(n2,r)),push(mult(n1,n2),r))
+Exec_Lit : (n,m:N;r:Stack)
+Exec(Lit(n),push(m,r),push(n,r))
+Program = List(Instr)
+
+: Set
+
+EXEC : (Program; Stack; Stack)Set
+
+exec_nil : (r:Stack)EXEC(nil(Instr),r,r)
+exec_seq : ( i:Instr; p:Program; r1,r2,r3:Stack;
+Exec(i,r1,r2); EXEC(p,r2,r3) )
+EXEC(cons(Instr,i,p),r1,r3)
+Comp : (e:Expr)Program
+Comp(Sum(e1,e2)) =
+cons(Instr,
+Dup,
+append(Comp(e2),
+append(cons(Instr,Rev,nil(Instr)),
+append(Comp(e1),cons(Instr,Add,nil(Instr))) )))
+Comp(Pro(f1,f2)) =
+cons(Instr,
+Dup,
+append(Comp(f2),
+append(cons(Instr,Rev,nil(Instr)),
+append(Comp(f1),cons(Instr,Mul,nil(Instr))) )))
+Comp(Num(n)) =
+cons(Instr,Lit(n),nil(Instr))
+Comp(Arg) = nil(Instr)
+
+lemma : ( p1,p2:Program; s1,s2,s3:Stack;
+EXEC(p1,s1,s2); EXEC(p2,s2,s3) )
+EXEC(append(p1,p2),s1,s3)
+thm : (e:Expr; r:Stack; n:N)
+EXEC(Comp(e),push(n,r),push(Eval(e,n),r))
+thm(e,r,n) = ?(forceind(e),noind(r,n),method(both-ends))
+
+The expression thm(e; r; n) =?(forceind(e); noind(r; n); method(both-ends))
+gives hints for the search of the proof of thm. The expressions forceind(e) and
+noind(r; n) tell Gandalf that it is necessary to use induction on the variable e,
+while it is prohibited to use induction on the variables r and n. In case we do
+not provide Gandalf with these two hints, it will spend a lot of time attempting
+to use induction schemas which are of no use when proving thm, and the proof
+is found only after a one-hour search.
+The expression method(both-ends) tells Gandalf that it should look for proof
+by reasoning from both ends, i.e. doing both forward reasoning and backward
+reasoning simultaneously (implemented as binary unit resolution).
+Consider the de nition of append used in the formulation of the problem.
+The current version of the proof checker ALF does not allow overlapping patterns, thus it fails to type-check the third case append(x; nil(Instr)) = x. How-
+
+ever, this case preserves con uency of the de nition of append . We have preferred to add it to the de nition of append , since the extended rewriting relation clears up a noticeable amount of search space and enables the prover
+to nd the proof faster. Alternatively, we could consider proving the equality
+Id(List(Instr); append(x; nil(Instr)); x) as a separate lemma, which will have
+the same eciency-boosting e ect in case the prover is able to orient this equality
+to a rewriting rule.
+The following is a proof found by Gandalf. We have deleted ve arguments of
+essentially independent type from each application of the functions lemma and
+exec seq in order to shorten the proof.
+The proof is found in ca two and a half minutes. The rst two induction cases
+thm(Sum(x4; x5); r; n) and thm(Pro(x2; x3); r; n) are both proved in one minute
+( ve thousand clauses derived, four thousand of these kept), the last two cases
+thm(Num(x1); r; n) and thm(Arg; r; n) are proved in a fraction of a second (resp.
+21 and 14 clauses derived), half a minute is wasted on an initial attempt to prove
+thm(Sum(x4; x5); r; n) with a half-minute time limit.
+thm(Sum(x4,x5),r,n) =
+lemma(exec_seq(ExecDup(n,r),
+thm(x5,push(n,r),n)),
+lemma(exec_seq(Exec_Rev(Eval(x5,n),n,r),
+thm(x4,push(Eval(x5,n),r),n)),
+exec_seq(Exec_Add(Eval(x4,c),Eval(x5,n),r),
+exec_nil(push(plus(Eval(x4,n),Eval(x5,n)),r)))))
+thm(Pro(x2,x3),r,n) =
+lemma(exec_seq(Exec_Dup(n,r),
+thm(x3,push(n,r),n)),
+lemma(exec_seq(Exec_Rev(Eval(x3,n),n,r),
+thm(x2,push(Eval(x3,n),r),n)),
+exec_seq(Exec_Mul(Eval(x2,n),Eval(x3,n),r),
+exec_nil(push(mult(Eval(x2,n),Eval(x3,n)),r)))))
+thm(Num(x1),r,n) =
+exec_seq(Exec_Lit(x1,n,r),
+exec_nil(push(x1,r)))
+thm(Arg,r,n) = exec_nil(push(n,r))
+
+In the example above we instructed Gandalf to use forward reasoning and
+backward reasoning simultaneously (implemented as unit resolution). However,
+the default strategy of Gandalf is using pure forward reasoning (implemented as
+hyperresolution). The latter, while being a good choice for a large class of problems, is ill suited for the current problem. It takes Gandalf almost two hours (de-
+
+riving 337008 clauses) to prove even a single induction case thm(Sum(x4; x5); r; n)
+of the general theorem thm(e; r; n) when using pure forward reasoning.
+We are planning to implement a heuristic module of Gandalf which would
+automatically make choices between reasoning methods.
+
+References
+1. Peter Aczel. The strength of Martin-Lof's type theory with one universe. In
+Proceedings of the Symposium on Mathematical Logic, Oulu, 1974, pages 1{32.
+Report No 2, Department of Philosophy, University of Helsinki, 1977.
+2. L. Augustsson, T. Coquand, and B. Nordstrom. A short description of Another
+Logical Framework. In Proceedings of the First Workshop on Logical Frameworks,
+Antibes, pages 39{42, 1990.
+3. H. Barendregt. The Lambda Calculus. North Holland, 1981.
+4. T.Tammet C.Fermuller, A.Leitsch and N.Zamov. Resolution Methods for the Decision Problem, volume 679 of Lecture Notes in Arti cial Intelligence. SpringerVerlag, Berlin Heidelberg, 1993.
+5. C.Green. Application of theorem-proving to problem solving. In Proc. 1st Internat.
+Joint. Conf. Arti cial Intelligence, pages 219{239, 1969.
+6. C.L.Chang and R.C.T Lee. Symbolic Logic and Mechanical Theorem Proving.
+Academic Press, 1973.
+7. Thierry Coquand. Pattern matching with dependent types. In Proceeding from
+the logical framework workshop at B
+astad, June 1992.
+8. Thierry Coquand, Bengt Nordstrom, Jan M. Smith, and Bjorn von Sydow. Type
+theory and programming. EATCS, 52, February 1994.
+9. A. Felty and D. Miller. Encoding a Dependent-type -Calculus in a Logic Programming Language. In Proceedings of CADE-10. Lecture Notes in Arti cial Intelligence 449, Springer Verlag, 1990.
+10. G.Peterson. A technique for establishing completeness results in theorem proving
+with equality. SIAM J. of Comput, 12:82{100, 1983.
+11. Lena Magnusson. The new Implementation of ALF. In The informal proceeding
+from the logical framework workshop at B
+astad, June 1992, 1992.
+12. D. Miller. Proofs in Higher Order Logics. Ph.D. thesis, Carnegie Mellon University,
+1983.
+13. D. Miller. A compact representation of proofs. Studia Logica, 46(4), 1987.
+14. G. Mints. Gentzen-type systems and resolution rules. part i. propositional logic.
+In COLOG-88, volume 417 of Lecture Notes in Computer Science, pages 198{231.
+Springer Verlag, 1990.
+15. G. Mints. Resolution strategies for the intuitionistic logic. In Constraint Programming, volume 131 of NATO ASI Series F, pages 289{311. Springer Verlag,
+1994.
+16. Bengt Nordstrom, Kent Petersson, and Jan M. Smith. Programming in MartinLof's Type Theory. An Introduction. Oxford University Press, 1990.
+17. Jan Smith. An interpretation of Martin-Lof's type theory in a type-free theory of
+propositions. Journal of Symbolic Logic, 49(3):730{753, 1984.
+
+

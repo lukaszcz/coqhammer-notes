@@ -1,0 +1,123 @@
+\section{The composed pipeline}
+\label{sec:pipeline}
+
+We assemble the stages and state the end-to-end guarantee.
+
+\begin{definition}[Pipeline]
+\label{def:pipeline}
+Fix an admissible environment, premises $P$ (valid closed
+propositions) and a closed goal $\varphi_G$.  Fix parameters $K,
+\Delta_{\mathrm{tot}}, \Delta_c$ (defaults $3, 200, 16$).  The
+\emph{monomorphising pipeline} computes:
+\begin{enumerate}[label=(P\arabic*),leftmargin=3em]
+\item \emph{Saturate:} a monomorphisation $\Theta$ by the bounded
+  saturation of \cref{def:saturation}, including instances of the
+  implicit inductive premises (\cref{def:mono-op});
+\item \emph{Instantiate:} $P' \coloneqq \Mono_\Theta(P)$, with
+  policy \emph{drop} (default for the stages below) or \emph{keep};
+\item \emph{Translate:} $(\Phi_0, \gamma) \coloneqq
+  \mathrm{Transl}(P', \varphi_G)$ (\cref{def:transl-problem});
+\item \emph{Prune and specialise} (drop policy, first-order core
+  only): $(\Phi_1, \gamma_1) \coloneqq \spec{}(\Phi_0', \gamma)$
+  where $\Phi_0'$ prunes as in \cref{lem:spec-total};
+\item \emph{Erase:} compute the erasable sorts
+  (\cref{def:erasable}: witnessed, and NV-safe or
+  inductive-infinite --- both syntactic checks), choose $\Sigma_0$
+  among them, and output $(\Phi_2, \gamma_2) \coloneqq
+  (\erase{\Sigma_0}(\Phi_1), \erase{\Sigma_0}(\gamma_1))$.
+\end{enumerate}
+The problem $(\Phi_2, \gamma_2)$ is handed to the ATPs.  If a
+refutation is found, the premises used in it are mapped back
+through the instance bookkeeping ($\inst{\varphi_p}{\theta} \mapsto
+p$) and given to the certified reconstruction backend.
+\end{definition}
+
+\begin{theorem}[End-to-end soundness]
+\label{thm:pipeline}
+Suppose the hypotheses of
+\cref{lem:spec-total,lem:pipeline-sorted} hold for the pipeline run
+(first-order core, witnessed quantified types) and $\Sigma_0$
+consists of erasable sorts.  If $\Phi_2 \folproves \gamma_2$, then
+$\varphi_G$ is valid in $\MM$.
+\end{theorem}
+
+\begin{proof}
+By \cref{thm:mono-sound}, $(\Phi_0, \gamma)$ is $\MM$-sound;
+pruning removes axioms, preserving $\MM$-soundness trivially; by
+\cref{thm:spec-sound}, $(\Phi_1, \gamma_1)$ is $\MM$-sound.  By
+\cref{lem:pipeline-sorted}, $\Phi_1 \cup
+\{\mathrm{nnf}(\neg\gamma_1)\}$ is a sorted core, so by
+\cref{thm:erasure-main} it is $\Sigma_0$-inflatable, and
+\cref{thm:erasure-from-inflatable} converts the assumed provability
+into validity of $\varphi_G$.
+\end{proof}
+
+\begin{proposition}[Relative completeness of the back end]
+\label{prop:pipeline-complete}
+Stages (P4)--(P5) lose no proofs: if $\Phi_0' \folproves \gamma$
+then $\Phi_2 \folproves \gamma_2$.
+\end{proposition}
+
+\begin{proof}
+\Cref{thm:spec-faithful} (totality by \cref{lem:spec-total}) and
+\cref{prop:erasure-complete}.
+\end{proof}
+
+\begin{remark}[Where incompleteness is accepted]
+Stage (P2) with the drop policy is incomplete by design
+(\cref{prop:drop-incomplete}), and provably cannot be repaired by a
+cleverer computable instance selection
+(\cref{thm:undecidable}); the keep policy restores completeness
+(\cref{prop:mono-conservative}) at the price of retaining the
+generic formulas, for which the erasure theory of
+\cref{sec:erasure} is not available
+(\cref{rem:erasure-scope}(iii)).  The pruning inside (P4) removes
+the application-typing axioms; for constant-headed terms their
+content is subsumed by the flattened typing axioms, so we expect no
+practical loss, but we make no formal claim.  A hammer can, and
+should, hedge: CoqHammer already runs several ATPs in parallel with
+different translation options \cite{CzajkaKaliszyk2018}, and the
+natural deployment runs the drop-policy pipeline with erasure
+alongside a keep-policy or unmonomorphised run.
+\end{remark}
+
+\begin{remark}[Absolute safety]
+\label{rem:absolute-safety}
+Independently of every theorem in this paper, the hammer
+architecture is fail-safe: the ATP output is used only to select
+premises, and the goal is re-proved from the selected premises by
+the certified search tactics and checked by the proof-assistant
+kernel \cite{CzajkaKaliszyk2018}.  What
+\cref{thm:pipeline} adds is the guarantee that the optimised
+pipeline does not manufacture refutations of consistent problems
+--- i.e.\ that ATP ``successes'' remain correlated with true goals,
+which is what makes the tool useful rather than merely safe.  The
+necessity examples
+(\cref{prop:nec-inhab,prop:nec-mono}) show this guarantee is not
+academic: unrestricted guard erasure produces exactly such phantom
+refutations.
+\end{remark}
+
+\begin{remark}[Implementation notes]
+\label{rem:implementation}
+In CoqHammer's architecture the pipeline slots in as follows.
+Stage (P1)--(P2) operates on the $\mathrm{CIC}_0$ representation
+after premise selection and before the translation proper (in
+\texttt{coq\_transl.ml} terms: between reinitialisation of the
+definition table and retranslation), with instances entered as new
+definitions with content-derived names so that per-name axiom
+caching continues to work; the instance-to-premise name map rides
+along for reconstruction.  Stage (P4) generalises the existing
+\texttt{tconst}-specialisation and arity optimisation of
+\texttt{tptp\_out.ml} \cite[\S5.5]{CzajkaKaliszyk2018}, with the
+bridging axioms removed as analysed in \cref{sec:specialization};
+stage (P5) is new, and its erasability check needs only the
+inductive declarations and the instance set.  Suggested options:
+\texttt{Set Hammer Monomorphisation} (policy and bounds),
+\texttt{Set Hammer GuardSpecialization}, \texttt{Set Hammer
+GuardErasure}.  Evaluation should follow the ablation grid
+baseline / +specialisation / +monomorphisation /
++monomorphisation+specialisation / +all, on the standard
+\texttt{eval/} benchmark, measuring ATP-provability and
+reconstruction rates per prover.
+\end{remark}

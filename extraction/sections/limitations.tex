@@ -1,0 +1,170 @@
+\section{Limitations and future work}
+\label{sec:limitations}
+
+The fragment $\CICm$ was chosen to make every emitted axiom provably
+sound while covering the phenomena the factored architecture is about:
+pattern matching, structural recursion, propositional content in types,
+singleton eliminations.  We now delimit the boundary, distinguishing
+presentational restrictions (liftable with more bookkeeping) from
+genuine semantic boundaries.
+
+\subsection{Polymorphism and monomorphisation}
+\label{sec:limitations-poly}
+
+$\CICm$ has no type variables: every inductive type is declared at a
+ground instance, and guards are unary per-datatype predicates.  This
+matches the intended pipeline, in which heuristic monomorphisation ---
+instantiating polymorphic definitions and inductive families at the
+ground instances relevant to a problem, as HOL hammers do
+\cite{BlanchetteEtAl2016} --- runs before the translation of this paper.
+Extending the soundness proof to genuinely polymorphic environments
+(type-variable guards, parameterised guard predicates) is orthogonal
+future work; the design questions there (which type arguments and guards
+are omissible) are treated in companion notes to this paper and in the
+monotonicity literature \cite{BlanchetteEtAl2016}.
+
+\subsection{Indexed families and large elimination}
+\label{sec:limitations-indexed}
+
+Datatypes in $\CICm$ are non-indexed (inductive \emph{predicates} carry
+indices, but their proofs are erased).  Indexed informative families
+(vectors, finite sets) require dependent case motives over indices and
+transport in branches; the semantic machinery (classes, stages, ranks)
+extends, but erasure of index information interacts with injectivity in
+ways that need care, and we have not carried it out.  Large elimination
+(types defined by recursion) is excluded outright: it breaks the rigidity
+of set types (\cref{lem:rigid}) on which the structural definitions of
+$\guardf$ and $\semr{\cdot}{}$ rest.  A translation for large-eliminating
+code would need a different device (e.g.\ per-instance specialisation).
+
+\subsection{Well-founded recursion: a hard constraint}
+\label{sec:limitations-wf}
+
+$\tfix$ captures structural recursion only.  The extension to
+well-founded ($\mathsf{Acc}$-based) recursion is \emph{not} a routine
+generalisation, and the obstruction deserves precise statement, since it
+constrains any implementation of the architecture.
+
+In CIC, a function defined by well-founded recursion --- Euclidean
+division $\mathsf{div} : \forall a\,b.\ b \neq 0 \to \{q \mid \dots\}$
+is the canonical example --- recurses through a proof of
+$\mathsf{Acc}(x)$, and its unfolding equation holds \emph{only under the
+erased propositional preconditions}.  Program extraction may erase the
+precondition entirely: the extracted $\mathsf{div}$ diverges at $b = 0$,
+which is harmless because lazy (or guarded) evaluation never forces the
+offending closure \cite[\S 2.6]{Letouzey2004,Letouzey2003}.  An
+equational axiomatisation enjoys no such protection: an equation is
+``already applied everywhere''.  Erasing the precondition from the
+unfolding equation of $\mathsf{div}$ yields the instance
+\[
+  \Ihat{\mathsf{div}}(a, \csO) \feq \csS(\Ihat{\mathsf{div}}(a, \csO))
+  \quad\text{(for } b = \csO\text{, when the guard test } b \leq a
+  \text{ degenerates)},
+\]
+which contradicts the perfectly legitimate premise $\forall n.\ n \neq
+\csS(n)$ --- the resulting theory is \emph{inconsistent}, not merely
+incomplete, and \cref{cor:consistency} would fail.  The constraint is
+therefore: \emph{defining equations obtained by recursion through an
+erased proof must retain the erased propositional premises of the
+definition as implications} ($\forall a\,b.\ \F{b \neq \csO} \to
+\dots$), the analogue for equations of the evaluation-order problem
+that forced Letouzey to abandon the erasure rule
+$\erase{\lambda p{:}\varphi.t} = \erase{t}$ for \emph{executable}
+extraction.  In our fragment the unconditional-drop rule of
+\cref{def:erasure} is sound precisely because $\tfix$ types contain no
+propositional premises and unfolding is total on the guard datatype
+(\cref{lem:fundamental}); lifting either restriction requires the
+premised-equation form, with the semantics interpreting the defined
+symbol by an arbitrary total extension of the partial function.
+
+\subsection{Transport erasure and UIP}
+\label{sec:limitations-transport}
+
+The clause $\erase{\tcast{\pi}{z.\tau}{t}} = \erase{t}$ (and the
+corresponding validity of unconditional transport equations, e.g.\ the
+image of $\mathsf{eq\_rect}$ becoming an identity) is validated by $\ML$
+through proof irrelevance: $\pv{a = b} = 1$ collapses the classes, so
+transport is semantically the identity.  As a \emph{source} theorem,
+however, ``transport is the identity'' at an arbitrary type is
+uniqueness of identity proofs, which CIC does not prove
+\cite{GilbertEtAl2019}.  The consequence is not unsoundness --- the
+model validates it, and $\CICm$'s $\tcast{}{}{}$ is well typed only at
+matching endpoints --- but a \emph{reconstruction} caveat for the
+implemented pipeline: an ATP proof essentially using transport-erasure
+at a type without decidable equality may resist replay inside Coq, the
+same failure mode the tool already accepts for other
+semantically-validated principles.  A conservative variant guards the
+transport equation with the source equation as a premise.
+
+\subsection{Function extensionality fails in the term model}
+\label{sec:limitations-funext}
+
+$\ML$ interprets equality as $\lbox$-convertibility of closed terms,
+which is intensional: $\cls{\lambda x.\,\mathsf{add}(\csO, x)} \neq
+\cls{\lambda x.\,x}$ although the two agree on all of $\semr{\nat}{}$
+(the first is stuck at a variable).  So $\pv{\text{funext}} = 0$: the
+guarantee of \cref{thm:soundness} does not extend to environments
+postulating function extensionality (\cref{rem:axioms}).  Repairing
+this requires a coarser model --- quotienting $\Dom$ by an
+observational equivalence --- which changes the discrimination and
+compilation arguments and is left as future work.  Note the asymmetry:
+the translation never \emph{emits} an extensionality axiom, so
+\cref{cor:consistency} is unaffected; only premise sets containing
+funext-derived lemmas step outside the present soundness statement.
+
+\subsection{Other presentational restrictions}
+\label{sec:limitations-misc}
+
+Mutual and nested inductive types, deep (nested-pattern) and mutual
+recursion, and fixpoints whose recursive calls occur under inner binders
+with non-variable guard arguments are excluded by the syntactic shape of
+$\tfix$ and the declarations; all appear liftable by elaborating them
+into the present forms (mutual recursion via a sum type, deep guards via
+nested case trees --- which the \emph{compilation} already handles,
+cf.\ \cref{ex:compile}(3) --- and course-of-values recursion via
+auxiliary structural functions), at bookkeeping cost in the fix case of
+\cref{lem:fundamental}.  Inductive predicates with predicate
+\emph{parameters} (e.g.\ $\mathsf{Forall}$) are excluded from $\Sfrag$;
+per-instance specialisation (a fresh predicate symbol per concrete
+predicate parameter, with clauses inlined) extends the translation
+shallowly and is the natural implementation route.  Enumeration-like
+datatypes whose constructors carry only propositional data
+($\mathsf{sumbool}$) are covered as plain datatypes here; inlining
+their inversion disjunction into guard positions is a further
+shallowness optimisation compatible with the model.
+
+\subsection{Completeness}
+\label{sec:limitations-completeness}
+
+The translation is not complete, deliberately.  Beyond the classical
+semantics (\cref{rem:not-claimed}), first-order provability from $\ThE$
+lacks: induction (only case analysis is emitted; goals needing
+induction are the reconstruction backend's or the user's job),
+conversion under binders for lifted symbols (two extensionally equal
+lifted functions get unrelated symbols --- the $\xi$-rule failure
+discussed in \cite[Example 51]{Czajka2018}), and anything involving
+non-shallow propositions.  A precise completeness theorem for a
+quantifier fragment (e.g.\ universal equational goals over first-order
+datatypes, where \cref{prop:standard} makes $\ML$ standard) would be
+valuable; we expect the per-constructor equations to be complete for
+ground equational consequences of the definitions, by
+\cref{rem:eq-shape} and standard rewriting arguments
+\cite{BaaderNipkow1998}, but leave the statement to future work.
+
+\subsection{Proof-theoretic soundness and implementation}
+\label{sec:limitations-proof-theoretic}
+
+Two further directions.  First, a proof-theoretic soundness theorem in
+the style of \cite{Czajka2018} --- transforming a first-order
+derivation from $\ThE$ into a $\CICm$ proof term, presumably modulo
+excluded middle and proof irrelevance --- would sharpen
+\cref{thm:soundness} into a reconstruction algorithm; the
+substitution-stability machinery needed for lifted symbols is exactly
+the hard part there, and our semantic treatment sidesteps rather than
+solves it.  Second, on the implementation side, the axiom families of
+\cref{def:theory} map one-to-one onto sites in the existing CoqHammer
+translation (case lifting, guard generation, definition axioms), so the
+architecture can be adopted incrementally --- per-constructor equations
+first, then singleton erasure and refinement expansion, then the full
+specification extraction --- with each stage independently measurable
+against the current translation on the standard evaluation harness.

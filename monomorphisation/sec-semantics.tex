@@ -1,0 +1,212 @@
+\section{Set-theoretic semantics}
+\label{sec:semantics}
+
+Our soundness framework is model-theoretic.  This is a deliberate
+choice, and a departure from the existing rigorous treatment of the
+CoqHammer translation: the soundness proof of~\cite{Czajka2016} for
+the core translation is proof-theoretic --- it reconstructs a
+type-theoretic proof term from a first-order proof in \emph{minimal
+intuitionistic} first-order logic by induction on an $\eta$-long
+normal derivation.  That technique does not extend to the questions
+of this paper, for two reasons.  First, the ATPs actually invoked by
+a hammer are \emph{classical}: a classical refutation is not a
+minimal-logic derivation, so the reconstruction argument does not
+even apply to the proofs the ATPs find.  Second, and decisively, the
+optimisations we study --- monotonicity-based guard erasure above all
+--- are justified by \emph{model constructions} (domain inflation,
+sort merging), and, as \cite[\S6]{Czajka2016} itself observes, such
+model-theoretic methods are incompatible with the proof-theoretic
+soundness argument.  We therefore set up a set-theoretic semantics
+for $\CICm$ once and for all, and measure every transformation
+against it.  The price is that our soundness guarantee is semantic
+(``the goal is true in the standard model'') rather than
+proof-theoretic (``a proof term exists''); in the hammer setting this
+is the appropriate guarantee, since the final arbiter is in any case
+the proof-assistant kernel: the ATP output is used only to select
+premises, and the goal is re-proved from them by certified search
+\cite{CzajkaKaliszyk2018}.  What the semantic guarantee rules out is
+the pipeline systematically wasting effort on, and reporting success
+for, goals that are false; equivalently, it establishes that each
+transformation adds no inconsistency to the generated problems.
+
+Throughout, the metatheory is ZFC with two strongly inaccessible
+cardinals; the axiom of choice is used and we flag the places where
+it matters.
+
+\begin{definition}[Standard model]
+\label{def:model}
+Fix Grothendieck universes $\Uone \in \Utwo$ (i.e.\ $\Uone =
+V_{\kappa_1}$, $\Utwo = V_{\kappa_2}$ for inaccessibles $\kappa_1 <
+\kappa_2$), and let $\Om = \{\emptyset, \holds\}$ where we write
+$\holds$ for $\{\emptyset\}$; so $\Om = \{\emptyset, \{\emptyset\}\}
+\in \Uone$.  Call a function $\rho$ from variables to sets a
+\emph{$\Gamma$-assignment} if $\rho(x) \in \semr{A}{\rho}$ for every
+$(x{:}A) \in \Gamma$ (well-defined by recursion on the context).  A
+\emph{standard model} $\MM$ of an environment $\Env$ is a function
+assigning to every judgement $\Gamma \vdash t : T$ and every
+$\Gamma$-assignment $\rho$ a set $\semr{t}{\rho}$ (independent of the
+derivation and of $T$; we omit $\rho$ for closed terms), such that:
+\begin{enumerate}[label=(M\arabic*),leftmargin=3.2em]
+\item \label{M:typing} \emph{(Typing soundness)}
+  $\semr{t}{\rho} \in \semr{T}{\rho}$ whenever $\Gamma \vdash t : T$.
+  Moreover $\semr{t}{\rho} = \emptyset$ whenever $t$ is a proof.
+\item \label{M:sorts} \emph{(Sorts)}
+  $\sem{\SProp} = \Om$, $\sem{\STypeI} = \Uone$,
+  $\sem{\STypeII} = \Utwo$.
+\item \label{M:var} \emph{(Variables, constants)}
+  $\semr{x}{\rho} = \rho(x)$; for a definition $c \coloneqq t : T$,
+  $\sem{c} = \sem{t}$.
+\item \label{M:pi} \emph{(Products)}
+  If $\Gamma, x{:}A \vdash B : \SProp$ then
+  \[
+    \semr{\Pi x{:}A.\,B}{\rho} \;=\;
+    \setof{z \in \holds}{\forall a \in \semr{A}{\rho}.\;
+        \semr{B}{\rho[x \mapsto a]} = \holds} .
+  \]
+  Otherwise (the product has sort $\STypeI$ or $\STypeII$),
+  $\semr{\Pi x{:}A.\,B}{\rho}$ is the set-theoretic dependent
+  product: the set of all functions (graphs) $f$ with domain
+  $\semr{A}{\rho}$ such that $f(a) \in \semr{B}{\rho[x \mapsto a]}$
+  for all $a \in \semr{A}{\rho}$.
+\item \label{M:lam} \emph{(Abstraction, application)}
+  If $\lambda x{:}A.\,t$ is not a proof, then
+  $\semr{\lambda x{:}A.\,t}{\rho}$ is the graph
+  $\setof{(a, \semr{t}{\rho[x \mapsto a]})}{a \in \semr{A}{\rho}}$;
+  if $t\,u$ is not a proof, then
+  $\semr{t\,u}{\rho} = \semr{t}{\rho}\bigl(\semr{u}{\rho}\bigr)$
+  (function application of the graph).
+\item \label{M:conv} \emph{(Conversion)}
+  If $\Gamma \vdash t : T$, $\Gamma \vdash t' : T$ and $t \conv t'$,
+  then $\semr{t}{\rho} = \semr{t'}{\rho}$.
+\item \label{M:subst} \emph{(Substitutivity)}
+  If $\Gamma, x{:}A, \Delta \vdash t : T$ and $\Gamma \vdash u : A$,
+  then $\semr{t[u/x]}{\rho} = \semr{t}{\rho[x \mapsto \semr{u}{\rho}]}$
+  for every assignment $\rho$ conforming to $\Gamma, \Delta[u/x]$.
+\item \label{M:conn} \emph{(Connectives)}
+  $\sem{\top} = \holds$, $\sem{\bot} = \emptyset$, and for
+  $\Gamma$-propositions:
+  \begin{align*}
+  \semr{\varphi \wedge \psi}{\rho} &= \setof{z \in \holds}{\semr{\varphi}{\rho} = \holds \text{ and } \semr{\psi}{\rho} = \holds}, \\
+  \semr{\varphi \vee \psi}{\rho} &= \setof{z \in \holds}{\semr{\varphi}{\rho} = \holds \text{ or } \semr{\psi}{\rho} = \holds}, \\
+  \semr{\varphi \leftrightarrow \psi}{\rho} &= \setof{z \in \holds}{\semr{\varphi}{\rho} = \semr{\psi}{\rho}}, \\
+  \semr{t \ceq_A u}{\rho} &= \setof{z \in \holds}{\semr{t}{\rho} = \semr{u}{\rho}}, \\
+  \semr{\cexists{x}{A}\varphi}{\rho} &= \setof{z \in \holds}{\exists a \in \semr{A}{\rho}.\; \semr{\varphi}{\rho[x \mapsto a]} = \holds}.
+  \end{align*}
+\item \label{M:ind} \emph{(Inductive types)}
+  For each inductive declaration as in \cref{def:env}(iii),
+  $\sem{I}$ is a function $\Uone^p \to \Uone$, and for each $j$ the
+  constructor denotation $\sem{c_j}$ is a (curried) function taking
+  $\tup{a} \in \Uone^p$ and then argument tuples, such that for all
+  $\tup{a} \in \Uone^p$:
+  \begin{enumerate}[label=(\alph*)]
+  \item \emph{(Closure and leastness)} $\sem{I}(\tup{a})$ is the
+    least set $X \in \Uone$ such that for every $j$ and every tuple
+    $\tup{d}$ with $d_l \in \sem{\sigma_{j,l}}_{[\tup{A} \mapsto
+    \tup{a}]}$ for non-recursive positions and $d_l \in X$ for
+    recursive positions, the value $\sem{c_j}(\tup{a})(\tup{d})$
+    belongs to $X$.
+  \item \emph{(Injectivity)} each $\sem{c_j}(\tup{a})$ is injective
+    (jointly in all its value arguments).
+  \item \emph{(Disjointness)} for $i \neq j$ the images of
+    $\sem{c_i}(\tup{a})$ and $\sem{c_j}(\tup{a})$ on well-typed
+    argument tuples are disjoint.
+  \item \emph{(Exhaustiveness)} $\sem{I}(\tup{a})$ equals the union
+    over $j$ of the images of $\sem{c_j}(\tup{a})$ on well-typed
+    argument tuples.
+  \end{enumerate}
+\item \label{M:case} \emph{(Case)}
+  If $\Gamma \vdash \case{I,\tup{\tau},Q}{t}{\tup{u}} : Q\,t$ is not
+  a proof and $\semr{t}{\rho} = \sem{c_j}(\sem{\tup{\tau}}_\rho)(\tup{d})$
+  (such $j$ and $\tup{d}$ exist and are unique by
+  \ref{M:ind}(b--d)), then
+  $\semr{\case{I,\tup{\tau},Q}{t}{\tup{u}}}{\rho} =
+   \semr{u_j}{\rho}(\tup{d})$ (iterated application); if the case
+  term is a proof its denotation is $\emptyset$ by \ref{M:typing}.
+\item \label{M:params} \emph{(Parameters)}
+  For every parameter declaration $c : T$ in $\Env$:
+  $\sem{c} \in \sem{T}$.
+\end{enumerate}
+\end{definition}
+
+\begin{definition}[Admissible environment; validity]
+\label{def:admissible}
+An environment $\Env$ is \emph{admissible} if a standard model of it
+exists.  Fix an admissible $\Env$ and a standard model $\MM$.  A
+closed proposition $\varphi$ is \emph{valid} (in $\MM$) if
+$\sem{\varphi} = \holds$.
+\end{definition}
+
+Note that admissibility already builds in the truth of all premises:
+if $c : \varphi$ is a parameter declaration with $\varphi$ a closed
+proposition, then \ref{M:params} gives $\sem{c} \in \sem{\varphi} \in
+\Om$, hence $\sem{\varphi} = \holds$, i.e.\ $\varphi$ is valid.  The
+same holds for anything \emph{derivable}:
+
+\begin{proposition}[Provability implies validity]
+\label{prop:prov-valid}
+If $\vdash t : \varphi$ for a closed proposition $\varphi$, then
+$\varphi$ is valid.
+\end{proposition}
+
+\begin{proof}
+By \ref{M:typing}, $\sem{t} \in \sem{\varphi}$, so $\sem{\varphi}
+\neq \emptyset$; since $\sem{\varphi} \in \sem{\SProp} = \Om$ by
+\ref{M:typing} applied to $\varphi : \SProp$, we get $\sem{\varphi} =
+\holds$.
+\end{proof}
+
+\begin{proposition}[Existence]
+\label{prop:model-exists}
+Every environment arising from a consistent development in the
+standard set-theoretic interpretation of CIC is admissible.  More
+precisely, the proof-irrelevant set-theoretic model constructions of
+Werner~\cite{Werner1997}, Aczel~\cite{Aczel1998} and
+Lee--Werner~\cite{LeeWerner2011} interpret a calculus containing
+$\CICm$ in ZFC with inaccessibles and satisfy
+\ref{M:typing}--\ref{M:params}; in particular, environments
+consisting of well-typed definitions, data inductive declarations,
+and parameter declarations whose types are interpretable (e.g.\
+premises that are provable, or axioms true in the intended
+interpretation, such as functional extensionality, proof
+irrelevance, excluded middle or classical choice) are admissible.
+\end{proposition}
+
+\begin{proof}[Proof notes]
+We do not reproduce the model construction; we indicate why each
+clause of \cref{def:model} holds in it.  Products into $\SProp$ are
+interpreted by the trace encoding exactly as in \ref{M:pi} (this is
+Werner's proof-irrelevant interpretation; \cite{Werner1997,
+LeeWerner2011}); products into type universes are set-theoretic
+dependent products, with $\Uone$ closed under them by inaccessibility
+of $\kappa_1$ (for a product over a proposition domain into a type
+universe there is nothing to check --- such products are not
+well-formed in $\CICm$).  \ref{M:conv} and \ref{M:subst} are the
+standard soundness lemmas of the interpretation.  Connectives and the
+primitive equality \ref{M:conn} match the interpretation of the
+corresponding inductive definitions of CIC under proof irrelevance:
+e.g.\ Coq's \texttt{eq} is interpreted as a family that is $\holds$
+on the diagonal and $\emptyset$ off it.  Inductive data types are
+interpreted as least fixed points of their constructor rules with
+constructors modelled by injectively tagged tuples, giving
+\ref{M:ind}(a--d); $\iota$-reduction soundness gives \ref{M:case}.
+\ref{M:params} is the definition of interpretability of the
+parameters.
+\end{proof}
+
+\begin{remark}
+\label{rem:model-choice}
+Everything that follows is relative to one fixed standard model
+$\MM$ of the ambient environment.  Which standard model is chosen is
+irrelevant to the theorems; what matters is that all premises given
+to the hammer are valid in it, which admissibility guarantees.  Note
+also a convenient consequence of \ref{M:ind}: concrete data types
+have their expected denotations.  For instance the empty inductive
+type (no constructors) denotes $\emptyset$; a one-constructor,
+zero-argument type ($\mathsf{unit}$) denotes a singleton;
+$\sem{\mathsf{nat}}$ is Dedekind-infinite, since
+$\sem{\mathsf{S}}$ is injective by \ref{M:ind}(b) and omits
+$\sem{\mathsf{O}}$ from its image by \ref{M:ind}(c); and
+$\sem{\mathsf{list}}(a) $ is infinite whenever $a \neq \emptyset$,
+finite (a singleton) when $a = \emptyset$.  These facts drive the
+counterexamples and the infinity criterion of \cref{sec:erasure}.
+\end{remark}

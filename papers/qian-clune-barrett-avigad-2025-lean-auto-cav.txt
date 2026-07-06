@@ -1,0 +1,2057 @@
+                                              Lean-auto: An Interface between Lean 4 and
+                                                     Automated Theorem Provers
+
+                                                       Yicheng Qian1( ) , Joshua Clune2 , Clark Barrett1 ,
+                                             CAV                      and Jeremy Avigad2                                     CAV
+                                          Artifact                                                                           Artifact
+                                         Evaluation               1
+                                                                   Stanford University, Stanford, USA                       Evaluation
+
+                                                                       pratherc@stanford.edu,
+arXiv:2505.14929v2 [cs.LO] 24 May 2025
+
+
+
+
+                                         Available           2
+                                                               Carnegie Mellon University, Pittsburgh, USA                  Reusable
+
+
+
+
+                                                 Abstract. Proof automation is crucial to large-scale formal mathemat-
+                                                 ics and software/hardware verification projects in ITPs. Sophisticated
+                                                 tools called hammers have been developed to provide general-purpose
+                                                 proof automation in ITPs such as Coq and Isabelle, leveraging the power
+                                                 of ATPs. An important component of a hammer is the translation algo-
+                                                 rithm from the ITP’s logical system to the ATP’s logical system. In
+                                                 this paper, we propose a novel translation algorithm for ITPs based on
+                                                 dependent type theory. The algorithm is implemented in Lean 4 under
+                                                 the name Lean-auto. When combined with ATPs, Lean-auto provides
+                                                 general-purpose, ATP-based proof automation in Lean 4 for the first
+                                                 time. Soundness of the main translation procedure is guaranteed, and
+                                                 experimental results suggest that our algorithm is sufficiently complete
+                                                 to automate the proof of many problems that arise in practical uses of
+                                                 Lean 4. We also find that Lean-auto solves more problems than existing
+                                                 tools on Lean 4’s math library Mathlib4.
+
+                                                 Keywords: Proof Automation · Lean 4 · Dependent Type Theory
+
+
+                                         1    Introduction
+
+                                         Interactive Theorem Provers (ITPs) [16] are widely used in formal mathemat-
+                                         ics and software/hardware verification. When using ITPs, straightforward but
+                                         tedious proof tasks often arise during the proof development process. Due to
+                                         the limited built-in automation in ITPs, discharging these proof tasks can re-
+                                         quire significant manual effort. Hammers [6,13] are proof automation tools for
+                                         ITPs which utilize Automated Theorem Provers (ATPs, including Satisfiability
+                                         Modulo Theories (SMT) solvers). Hammers have proved useful because they can
+                                         solve many proof tasks automatically [26].
+                                             A hammer has three main components: premise selection, translation from
+                                         ITP to ATP, and proof reconstruction from ATP to ITP. Premise selection col-
+                                         lects the necessary premises (usually a list of theorems) needed to solve a proof
+                                         task, translation exports the collected information from the ITP to the ATP,
+                                         and proof reconstruction generates a proof in the ITP based on the output of
+                                         the ATP. Our project Lean-auto primarily focuses on the translation from Lean
+2      Y. Qian et al.
+
+4 to ATPs. We note that Lean-auto does have a proof reconstruction procedure
+which fully supports one of the three types of ATPs we use to evaluate Lean-
+auto. For ATPs with proof reconstruction support, if the ATP successfully finds
+a proof, Lean-auto will generate proof terms and check them using the Lean 4
+kernel. For other ATPs, if the ATP successfully finds a proof, Lean-auto will
+mark the problem as solved in Lean 4, but will generate a warning to indicate
+that Lean-auto trusts the ATPs’ output. Ongoing projects are expected to im-
+plement premise selection and more proof reconstruction support. See Sect. 8
+for more discussion.
+    The discrepancies between logical systems of ATPs and ITPs pose significant
+challenges to translation procedures between them. Several popular ITPs are
+based on highly expressive logical systems. For example, Isabelle [35] is based
+on polymorphic higher-order logic, while Coq [4] and Lean 4 [24]3 are based
+on an even more expressive logical system called dependent type theory (also
+known as λC in the lambda cube) [3,11].4 Moreover, features such as typeclasses
+[14], universe polymorphism [31], and inductive types [12] are commonly used
+as extensions to the base logical system to enhance usability of the ITPs. On
+the other hand, ATPs are usually based on less expressive logical systems such
+as first-order logic (FOL) [2,20,23,30] and (in recent years) higher-order logic
+(HOL) [5,33,34]. An overview of the various logical systems relevant to our work
+is given in Sect. 2.2.
+    There are two existing approaches for translation from more expressive log-
+ical systems to less expressive ones: encoding-based translation and monomor-
+phization. Encoding-based translation is used in CoqHammer [13] to translate
+Coq into untyped FOL. Monomorphization is used to eliminate polymorphism
+in Isabelle Sledgehammer [6,7,26]. Our small-scale experiment5 on Mathlib4 sug-
+gests that encoding-based translation tends to produce much larger outputs
+than monomorphization, which could negatively affect the performance of ATPs.
+Therefore, we use monomorphization in Lean-auto. An overview of these two
+translation methods and related discussions are given in Sect. 3.
+    Since ATPs have started supporting HOL in recent years [5,33,34], Lean-auto
+translates Lean 4 to HOL. The overall translation has two stages: preprocess-
+ing and monomorphization. Monomorphization itself has three stages: quantifier
+instantiation, λ∗→ abstraction, and universe lifting. Roughly speaking, prepro-
+cessing translates Lean 4 into dependent type theory,6 and monomorphization
+translates dependent type theory into HOL. The monomorphization procedure
+of Lean-auto is inspired by Isabelle Sledgehammer. However, since dependent
+type theory is considerably different from Isabelle’s HOL, the monomorphiza-
+tion procedure is thoroughly redesigned, and presented in a different way in our
+
+3
+  Agda [8] is also dependently typed, but is based on Martin-Löf type theory.
+4
+  Or calculus of inductive constructions (CIC), depending on whether inductive types
+  are considered as an extension.
+5
+  See Appendix I.
+6
+  As mentioned before, Lean 4 is different from dependent type theory because it
+  includes various additional language features.
+  Lean-auto: An Interface between Lean 4 and Automated Theorem Provers            3
+
+paper. Challanges related to dependent type theory and Lean 4 are discussed in
+Sect. 4.3.
+                                                 In our paper, we work backwards
+                                            in Lean-auto’s translation workflow.
+                 Lean 4                     We start from λ∗→ abstraction (Sect.
+                                            5), then quantifier instantiation (Sect.
+                                            6), and end with preprocessing (Sect.
+             Preprocessing
+                                            7). This is because it is easier to be-
+               (Sect. 7)
+                                            gin with the simpler logical system
+                     λC                     and progressively take into account
+                                            more features of the highly expressive
+        Quantifier instantiation            Lean 4 language. We leave universe
+               (Sect. 6)                    lifting to Appendix E since it is rel-
+                     QMono λC               atively straightforward compared to
+                                            the other steps.
+            λ∗→ abstraction
+               (Sect. 5)
+
+                     HOL∗
+            Universe lifting                1.1   Related Work
+            (Appendix E)
+
+                  HOL                        Hammers are not restricted to ITPs
+                                             with expressive logical systems. Sev-
+Fig. 1. Translation workflow of Lean-auto. eral ITPs based on FOL or HOL also
+                                             have their hammers, for example, the
+                                             hammer of Mizar [19], the hammer of
+                                             MetaMath [9], and HOL(y)Hammer
+                                             [18]. Apart from hammers, there are
+                                             various other ITP proof automation
+                                             tools. For example, Coq and Lean
+                                             both come with a tactics language,
+                                             and built-in tactics provide users with
+                                             low-level proof automation, such as
+Coq’s apply, rewrite, and destruct tactics [4], and Lean’s apply, rw, and
+cases tactics [1]. Domain-specific automation tools are also common, such as
+the intuitionistic propositional logic solver tauto of Coq, congruence closure al-
+gorithm congruence of Coq, and integer linear arithmetic solver omega of Lean 4,
+all implemented as tactics. Lightweight proof search procedures in ITPs include
+Coq’s auto and Lean 4’s Aesop [21]. There are also lightweight ATPs imple-
+mented in ITPs, such as Isabelle’s Metis [17] and blast_tac [25], HOL Light’s
+Meson [15], and Lean 4’s Duper [10]. Finally, machine learning algorithms have
+also been used to automate proof in ITPs, for example, MagnusHammer [22] of
+Isabelle, LeanDojo [37] of Lean, GPT-f [27] of Metamath, and ASTactic [36] of
+Coq.
+4       Y. Qian et al.
+
+2     Preliminaries
+
+2.1   Dependent Type Theory
+
+Dependent type theory, or λC in the λ-cube, or the calculus of constructions
+(CoC) [3], is a highly expressive type system and logical system. It is the logical
+foundation of Coq, Lean 4, and Agda. To align with Lean 4, we use the variant
+of λC which contains a countable number of non-cumulative universe levels. The
+syntax of λC terms is defined inductively as follows:
+
+              TC ::= V | Uℓ | TC TC | λ(V : TC ).TC | ∀(V : TC ).TC ,
+
+where V is the set of variables, Uℓ (ℓ ∈ N) are the sorts (i.e., the types of types),
+TC TC is function application, λ(V : TC ).TC is λ abstraction, and ∀(V : TC ).TC
+is the product type. ℓ is called the universe level of Uℓ . We use ∀ instead of Π
+to align with the syntax of Lean, Coq, and Agda. Syntactical equality of terms
+will be denoted as =, and βη-equivalence of terms will be denoted as ∼     =.
+    We adopt the following commonly-used notational conventions: function ap-
+plication binds stronger than λ and ∀, and is left-associative; consecutive λs and
+∀s can be merged, and λs and ∀s with the same binder type can be further merged
+into the same parenthesis; when the product type is non-dependent, → can be
+used instead of ∀. Importantly, → binds stronger than ∀, i.e., ∀(x : α).β → γ is
+interpreted as ∀(x : α).(β → γ) instead of (∀(x : α).β) → γ, the latter being the
+convention in FOL and HOL. The abbreviations ⊥, ¬, ∧, ∨, ↔, =ℓ , and ∃ℓ are
+defined in the usual way.7
+    A context Γ is a list of variable declarations x1 : α1 , . . . , xn : αn . Type
+judgements will be written as Γ ⊢ t : α, which stands for “λC term t has type
+α under context Γ .” 8 If Γ ⊢ t : α, then t is called a well-formed term, and α
+is called a (well-formed) type.9 Under context Γ , a type α is called inhabited iff
+there exists t such that Γ ⊢ t : α, in which case t is called an inhabitant of α.
+Propositions are types of type U0 . A proof of a proposition p : U0 is an inhabitant
+of p. A proposition p : U0 is provable iff it is inhabited. Given a context Γ and
+a proposition p, we use Γ ⊢?p to represent the problem of finding a proof of p
+under context Γ .
+    For a function f : ∀(x1 : α1 ) . . . (xn : αn ).β (here β may begin with ∀), the
+nth argument of f is called a static dependent argument iff xn occurs in β. In
+many cases, static dependent arguments are also type arguments; for example,
+the first and second arguments of List.map : ∀(α β : U1 ).(α → β) → List α →
+List β are both static dependent arguments. Another important concept is de-
+pendent argument.10 In practical scenarios, “dependent argument” and “static
+dependent argument” usually have the same meaning. Their intricate difference
+is explained in Sect. 4.3.
+7
+   See Appendix A.
+8
+   Derivation rules for type judgements of λC are given in Appendix B.
+ 9
+   In λC, all well-formed types are also well-formed terms.
+10
+   See Appendix G for its formal definition.
+     Lean-auto: An Interface between Lean 4 and Automated Theorem Provers       5
+
+   We use λC notation for all logical systems that can be embedded in λC. When
+presenting Lean 4 examples, we use additional Lean 4 notational conventions.
+These are explained in Sect. 2.4.
+
+2.2     Logical Systems of ITPs and ATPs
+In this section, we give an overview of the various logical systems that are rel-
+evant to our work. In the following list, the logical systems are ordered from
+the least expressive to the most expressive. Note that, except for λC and more
+expressive systems, all other logical systems have two components: term calculus
+(which specifies the construction and computation rules of terms), and logical
+axioms/rules.
+ 1. Untyped FOL, or predicate logic.
+ 2. Many-sorted FOL.
+ 3. Many-sorted HOL (monomorphic HOL, or just HOL), where functions are
+    allowed to take functions as arguments, and quantifiers can quantify over
+    functions. Its term calculus is simply typed lambda calculus λ→ [3].
+ 4. Many-sorted HOL with a countable number of universe levels, denoted as
+    HOL∗ , which is discussed in Sect 2.3. This is an intermediate logical system
+    used in Lean-auto’s monomorphization. It is essentially equivalent to HOL11 .
+ 5. HOL with rank-1 polymorphism, or polymorphic HOL. Its term calculus is
+    λ2 in the λ-cube [3]. In polymorphic HOL, functions are allowed to take type
+    arguments, and quantifiers can quantify over types. However, type construc-
+    tors, or types dependent on types, are not allowed.
+ 6. Isabelle’s logical system. Based on polymorphic HOL. Supports (co)inductive
+    datatypes and recursive functions.
+ 7. Dependent type theory, or λC. Compared to polymorphic HOL, types can
+    depend on terms and types in λC.
+ 8. Coq, Lean 4, and Agda’s logical systems. Based on λC. Extensions to λC
+    that are present in (at least one of) these ITPs include (co)inductive types,
+    universe levels, universe polymorphism, typeclasses, and many others.
+All previously mentioned hammers translate between these logical systems. Is-
+abelle Sledgehammer translates between Isabelle and HOL/FOL.12 CoqHam-
+mer translates between Coq and untyped FOL. Lean-auto translates between
+Lean 4 and monomorphic HOL. As mentioned before, Lean-auto’s preprocess-
+ing translates Lean 4 into λC, and monomorphization translates λC into HOL.
+More specifically, quantifier instantiation and λ∗→ abstraction translates λC into
+HOL∗ , and universe lifting translates HOL∗ into HOL.
+
+2.3     Pure Type Systems λC, λ→ , λ∗→ and Related Logical Systems
+The Pure Type System (PTS) [3] formalism enables concise specification of a
+class of type systems. We use PTS to formally specify the underlying type sys-
+tems of the logical systems used in Lean-auto’s translation.
+11
+     In Appendix E, we show that HOL∗ is essentially equivalent to HOL.
+12
+     The exact logical system depends on the mode being used.
+6       Y. Qian et al.
+
+    The specification of a PTS consists of a triple (S, A, R), where S is the set of
+sorts, A ⊆ S × S is the set of axioms, and R ⊆ S × S × S is the set of rules. An
+axiom (s1 , s2 ) ∈ A is intended to represent the typing axiom s1 : s2 . The syntax
+of PTS terms is given by
+
+                   T ::= V | S | T T | λ(V : T ).T | ∀(V : T ).T
+
+    Three type systems, λC, λ→ , and λ∗→ , will be formulated using PTS.13 As
+mentioned above, λ→ is the term calculus of HOL, and λ∗→ is the term calculus
+of HOL∗ . Note that U0 is not present in λ→ and λ∗→ because it is a special
+sort for propositions in λC. The type of propositions in HOL and HOL∗ will be
+represented by a special symbol Bool : U1 .
+    λ∗→ and λ→ are similar, except that λ∗→ allows a countable number of universe
+levels ℓ ∈ N∗ , where N∗ is the set of positive integers. For example, in the type
+(α → β) → γ, the subterms α, β, and γ must be of type U1 in the system λ→ ;
+however, in λ∗→ , it is possible that α : Uℓ1 , β : Uℓ2 , γ : Uℓ3 where ℓ1 , ℓ2 , ℓ3 may
+be different. A technicality related to PTS requires the presence of the sorts U′ℓ
+in λ∗→ , with axioms Uℓ : U′ℓ .
+    The logical systems HOL and HOL∗ are λ→ and λ∗→ augmented with the
+symbols Bool, ⊥′ , →′ , ∀′s (for each type s), their corresponding typing rules, and
+logical rules. The abbreviations ∧′ , ∨′ , ¬′ , ↔, =′s , ∃′s are defined in a way consis-
+tent with their λC counterparts. The set of HOL and HOL∗ terms are denoted
+               ∗
+as T→ and T→     , respectively.14
+
+2.4   Lean and Mathlib
+Lean is an ITP based on dependent type theory. Lean-auto is implemented in
+Lean 4, the latest version of Lean. At present, the most prominent project in
+Lean is Mathlib [32], which was renamed to Mathlib415 when it was moved to
+Lean 4. Notably, Mathlib is the foundation of the Liquid Tensor Experiment
+[29], which successfully formalizes cutting-edge results in mathematics.
+    We will follow Lean 4 conventions when presenting Lean 4 examples. Sort
+ℓ represents Uℓ , and Type ℓ represents Uℓ+1 . Sort 1 (or Type 0) can be ab-
+breviated as Type, and Sort 0 can be abbreviated as Prop. All user-declared
+symbols, including functions, are called constants in Lean 4. Constants can have
+universe level parameters, but for simplicity, they are not shown in many of our
+Lean 4 examples. Functions are allowed to have implicit arguments, which are
+represented by {x : α} instead of (x : α) in the type of the function. Prepend-
+ing @ to the name of a function causes implicit arguments to become explicit.
+For example, given the polymorphic list map function with the first and second
+argument being implicit:
+        List.map : ∀ {α β : Type}, (α → β) → List α → List β,
+13
+   The derivation rules of PTS are given in Appendix B.
+14
+   The specifications of λC, λ→ , and λ∗→ using PTS are given in Appendix C. The
+   formal definitions of HOL and HOL∗ are given in Appendix D.
+15
+   GitHub link: https://github.com/leanprover-community/mathlib4
+     Lean-auto: An Interface between Lean 4 and Automated Theorem Provers            7
+
+the expression @List.map α β f is the same as List.map f, where f : α →
+β.
+    Typeclasses are extensively used by Lean 4’s built-in library and Mathlib4 to
+overload arithmetic operators and represent mathematical structures. For exam-
+ple, consider the HAdd typeclass and the HAdd.hAdd function used to represent
+the addition operator in Lean 4.
+                       HAdd : ∀ (α β γ : Type), Type
+    HAdd.hAdd : ∀ {α β γ : Type} [self : HAdd α β γ], α → β → γ
+An inhabitant of HAdd α β γ, called a typeclass instance, is a wrapper of a
+“heterogeneous” addition operator, with α and β as its input types and γ as
+its output type. The square bracket in the type of HAdd.hAdd indicates that
+the enclosed argument is an instance argument, which is a special type of im-
+plicit argument intended to be filled by Lean 4’s typeclass inference algorithm.
+Given the syntax x + y where x : α and y : β, the typeclass inference algo-
+rithm will attempt to find a type γ and an instance inst : HAdd α β γ, and
+elaborate the syntax x + y into the expression @HAdd.hAdd α β γ inst x y.
+In @HAdd.hAdd α β γ inst, the HAdd.hAdd function unwraps inst and returns
+the addition operator. This provides a mechanism for overloading operators. The
+same mechanism is used to represent mathematical structures in Mathlib4.
+    Lean 4 supports definitional equality. Two terms are definitionally equal iff
+they can be converted to each other via Lean 4’s built-in conversion rules. To
+test definitional equality of two terms s and t, we can either reduce s and t to
+their normal forms and check syntactical equality, or use the optimized built-in
+function isDefEq16 which checks definitional equality of a pair of terms.
+    Inductive type is another important Lean 4 feature relevant to Lean-auto. It
+is handled by Lean-auto’s preprocessing stage and is discussed in Sect. 7.
+    Lean 4 supports classical axioms such as function extensionality, excluded
+middle, and axiom of choice. Plain CoC does not include classical axioms. In
+contrast, classical axioms are built-in17 in Lean 4. Lean-auto uses them during
+proof reconstruction.
+
+
+3      Encoding-based Translation and Monomorphization
+Encoding-based translation and monomorphization are two approaches to trans-
+lating from more expressive logical systems to less expressive logical systems.
+    The idea behind encoding-based translations is to encode constructions in
+the more expressive system using function symbols in the less expressive system
+and to define the translation as a recursive function on the terms and formulas
+of the more expressive system. For example, in the dependent type theory of
+Coq, we have the type judgement relation Γ ⊢ x : w, which means “x is of
+type w under context Γ .” There is no direct equivalent of this typing relation in
+untyped FOL. To express Coq type judgements in untyped FOL, CoqHammer
+16
+     Its full Lean 4 name is Lean.Meta.isDefEq.
+17
+     They are either declared as axioms or derived from previously declared axioms, and
+     they are imported during initialization.
+8       Y. Qian et al.
+
+first introduces the uninterpreted FOL predicate T (u∗ , a∗ ), where u∗ and a∗ are
+FOL terms translated from Coq term u and atomic Coq type a (here atomic
+roughly means that a cannot be further decomposed by the translation procedure
+of CoqHammer). Then, a recursive function GΓ (u, w) is defined on the Coq
+context Γ and the Coq terms u, w. The function GΓ (u, w) translates the typing
+relation Γ ⊢ u : w into an untyped FOL formula, in which the T predicate is
+used to express type judgements involving atomic types.
+    Encoding-based translation has the advantage of being (almost) complete
+and straightforward to compute. However, certain features of the more expressive
+logical system must be omitted to produce translation results of reasonable size,
+which sacrifices soundness [13]. Moreover, even with this tradeoff, the translated
+expression is usually much larger than the original expression.
+    The idea behind monomorphization is the fact that the proof of many propo-
+sitions in the more expressive system can essentially be conducted in the less
+expressive system. For example, in polymorphic HOL, given
+ 1. the list map function List.map : ∀(α β : U1 ).(α → β) → List α → List β
+ 2. two lists of natural numbers xs ys : List N and two functions f g : N → N
+ 3. the premise xs = ys ∧ f = g
+The equality
+                     List.map N N f xs = List.map N N g ys                       (1)
+is provable using two rewrites xs ⇒ ys, f ⇒ g. The crucial observation is that,
+although List.map is polymorphic, the term List.map N N as a whole behaves
+just like a monomorphic function, and therefore the rewrites can essentially be
+performed in monomorphic HOL. More formally, the formula (1) is the image
+of the monomorphic HOL formula h f ∗ xs∗ = h g ∗ ys∗ under the inter-logical-
+system “substitution”
+        σ := {h 7→ List.map N N, f ∗ 7→ f, g ∗ 7→ g, xs∗ 7→ xs, ys∗ 7→ ys},
+and the rewrites xs ⇒ ys, f ⇒ g in polymorphic HOL are just manifestations of
+the rewrites xs∗ ⇒ ys∗ , f ∗ ⇒ g ∗ in monomorphic HOL.
+    Monomorphization is sound, produces small translation results, and preserves
+term structures during translation. However, monomorphization is incomplete,
+since it is not always possible to find an appropriate formula in the less expressive
+logical system that reflects the original formula in the more expressive logical
+system.
+    The difference in output size between encoding-based translation and mono-
+morphization is particularly pronounced in Lean 4 (see Appendix I for experi-
+mental results). As mentioned in Sect. 2.4, a user-facing Lean 4 syntax as simple
+as x + y corresponds to the complicated expression HAdd.hAdd α β γ inst x
+y, where inst itself is a potentially large expression synthesized by typeclass
+inference. The result of encoding-based translation on the above expression is
+larger than the expression itself. On the other hand, our monomorphization pro-
+cedure will translate the above expression into a much smaller one: h x∗ y ∗ ,
+where HAdd.hAdd α β γ inst is “absorbed” into h via the inter-logical-system
+“substitution.”
+     Lean-auto: An Interface between Lean 4 and Automated Theorem Provers         9
+
+4      An Overview of Lean-auto
+
+As mentioned before, the translation workflow of Lean-auto consists of four
+stages: preprocessing, and the three stages of monomorphization: quantifier in-
+stantiation, λ∗→ abstraction, and universe lifting.
+    Roughly speaking, the preprocessing stage translates Lean 4 into dependent
+type theory (λC), which involves handling definitional equality and inductive
+types. It also performs minimal transformation on the translated λC problem.
+This includes introducing all leading ∀ quantifiers into the context and applying
+proof by contradiction.18 Then, everything in the context with type Prop is
+collected by Lean-auto and added to the list of premises. Sect. 7 contains a more
+detailed discussion of preprocessing.
+    Universe lifting translates HOL∗ into HOL. Conceptually, it erases all the
+universe level information in the input expression. However, implementing it
+as a sound translation procedure in Lean 4 requires a decent amount of work.
+Details about universe lifting are given in Appendix E.
+    In Sect. 4.1 and 4.2, we provide intuition for the λ→ abstraction and quantifier
+instantiation stages by giving a simplified explanation of their execution on an
+example. Sect. 4.3 gives a high-level discussion of some of the challenges posed
+by dependent type theory and Lean 4.
+
+
+4.1     λ∗→ Abstraction
+
+
+
+            map : ∀ {α β : Type}, (α → β) → List α → List β
+            reverse : ∀ {α : Type}, List α → List α
+            map_reverse : ∀ {α β : Type} (f : α → β) (l : List α),
+              map f (reverse l) = reverse (map f l)
+            reverse_reverse : ∀ {α : Type} (as : List α),
+              reverse (reverse as) = as
+            ⊢ ∀ (A B : Type) (f : A → B) (xs : List A),
+                reverse (map f (reverse xs)) = map f xs
+
+                 Fig. 2. Lean 4 proof state of a problem involving List.
+
+
+    The Lean 4 proof state of the problem we will consider is shown in Figure 2.
+The hypotheses (premises) and variable declarations are displayed before ⊢, while
+the goal comes after ⊢. map_reverse states that map commutes with reverse,
+and reverse_reverse states that reverse is the inverse function of itself.
+    Since the problem is already in the λC fragment of Lean, the only prepro-
+cessing step required is to introduce the universal quantifiers appearing in the
+goal into the context and then apply proof by contradiction. The resulting proof
+18
+     Proof by contradiction introduces the negation of the goal into the context and
+     replaces the goal with ⊥.
+10      Y. Qian et al.
+
+
+ map : ∀ {α β : Type}, (α → β) → List α → List β
+ reverse : ∀ {α : Type}, List α → List α
+ map_reverse : ∀ {α β : Type} (f : α → β) (l : List α),
+   @Eq (List β) (@map α β f (@reverse α l)) (@reverse β (@map α β f l))
+ reverse_reverse : ∀ {α : Type} (as : List α),
+   @Eq (List α) (@reverse α (@reverse α as)) as
+ A B : Type
+ f : A → B
+ xs : List A
+ neg_goal : Not (@Eq (List B)
+   (@reverse B (@map A B f (@reverse A xs))) (@map A B f xs))
+ ⊢ False
+
+Fig. 3. Lean 4 proof state after variable introduction and application of proof by con-
+tradiction, with implicit arguments displayed. Note that the equality sign in Figure 2
+is syntactic sugar for the polymorphic function Eq shown here.
+
+
+
+state is shown in Figure 3. For clarity, we have displayed the implicit arguments
+of all the functions.
+    First, we focus on translating neg_goal into HOL∗ . Following the discussion
+in Sect. 3, we would like to find a HOL∗ formula φ and a “substitution” σ
+such that the image of φ under σ is neg_goal. We also want the problem to
+be provable after the translation, so φ should preserve as much information in
+neg_goal as possible.
+    Three polymorphic functions: Eq, map and reverse, occur in neg_goal. Al-
+though these functions are polymorphic, instances of these functions with their
+dependent arguments instantiated behave like HOL∗ variables (we will refer to
+such instances as HOL∗ instances). The type constructor List is also not al-
+lowed in HOL∗ , but List A and List B behave just like HOL∗ type variables
+(we will refer to expressions such as List A and List B as HOL∗ type instances).
+Therefore, we can choose
+
+       φ := ¬(EqLB (rB (mAB f ∗ (rA xs ∗ ))) (mAB f ∗ xs ∗ ))
+       σ := {EqLB 7→ @Eq (List B), mAB 7→ @map A B,
+              rA 7→ @reverse A, rB 7→ @reverse B, f ∗ 7→ f, xs ∗ 7→ xs
+              LA → List A, LB → List B, A → A, B → B},
+
+where EqLB : LB → LB → Bool, rA : LA → LA, rB : LB → LB, mAB : (A →
+B) → LA → LB, f ∗ : A → B, xs ∗ : LA.
+   In a sense, the HOL∗ (type) instances are “abstracted” to HOL∗ (type) vari-
+ables. Note that the logical rules of HOL∗ are not relevant to this abstraction
+procedure—only the term calculus λ∗→ is involved. Therefore, we name this pro-
+cedure λ∗→ abstraction.
+   However, λ∗→ abstraction is not directly applicable to map_reverse and
+reverse_reverse, because dependent arguments of polymorphic functions oc-
+     Lean-auto: An Interface between Lean 4 and Automated Theorem Provers          11
+
+curring in them contain universally quantified variables. Naturally, we would like
+to instantiate the quantifiers to make λ∗→ abstraction applicable.
+
+4.2     Quantifier Instantiation
+To understand how quantifiers should be instantiated, we investigate how they
+would be instantiated if we were to prove the goal manually. There are at least
+two ways we can proceed. We can either first use @map_reverse A B to swap the
+outer reverse with map, then use @reverse_reverse A to eliminate reverse;
+or, first use @map_reverse A B to swap the inner reverse with map, then use
+@reverse_reverse B to eliminate reverse. Notice how the dependent argu-
+ments of a function f 19 in the instantiated hypotheses match the dependent
+arguments of f in the HOL∗ instances of f in the goal.
+    Quantifier instantiation in Lean-auto’s monomorphization procedure is based
+on a matching procedure that reflects the above observation. Given a set of for-
+mulas S, the matching procedure first computes the set M of HOL∗ instances
+occurring in S and then matches expressions in S with elements of M . For exam-
+ple, given S = {@map_reverse, @reverse_reverse, neg_goal}, the set M is
+{@reverse A, @reverse B, @map A B, @Eq (List B)}, all of whose elements
+are collected from neg_goal. The matching procedure will preform the following
+matchings:
+ 1. @Eq (List β) in map_reverse with @Eq (List B), which produces fun α
+    => @map_reverse α B
+ 2. @map α β in map_reverse with @map A B, which produces @map_reverse
+    A B
+ 3. @reverse α in map_reverse with @reverse A and @reverse B, which pro-
+    duces @map_reverse A and @map_reverse B
+ 4. @reverse β in map_reverse with @reverse A and @reverse B, which pro-
+    duces fun α => @map_reverse α A and fun α => @map_reverse α B
+ 5. @Eq (List α) in reverse_reverse with @Eq (List B), which produces
+    @reverse_reverse B
+ 6. @reverse α in reverse_reverse with @reverse A and @reverse B, which
+    produces @reverse_reverse A and @reverse_reverse B
+   Since @reverse_reverse A, @reverse_reverse B and @map_reverse A B
+are present, the instances produced are already sufficient for proving the goal.
+But generally speaking, newly generated hypothesis instances and HOL∗ in-
+stances20 can still be matched with each other (and existing ones) to produce
+new useful results. Hence, Lean-auto’s monomorphization uses a saturation loop
+which repeats the matching procedure until either no new instances can be pro-
+duced or a prescribed threshold is reached.
+
+4.3     Challenges Related to Dependent Type Theory and Lean 4
+19
+     In the context of this problem, f could be reverse or map.
+20
+     New HOL∗ instances are collected from newly generated hypothesis instances.
+12        Y. Qian et al.
+
+
+ @DFunLike.coe : {F : Type (max u_1 u_5)}
+   → {α : outParam (Type u_1)} → {β : outParam (α → Type u_5)}
+   → [self : DFunLike F α β] → F → (a : α) → β a
+
+ @DFunLike.coe (A0 →+ B0 ) A0 (fun x => B0 ) AddMonoidHom.instFunLike f0 a
+
+
+ Fig. 4. The function DFunLike.coe from MathLib4 and an expression containing it.
+
+
+Dependent Arguments are Dynamic: In λC, whether an argument is de-
+pendent depends on how previous arguments are instantiated. Consider the
+example shown in Figure 4. Here DFunLike.coe is a low-level utility which
+turns a function-like object into its corresponding function. In the signature
+of DFunLike.coe, the return type β a depends on the last argument a : α.
+However, when β is instantiated with fun x => B0 , as in the expression at the
+bottom of Figure 4, the return type β a reduces to B0 , which no longer depends
+on the last argument. Our monomorphization procedure takes preceding argu-
+ments into consideration when determining whether an argument is dependent.
+
+
+HOL∗ Instances are Dynamic: In λC, whether an expression is a HOL∗
+instance is also context-dependent. Consider the simple expression @reverse =
+@reverse, where reverse is the same as in Figure 3. Although @reverse is
+polymorphic, it behaves like a HOL∗ variable in @reverse = @reverse. More
+formally, let
+
+        φ := (f = f )
+         σ := {f 7→ @reverse, γ 7→ (∀ {α β : Type}, List α → List β)}
+
+where f : γ. Then, @reverse = @reverse is the image of the HOL∗ formula
+φ under σ. Intuitively, the dependent arguments in the type of reverse can
+be “absorbed” into the HOL∗ type variable γ because neither of the dependent
+arguments of reverse are present. Our monomorphization procedure is able to
+detect such context-dependent HOL∗ instances.
+
+
+Definitional Equality: As mentioned before, two syntactically different ex-
+pressions can be definitionally equal in Lean 4. Somehow, we need to account
+for this in Lean-auto’s translation. Theoretically speaking, reducing all expres-
+sions to normal forms would solve the problem to a large extent. However, full
+reduction is prohibitively expensive on complex expressions in real-life Lean 4
+projects, and the reduced expressions could be much larger than the original
+expressions.21 Moreover, the reduced expressions might contain complex depen-
+dent types that Lean-auto cannot handle. Therefore, we devise several other
+methods to address definitional equality.
+21
+     Appendix J presents a set of experiments that demonstrate these issues.
+     Lean-auto: An Interface between Lean 4 and Automated Theorem Provers                  13
+
+     In Lean-auto, there are three separate occasions where definitional equality
+has to be addressed.
+     First, when a symbol is defined in Lean 4, (potentially multiple) equational
+theorems that reflect the definitional equalities related to the symbol are au-
+tomatically generated. Lean-auto can be configured to collect these equational
+theorems and to use them to perform reduction and unfold constants (see Sect.
+7).
+     Second, during λ∗→ abstraction, we would like HOL∗ instances that are syn-
+tactically different but definitionally equal to be abstracted to the same HOL∗
+variable. Our λ∗→ abstraction algorithm keeps a set H of mutually definitionally
+unequal HOL∗ instances. Whenever a new HOL∗ instance t is found, we test
+definitional equality of t with elements of H using isDefEq. Since isDefEq is
+expensive, a fingerprint 22 is computed for each HOL∗ instance, and fingerprint
+equality is tested before calling isDefEq.
+     Finally, even if two HOL∗ instances are definitionally unequal, there could
+still be nontrivial relations between them. For example, if f : N → N is de-
+fined as f := λ(x : N).g x x, the equation ∀(x : N).f x = g x x would be
+a nontrivial relationship between f and g. Lean-auto will attempt to gener-
+ate such equational theorems during quantifier instantiation. For each pair of
+HOL∗ instances c1 , c2 , Lean-auto attempts to find terms t1 , . . . , tn such that
+λx1 . . . xm . c1 y1 . . . yl = c2 t1 . . . tn , where x1 , . . . , xm are variables occurring
+in t1 , . . . , tn , and {y1 , . . . , yl } is a subset of {x1 , . . . , xm }.
+
+
+Absorbing Typeclass Instance Arguments: In Lean 4, many functions have
+instance arguments that are not dependent arguments. An example is the fourth
+argument of HAdd.hAdd mentioned in Sect. 2.4. Since instance arguments are
+usually large expressions synthesized by Lean 4’s typeclass inference algorithm,
+translating them can result in large HOL∗ terms. Lean-auto’s implementation
+attempts to absorb typeclass arguments into HOL∗ variables by instantiating
+typeclass instance quantifiers and requiring HOL∗ instances to take typeclass
+arguments with them.23
+
+
+5     λ∗→ Abstraction
+
+In this section, we discuss the λ∗→ abstraction procedure, the second step of Lean-
+auto’s monomorphization. Note that universe lifting, the first step, is presented
+in Appendix E. As mentioned before, we use Γ ⊢?p to represent the problem of
+finding a proof of p under context Γ .
+    The goal of λ∗→ abstraction is to translate essentially higher-order problems
+(EHOPs) into HOL∗ . Intuitively, a λC problem Γ ⊢?p is EHOP iff there exists
+a provable HOL∗ problem Γ ′ ⊢?p′ and a “substitution” σ such that Γ ⊢?p is
+22
+   Roughly speaking, a fingerprint of an expression is a summary of the expression’s
+   syntax.
+23
+   For simplicity, this detail is not discussed in Appendix G and H.
+14      Y. Qian et al.
+
+the image of Γ ′ ⊢?p′ under σ. Given Γ ⊢?p, λ∗→ abstraction attempts to find
+such a triple (Γ ′ , p′ , σ). The formal definition of EHOP relies on the concept of
+HOL∗ -to-λC substitution and canonical embedding (see Appendix F).
+Definition 1. A λC problem Γ ⊢?p is essentially higher-order provable (EHOP)
+iff there exists a provable HOL∗ problem Γ ′ ⊢?p′ and a substitution (π ∗ (Γ ′ ), Γ, σ)
+such that p ∼ = σ(π ∗ (p′ )).
+   As a practical algorithm, Lean-auto’s λ∗→ abstraction only works on input
+problems Γ ⊢?p where p is a λC term structurally similar to HOL∗ terms.
+We call such λC terms quasi-monomorphic terms. They serve as the interme-
+diate representation between quantifier instantiation and λ∗→ abstraction. We
+use QMono(Γ ; B, t) to represent “t is quasi-monomorphic under context Γ , with
+variables in B being bound variables.” 24 QMono has the following properties:
+ 1. Canonically embedded HOL∗ terms are QMono.
+ 2. In QMono terms, proofs cannot be bound by λ or dependent ∀ binders.
+ 3. A dependently typed free variable does not break the QMono property iff its
+    dependent arguments do not contain bound variables.
+ 4. A dependently typed bound variable does not break the QMono property iff
+    its dependent arguments are not instantiated.
+ 5. Except for within type declarations of bound variables, bodies of ∀ abstrac-
+    tions must be propositions.
+   The λ∗→ abstraction algorithm itself is conceptually simple, but it involves
+many technical details because it must handle all possible features of QMono
+terms.25 Given a λC problem Γ ⊢?p, the λ∗→ abstraction algorithm traverses
+p and turns HOL∗ instances it finds into HOL∗ variables. The “substitution” it
+returns is the map from HOL∗ variables to their corresponding HOL∗ instances.
+
+
+6    Quantifier Instantiation
+In this section, we discuss the first step of Lean-auto’s monomorphization : quan-
+tifier instantiation. Given a context Γ and a list of hypotheses h1 : t1 , . . . , hn : tn ,
+the quantifier instantiation procedure of Lean-auto attempts to instantiate quan-
+tifiers in t1 , . . . , tn to obtain terms suitable for λ∗→ abstraction (i.e., to obtain
+terms that satisfy the QMono predicate).
+     As mentioned in Sect. 4.2, quantifier instantiation is based on a saturation
+loop which matches HOL∗ instances of functions with subterms of hypothesis in-
+stances. There are two main algorithms in quantifier instantiation: matchInst and
+saturate. The matchInst algorithm is responsible for matching HOL∗ instances
+with subterms of hypothesis instances to generate new hypothesis instances,
+and the saturate algorithm is the main saturation loop. The saturate algorithm
+is given in Algorithm 1.26
+24
+   See Appendix G for the formal definition of QMono.
+25
+   See Appendix G for details of the algorithm.
+26
+   See Appendix H for the matchInst algorithm and details of the saturate algorithm.
+Lean-auto: An Interface between Lean 4 and Automated Theorem Provers   15
+
+
+
+
+Function saturate(Γ ; H, maxInsts)
+   In : λC context Γ , list of λC terms H, and threshold maxInsts
+   Out : A list of λC terms
+   hi := H /* A list of hypothesis instances */
+   ci := List.empty() /* A list of constant instances */
+   /* A queue of active constant and hypothesis instances */
+   active := Queue.empty()
+   for h : H do
+       hi.push((0, h))
+       for c : holInsts(Γ ; ∅, h) do
+           ci.push(c); active.push((1, c))
+   while ! active.empty() do
+       if hi.size() + ci.size() > maxInsts then break
+       (type, front) := active.front()
+       active.popFront()
+       if type = 0 then
+           prevci := ci.copy()
+           for c : prevci do
+                matchOnePair(c, front, ci, hi, active)
+       else
+           prevhi := hi.copy()
+           for h : prevhi do
+                matchOnePair(front, h, ci, hi, active)
+       end
+   end
+   monohi := List.empty()
+   for h : hi do
+       if QMono(Γ ; ∅, h) then monohi.push(h)
+   return monohi
+end
+
+Function matchOnePair(c, h, ci, hi, active)
+   newhi := matchInst(Γ ; c, h)
+   for nh : newhi do
+       if nh ∈ hi then continue
+       hi.push(nh); active.push((0, nh))
+       newci := holInsts(Γ ; ∅, nh)
+       for nc : newci do
+           if nc ∈ ci then continue
+           ci.push(nc); active.push((1, nc))
+end
+   Algorithm 1: Main saturation loop of quantifier instantiation
+16        Y. Qian et al.
+
+    The saturate algorithm maintains a queue of active HOL∗ instances and hy-
+pothesis instances, denoted as active. In each loop, an element is popped from
+active. If it is a HOL∗ instance, it is matched with all existing hypothesis in-
+stances; if it is a hypothesis instance, it is matched with all existing HOL∗
+instances. For each newly generated hypothesis instance h, both h and all the
+HOL∗ instances occurring in h are added to active.
+    The saturate algorithm also handles equational theorem generation of HOL∗
+instances.27 For each new HOL∗ instance c, we generate equational theorems be-
+tween c and existing HOL∗ instances. The newly generated equational theorems
+are added to the set of existing hypothesis instances so that they can participate
+in later matchings.
+
+
+7      Preprocessing
+
+Preprocessing translates Lean 4 into dependent type theory, with the exception
+that part of definitional equality handling happens during monomorphization.
+In this section, we list the major steps of Lean-auto’s preprocessing.
+
+
+Definitional Equality: To handle definitional equality in Lean 4, Lean-auto
+partially reduces the input expressions, using Lean 4’s built-in Meta.transform
+and Meta.whnf. This includes βζηι reduction and part of δ reduction. In Lean
+4, δ reduction is controlled by a reducibility setting, and Lean-auto allows users
+to specify the reducibility setting used by the preprocessor. For finer-grained
+control over which constants should be unfolded, Lean-auto allows users to sup-
+ply a definitional equality instruction d[g1 , . . . , gn ] and an unfolding instruction
+u[f1 , . . . , fn ], where fi , gi are constants.
+    For the definitional equality instruction, Lean-auto automatically collects all
+the definitional equalities associated with g1 , . . . , gn and combines them with the
+premises supplied by the user. For the unfolding instruction, Lean-auto recur-
+sively unfolds f1 , . . . , fn . To ensure termination, Lean-auto performs a topolog-
+ical sort on f1 , . . . , fn , where fi is sorted before fj if fj occurs in the definition
+of fi . Lean-auto will fail if there is a cyclic dependency between f1 , . . . , fn .
+    The preprocessing stage also performs equational theorem generation. It col-
+lects all maximal subexpressions of the input that do not contain logical symbols,
+and generates equational theorems between them. These equational theorems are
+also added to the list of premises.
+
+
+Inductive Types: Currently, Lean-auto supports polymorphic, nested, and
+mutual inductive types when SMT solvers are used as the backend ATP. For
+other ATPs or unsupported inductive types, users can always manually supply
+the properties related to the inductive types as a workaround.
+27
+     For simplicity, equational theorem generation is not shown in Algorithm 1.
+     Lean-auto: An Interface between Lean 4 and Automated Theorem Provers         17
+
+    The translation procedure for inductive types resembles monomorphization.
+For a polymorphic inductive type T : ∀(α1 : Uℓ1 ) . . . (αn : Uℓn ).Uℓ , the trans-
+lation attempts to find all relevant instances T α1 . . . αn , and translates each
+instance to a monomorphic inductive type in the SMT solver. For mutual and
+nested inductive types, the type of their constructors might contain other in-
+ductive types not occurring in the input premises. These inductive types will be
+recursively collected and monomorphized by the translation procedure.
+
+Quantifier Introduction and Proof by Contradiction: To prepare for
+monomorphization, Lean-auto performs quantifier introduction on the goal and
+applies proof by contradiction. Suppose the goal is ∀(x1 : α1 ) . . . (xn : αn ).β.
+Quantifier introduction will introduce x1 : α1 , . . . , xn : αn into the context and
+replace the goal with β. Then, proof by contradiction will introduce the negation
+of the the goal h : ¬β into the context and replace the goal with ⊥.
+
+8     Experiments
+We evaluate Lean-auto and existing tools on user-declared theorems in Math-
+lib4,28 using version leanprover/lean4:v4.15.0 of Lean 4. A Lean 4 constant
+is considered a user-declared theorem if it is marked as a theorem, is declared
+somewhere in a .lean file,29 and is not a projection function. Due to technical
+reasons,30 27762 of the 176904 user-declared theorems are excluded in our eval-
+uation. Therefore, our benchmark set consists of 149142 theorems (problems).
+Evaluation is conducted on an Amazon EC2 c5ad.16xlarge instance with 64
+CPU cores and 128GB memory. Each theorem is given a time limit of 10 seconds.
+Technical details of our experimental setup are discussed in Appendix L.
+    Since our primary goal is to evaluate Lean-auto’s translation procedure, we
+do not use premise selection in our evaluation. Instead, for each theorem T used
+in the evaluation, we collect all the theorems used in T ’s human proof, and
+send them to Lean-auto and existing tools as premises. This simple procedure
+emulates an ideal premise selection algorithm.
+    Three types of ATPs are used together with Lean-auto:
+ 1. Native provers, or ATPs implemented in Lean 4 itself. Currently, the only
+    general-purpose native prover supported by Lean-auto is Duper [10]. Al-
+    though Duper can accept Lean 4 problems directly, it has difficulty handling
+    Lean 4 features such as typeclasses and definitional equality. Our small-scale
+    experiment shows that Duper only works well when used as a backend of
+    Lean-auto.31 Considering that we also encountered technical issues when we
+    attempted full-scale evaluation using Duper without Lean-auto, we decided
+    to not include “Duper without Lean-auto” in our evaluation.
+28
+   Commit 29f9a66d622d9bab7f419120e22bb0d2598676ab.
+29
+   We use Lean.findDeclarationRanges? to test whether a theorem is declared in a
+   .lean file.
+30
+   Refer to Appendix L.
+31
+   Refer to Appendix K.
+18      Y. Qian et al.
+
+ 2. TPTP solvers. We chose Zipperposition, a higher-order superposition prover.
+    Lean-auto sends problems to Zipperposition in TPTP TH0 format.
+ 3. SMT solvers. For this category, we chose Z3 and CVC5. Since SMT solvers
+    still don’t fully support HOL, we implemented a slightly modified version of
+    the monomorphization procedure which generates FOL output. The modifi-
+    cation introduces some extra incompleteness to the translation, which might
+    have given Z3 and CVC5 a slight disadvantage.
+    Currently, Lean-auto only supports proof reconstruction for native provers,
+utilizing a verified checker implemented in Lean-auto. The independent ongoing
+project Lean-smt32 aims to support SMT proof reconstruction in the future.
+    We compare Lean-auto with the following existing tools:
+ 1. Lean 4’s built-in tactic rfl. The rfl tactic proves theorems of the form
+    lhs = rhs where lhs is definitionally equal to rhs. Note that rfl does not
+    accept premises.
+ 2. Lean 4’s built-in tactic simp_all. Similar to Lean-auto, simp_all accepts
+    a list of user-provided premises. In Lean 4, users can tag theorems with
+    the “simp” attribute. The simp_all tactic succeeds on a decent portion of
+    Mathlib4 even if we do not supply it with premises, because it has access to
+    the theorems tagged with the “simp” attribute, and will use these theorems
+    to simplify the input expressions. Therefore, we evaluate simp_all in two
+    different ways: with premises (“simp_all” in Figure 5) and without premises
+    (“simp_all - p” in Figure 5).
+ 3. The rule-based proof search procedure Aesop [21]. Since Aesop invokes the
+    simp_all tactic during its execution, it also benefits from theorems tagged
+    with “simp.” We evaluate Aesop in two different ways: with premises33 (“Ae-
+    sop” in Figure 5) and without premises (“Aesop - p” in Figure 5).
+    Due to limited time and resources, this work does not compare Lean-auto
+with hammers implemented in other ITPs. Differences in logical systems make it
+very difficult to translate datasets between ITPs. For example, even though Lean
+4 and Coq are both based on dependent type theory, they extend dependent
+type theory in different ways.34 Translation procedures between Lean 4 and
+Coq would need to modify expressions in nontrivial ways, which would cause
+typechecking and definitional equality issues.
+    Results are shown in Figure 5. For “simp_all”, “aesop,” and “Lean-auto,” we
+show the results of their virtual best solvers (VBSes).35 We compute unique
+solves among “rfl” and these three VBSes.
+    We find that Lean-auto solves more problems than all existing tools. Specif-
+ically, “Lean-auto + Duper”, which supports proof reconstruction, solves 36.6%
+problems in our benchmark set, which is 5.0% better than the best previous tool
+32
+   GitHub link: https://github.com/ufmg-smite/lean-smt
+33
+   Specifically, for each premise p, we add (add unsafe p) to the aesop invocation
+34
+   For example, Cumulative Universe Levels in Coq and Quotient Types in Lean 4.
+35
+   The virtual best solver of a given category is equivalent to running all the tools in
+   the given category in parallel and taking the first success produced.
+  Lean-auto: An Interface between Lean 4 and Automated Theorem Provers             19
+
+
+
+
+                                Solved     Unique Solves   Avg Time(ms)
+        rfl                     19896           35              5.7
+        simp_all - p             9833                           19.8
+        simp_all                28096                           52.0
+        simp_all VBS            28204           3035            44.4
+        Aesop - p               33762                           61.3
+        Aesop                   47060                           93.5
+        Aesop VBS               48413           6512            92.2
+        Lean-auto + Duper       54570                         1092.5
+        Lean-auto + Z3          54210                          863.5
+        Lean-auto + CVC5        54316                          808.0
+        Lean-auto + Zipper.     54817                          774.9
+        Lean-auto VBS           61906          22020           756.8
+        Overall VBS             79396                          314.7
+
+
+Fig. 5. Comparison with existing tools. Our benchmark set contains 149135 problems.
+
+
+
+
+   Fig. 6. #Solved - Cumulative Time plot (left) and #Solved - Time plot (right)
+20      Y. Qian et al.
+
+“Aesop”. The fact that “Lean-auto VBS” achieves 14.8% unique solves shows that
+Lean-auto is complementary to existing tools. The overall VBS, which combines
+Lean-auto and all existing tools, solves more than half (53.2%) of the problems in
+our benchmark set. On the other hand, Lean-auto is significantly slower than ex-
+isting tools on solved problems. This is potentially caused by Lean-auto’s verified
+checker and the frequent definitional equality testing in Lean-auto’s monomor-
+phization.
+    To better compare the performance of the various tools, we plot, for each
+tool, the number of solved problems vs. solving time and cumulative solving
+time. The results are shown in Figure 6. We see that Lean-auto is slower than
+existing tools on simple problems, but eventually solves more problems than all
+existing tools.
+
+
+9    Conclusion
+In this paper, we presented the ITP to ATP translation implemented in Lean-
+auto. Our contributions are three-fold. First, we addressed challenges posed by
+Lean 4’s dependent type theory and its various language features. Second, we
+designed a novel monomorphization procedure for dependent type theory. Fi-
+nally, we implemented the translation procedure in Lean-auto and evaluated it
+on Mathlib4.
+    A possible direction for future work is to design a complete λ∗→ abstraction
+algorithm. Another direction is to investigate potential ways of handling exis-
+tential type quantifiers and non-leading universal type quantifiers. We would
+also like to further investigate causes of Lean-auto’s inefficiencies and improve
+Lean-auto’s performance.
+
+Acknowledgments. The authors thank: Prof. Jasmin Blanchette (Ludwig Maximil-
+ian University of Munich) for insightful discussions on the monomorphization proce-
+dure in Isabelle Sledgehammer; Mario Carneiro (Chalmers University of Technology)
+for helping us understanding implementation details of Lean 4; and Leonardo de Moura
+(Amazon Web Services) for his advice on the translation from Lean 4 to SMT solvers.
+We also greatly appreciate the help of the Lean Zulip users who answered our ques-
+tions related to Lean 4 and Mathlib4. This work was supported in part by the Stanford
+Graduate Fellowship, the Stanford Center for Automated Reasoning, and AFRL and
+DARPA under Agreement FA8750-24-9-1000.
+
+Disclosure of Interests. Clark Barrett is an Amazon Scholar.
+
+
+References
+ 1. Avigad, J., de Moura, L., Kong, S., Ullrich, S.: Theorem Proving in Lean4 (2025),
+    https://leanprover.github.io/theorem_proving_in_lean4
+ 2. Barbosa, H., Barrett, C., Brain, M., Kremer, G., Lachnitt, H., Mann, M., Mo-
+    hamed, A., Mohamed, M., Niemetz, A., Nötzli, A., Ozdemir, A., Preiner, M.,
+    Reynolds, A., Sheng, Y., Tinelli, C., Zohar, Y.: cvc5: A versatile and industrial-
+    strength SMT solver. In: Fisman, D., Rosu, G. (eds.) Tools and Algorithms for
+   Lean-auto: An Interface between Lean 4 and Automated Theorem Provers              21
+
+    the Construction and Analysis of Systems. pp. 415–442. Springer International
+    Publishing, Cham (2022). https://doi.org/10.1007/978-3-030-99524-9_24
+ 3. Barendregt, H.P.: Lambda calculi with types, pp. 117–309. Oxford University
+    Press, Inc., USA (1993), https://dl.acm.org/doi/10.5555/162552.162561
+ 4. Barras, B., Boutin, S., Cornes, C., Courant, J., Filliâtre, J.C., Giménez, E., Her-
+    belin, H., Huet, G.P., Muñoz, C.A., Murthy, C.R., Parent, C., Paulin-Mohring,
+    C., Saïbi, A., Werner, B.: The Coq proof assistant : reference manual, version 6.1
+    (1997), https://api.semanticscholar.org/CorpusID:54117279
+ 5. Bhayat, A., Suda, M.: A higher-order Vampire (short paper). In: Benzmüller, C.,
+    Heule, M.J., Schmidt, R.A. (eds.) Automated Reasoning. pp. 75–85. Springer Na-
+    ture Switzerland, Cham (2024). https://doi.org/10.1007/978-3-031-63498-7_
+    5
+ 6. Blanchette, J.C., Kaliszyk, C., Paulson, L.C., Urban, J.: Hammering towards
+    QED. J. Formaliz. Reason. 9, 101–148 (2016), https://api.semanticscholar.
+    org/CorpusID:218028818
+ 7. Böhme, S.: Proving Theorems of Higher-Order Logic with SMT Solvers. Ph.D. the-
+    sis, Technical University Munich (2012), https://nbn-resolving.org/urn:nbn:
+    de:bvb:91-diss-20120511-1084525-1-4
+ 8. Bove, A., Dybjer, P., Norell, U.: A brief overview of Agda – a functional language
+    with dependent types. In: Berghofer, S., Nipkow, T., Urban, C., Wenzel, M. (eds.)
+    Theorem Proving in Higher Order Logics. pp. 73–78. Springer Berlin Heidelberg,
+    Berlin, Heidelberg (2009). https://doi.org/10.1007/978-3-642-03359-9_6
+ 9. Carneiro, M., Brown, C.E., Urban, J.: Automated theorem proving for Metamath.
+    In: Naumowicz, A., Thiemann, R. (eds.) 14th International Conference on Interac-
+    tive Theorem Proving (ITP 2023). Leibniz International Proceedings in Informatics
+    (LIPIcs), vol. 268, pp. 9:1–9:19. Schloss Dagstuhl – Leibniz-Zentrum für Informatik,
+    Dagstuhl, Germany (2023). https://doi.org/10.4230/LIPIcs.ITP.2023.9
+10. Clune, J., Qian, Y., Bentkamp, A., Avigad, J.: Duper: A proof-producing su-
+    perposition theorem prover for dependent type theory. In: International Confer-
+    ence on Interactive Theorem Proving (2024), https://api.semanticscholar.org/
+    CorpusID:272330518
+11. Coquand, T., Huet, G.: The calculus of constructions. Information and Computa-
+    tion 76(2), 95–120 (1988). https://doi.org/10.1016/0890-5401(88)90005-3
+12. Coquand, T., Paulin, C.: Inductively defined types. In: Martin-Löf, P., Mints,
+    G. (eds.) COLOG-88. pp. 50–66. Springer Berlin Heidelberg, Berlin, Heidelberg
+    (1990). https://doi.org/10.1007/3-540-52335-9_47
+13. Czajka, L., Kaliszyk, C.: Hammer for Coq: Automation for dependent type
+    theory. Journal of Automated Reasoning 61, 423 – 453 (2018), https://api.
+    semanticscholar.org/CorpusID:11060917
+14. Hall, C.V., Hammond, K., Jones, S.L.P., Wadler, P.: Type classes in Haskell. In:
+    TOPL (1994), https://api.semanticscholar.org/CorpusID:9227770
+15. Harrison, J.: Optimizing proof search in model elimination. In: McRobbie,
+    M.A., Slaney, J.K. (eds.) Automated Deduction — Cade-13. pp. 313–327.
+    Springer Berlin Heidelberg, Berlin, Heidelberg (1996). https://doi.org/10.1007/
+    3-540-61511-3_97
+16. Harrison, J., Urban, J., Wiedijk, F.: History of interactive theorem proving.
+    In: Computational Logic (2014), https://api.semanticscholar.org/CorpusID:
+    30345151
+17. Hurd, J.: First-order proof tactics in higher-order logic theorem provers. De-
+    sign and Application of Strategies/Tactics in Higher Order Logics, number
+22      Y. Qian et al.
+
+    NASA/CP-2003-212448 in NASA Technical Reports pp. 56–68 (2003), https:
+    //api.semanticscholar.org/CorpusID:11201048
+18. Kaliszyk, C., Urban, J.: Hol(y)hammer: Online ATP service for HOL light. Math-
+    ematics in Computer Science 9(1), 5–22 (Mar 2015). https://doi.org/10.1007/
+    s11786-014-0182-0
+19. Kaliszyk, C., Urban, J.: Mizar 40 for mizar 40. Journal of Automated Reasoning
+    55(3), 245–256 (Oct 2015). https://doi.org/10.1007/s10817-015-9330-8
+20. Kovács, L., Voronkov, A.: First-order theorem proving and Vampire. In: Sharygina,
+    N., Veith, H. (eds.) Computer Aided Verification. pp. 1–35. Springer Berlin Heidel-
+    berg, Berlin, Heidelberg (2013). https://doi.org/10.1007/978-3-642-39799-8_
+    1
+21. Limperg, J., From, A.H.: Aesop: White-box best-first proof search for Lean. In:
+    Proceedings of the 12th ACM SIGPLAN International Conference on Certified Pro-
+    grams and Proofs. pp. 253–266. CPP 2023, Association for Computing Machinery,
+    New York, NY, USA (2023). https://doi.org/10.1145/3573105.3575671
+22. Mikuła, M., Tworkowski, S., Antoniak, S., Piotrowski, B., Jiang, A.Q., Zhou, J.P.,
+    Szegedy, C., Kuciński, Ł., Miłoś, P., Wu, Y.: Magnushammer: A transformer-based
+    approach to premise selection. ArXiv (2024), https://arxiv.org/abs/2303.04488
+23. de Moura, L., Bjørner, N.: Z3: An efficient SMT solver. In: Ramakrishnan,
+    C.R., Rehof, J. (eds.) Tools and Algorithms for the Construction and Analysis
+    of Systems. pp. 337–340. Springer Berlin Heidelberg, Berlin, Heidelberg (2008).
+    https://doi.org/10.1007/978-3-540-78800-3_24
+24. de Moura, L.M., Ullrich, S.: The Lean 4 theorem prover and program-
+    ming language. In: CADE (2021), https://api.semanticscholar.org/CorpusID:
+    235800962
+25. Paulson, L.C.: A generic tableau prover and its integration with Isabelle. J. Univers.
+    Comput. Sci. 5, 73–87 (1999), https://api.semanticscholar.org/CorpusID:
+    2551237
+26. Paulson, L.C., Blanchette, J.C.: Three years of experience with Sledgehammer, a
+    practical link between automatic and interactive theorem provers. In: IWIL@LPAR
+    (2012), https://api.semanticscholar.org/CorpusID:598752
+27. Polu, S., Sutskever, I.: Generative language modeling for automated theorem
+    proving. ArXiv abs/2009.03393 (2020), https://api.semanticscholar.org/
+    CorpusID:221535103
+28. Qian, Y., Clune, J., Barrett, C., Avigad, J.: Lean-auto: An interface between lean
+    4 and automated theorem provers (2025), https://arxiv.org/abs/2505.14929
+29. Scholze, P.: Liquid tensor experiment. Experimental Mathematics 31(2), 349–354
+    (2022). https://doi.org/10.1080/10586458.2021.1926016
+30. Schulz, S.: E - a brainiac theorem prover. AI Commun. 15, 111–126 (2002), https:
+    //api.semanticscholar.org/CorpusID:884116
+31. Sozeau, M., Tabareau, N.: Universe polymorphism in Coq. In: Klein, G., Gam-
+    boa, R. (eds.) Interactive Theorem Proving. pp. 499–514. Springer International
+    Publishing, Cham (2014). https://doi.org/10.1007/978-3-319-08970-6_32
+32. The Mathlib Community: The Lean mathematical library. In: Proceedings of the
+    9th ACM SIGPLAN International Conference on Certified Programs and Proofs.
+    pp. 367–381. CPP 2020, Association for Computing Machinery, New York, NY,
+    USA (2020). https://doi.org/10.1145/3372885.3373824
+33. Vukmirović, P., Bentkamp, A., Blanchette, J., Cruanes, S., Nummelin, V., Tourret,
+    S.: Making higher-order superposition work. J. Autom. Reason. 66(4), 541–564
+    (Nov 2022). https://doi.org/10.1007/s10817-021-09613-z
+    Lean-auto: An Interface between Lean 4 and Automated Theorem Provers                   23
+
+34. Vukmirović, P., Blanchette, J.C., Schulz, S.: Extending a high-performance prover
+    to higher-order logic. In: International Conference on Tools and Algorithms for
+    Construction and Analysis of Systems (2023), https://api.semanticscholar.
+    org/CorpusID:249226027
+35. Wenzel, M., Paulson, L.C., Nipkow, T.: The Isabelle framework. In: International
+    Conference on Theorem Proving in Higher Order Logics (2008), https://api.
+    semanticscholar.org/CorpusID:13752195
+36. Yang, K., Deng, J.: Learning to prove theorems via interacting with proof as-
+    sistants. ArXiv abs/1905.09381 (2019), https://api.semanticscholar.org/
+    CorpusID:162184110
+37. Yang, K., Swope, A.M., Gu, A., Chalamala, R., Song, P., Yu, S., Godil, S., Prenger,
+    R.J., Anandkumar, A.: Leandojo: Theorem proving with retrieval-augmented lan-
+    guage models. ArXiv abs/2306.15626 (2023), https://api.semanticscholar.
+    org/CorpusID:259262077
+
+
+A     Logical Symbols of λC
+
+                ⊥ := ∀p : U0 .p (¬) := λp : U0 .p → ⊥
+               (∧) := λp q : U0 .∀r : U0 .(p → q → r) → r
+               (∨) := λp q : U0 .∀r : U0 .(p → r) → (q → r) → r
+              (↔) := λp q.(p → q) ∧ (q → p)
+              (=ℓ ) := λα : Uℓ .λx y : α.∀p : α → U0 .(p x ↔ p y)
+              (∃ℓ ) := λα : Uℓ .λp : α → U0 .∀q : U0 .((∀x : α.p x → q) → q)
+
+
+B     Derivation Rules of PTS
+The type judgement Γ ⊢ t : α in a PTS specified by (S, A, R) is defined by the
+following axioms and rules:
+
+
+    (axioms)                                                      if (s1 , s2 ) ∈ A
+                        ∅ ⊢ s1 : s2
+                           Γ ⊢A:s
+    (start)                                                       if x ∈
+                                                                       /Γ
+                        Γ, x : A ⊢ x : A
+                        Γ ⊢A:B Γ ⊢C:s
+    (weakening)                                                   if x ∈
+                                                                       /Γ
+                           Γ, x : C ⊢ A : B
+                        Γ ⊢ A : s1 Γ, x : A ⊢ B : s2
+    (product)                                                     if (s1 , s2 , s3 ) ∈ R
+                             Γ ⊢ (∀x : A.B) : s3
+                        Γ ⊢ f : (∀x : A.B) Γ ⊢ a : A
+    (application)
+                              Γ ⊢ f a : B[x := a]
+                        Γ, x : A ⊢ b : B Γ ⊢ (∀x : A.B) : s
+    (abstraction)
+                             Γ ⊢ (λx : A.b) : (∀x : A.B)
+                        Γ ⊢ A : B Γ ⊢ B′ : s B ∼     = B′
+    (conversion)
+                                    Γ ⊢ A : B′
+24      Y. Qian et al.
+
+C    λC, λ→ and λ∗→
+Definition 2. λC is the pure type system (S, A, R) where
+
+                    S := {Uℓ |ℓ ∈ N}      A := {(Uℓ , Uℓ+1 )|ℓ ∈ N}
+
+                     R := {(Uℓ , Um , Uimax(ℓ,m) )|ℓ ∈ N, m ∈ N}
+                                       (
+                                         max(m, n), n > 0
+                       imax(m, n) :=
+                                                     0, n = 0
+
+Definition 3. λ→ is the pure type system (S, A, R) where
+
+             S := {U1 , U′1 }   A := {(U1 , U′1 )}     R := {(U1 , U1 , U1 )}
+
+This is equivalent to simply typed lambda calculus, where U1 and U′1 are usually
+denoted as ∗ and □, respectively.
+
+Definition 4. λ∗→ is the pure type system (S, A, R) where
+
+            S := {Uℓ |ℓ ∈ N∗ } ∪ {U′ℓ |ℓ ∈ N∗ }      A := {(Uℓ , U′ℓ )|ℓ ∈ N∗ }
+
+                   R := {(Uℓ , Um , Umax{l,m} )|ℓ ∈ N∗ , m ∈ N∗ }
+
+
+D    HOL and HOL∗
+Definition 5. HOL (HOL∗ ) is defined as λ→ (λ∗→ ) augmented with the follow-
+ing symbols:
+1. Bool
+2. ⊥′ and →′
+                       ∗
+3. ∀′s , for each s ∈ T→ . Note that we are not requiring s to be a type here because
+   the typing rules below will ensure that s must be a type in a well-formed ∀′s .
+the following typing rules:
+
+                            ⊢ Bool : U1      Γ ⊢ ⊥′ : Bool
+                                                        Γ ⊢ s : Uℓ
+          Γ ⊢→′ : Bool → Bool → Bool                ′
+                                               Γ ⊢ ∀s : (s → Bool) → Bool
+and the logical axioms and deduction rules of higher-order logic.
+
+Note: The logical symbols ¬′ , ∧′ , ∨′ , ↔, =′s , ∃′s are defined in a way consistent
+with their definition in λC:
+
+          (¬′ ) := λ(p : Bool).(p →′ ⊥′ )
+          (∧′ ) := λ(p q : Bool).∀(r : Bool).((p →′ q →′ r) →′ r)
+          (∨′ ) := λ(p q : Bool).∀(r : Bool).((p →′ r) →′ (q →′ r) →′ r)
+     Lean-auto: An Interface between Lean 4 and Automated Theorem Provers                    25
+
+           (↔′ ) := λ(p q : Bool).((p →′ q) ∧′ (q →′ p))
+           (=′s ) := λ(x y : s).∀(p : s → Bool).(p x ↔′ p y)
+            (∃′s ) := λ(p : s → Bool).∀(q : Bool).((∀(x : s).p x →′ q) →′ q)
+
+   We use ∀′ (x : s).t as a shorthand for ∀′s (λ(x : s).t), and ∃′ (x : α).t as a
+shorthand for ∃′s (λ(x : s).t).
+   For simplicity, the HOL∗ system we present in this paper only contains one
+symbol Bool for the type of propositions. In the implementation of Lean-auto,
+the HOL∗ system have a symbol Boolℓ : Uℓ for each universe level ℓ, and each
+universe level have its own copy of logical symbols.
+
+
+E      Universe Lifting
+In this appendix, we discuss the translation procedure from HOL∗ to HOL in
+Lean-auto. For simplicity, universe lifting as presented in this section differs from
+Lean-auto’s implementation in terms of how Bool is handled.
+   First, we show that HOL∗ and HOL are, in a sense, equivalent to each other.
+
+Definition 6. Let ρ∗ : T→
+                        ∗
+                          → T→ be the mapping that forgets the universe levels,
+i.e.
+ρ∗ (Bool) := Bool          ρ∗ (Uℓ ) := U1         ρ∗ (U′ℓ ) := U′1     ρ∗ (x) := x, for x ∈ V
+ ∗                 ∗       ∗
+ρ (M N ) := ρ (M ) ρ (N )               ρ (λ(x : s).M ) := λ(x : ρ (s)).ρ∗ (M )
+                                         ∗                            ∗
+
+ρ∗ (⊥′ ) := ⊥′         ρ∗ (→′ ) :=→′          ρ∗ (∀′s ) := ∀′ρ∗ (s)
+
+ρ∗ is extended to contexts as follows: ρ∗ (∅) := ∅; ρ∗ (Γ, x : σ) := ρ(Γ ), x : ρ(σ)
+                             ∗
+Definition 7. Let ρℓ : T→ → T→ (ℓ ∈ N∗ ) be the mapping that turns U1 into Uℓ ,
+i.e.
+    ρ(Bool) := Bool            ρ(U1 ) := Uℓ       ρ(U′1 ) := U′ℓ      ρ(x) := x, for x ∈ V
+    ρ(M N ) := ρ(M ) ρ(N )             ρ(λ(x : s).M ) := λ(x : ρ(s)).ρ(M )
+    ρ(⊥′ ) := ⊥′        ρ(→′ ) :=→′           ρ(∀′s ) := ∀′ρ(s)
+
+ρ is extended to contexts as follows: ρ(∅) := ∅; ρ(Γ, x : σ) := ρ(Γ ), x : ρ(σ)
+
+Theorem 1. For all t ∈ T→ , ρ∗ℓ (ρℓ (t)) = t.
+Proof. Induction on the construction rules of T→ .
+
+Theorem 2. Forgetting universe levels preserves judgement, i.e., if Γ ⊢ t : s in
+HOL∗ , then ρ∗ (Γ ) ⊢ ρ∗ (t) : ρ∗ (s) in HOL.
+Proof. Induction on the derivation rules of HOL∗ .
+
+Theorem 3. ρℓ preserves judgement, i.e., if Γ ⊢ t : s in HOL, then ρℓ (Γ ) ⊢
+ρℓ (t) : ρℓ (s) in HOL∗ .
+26         Y. Qian et al.
+
+Proof. Induction on the derivation rules of HOL.
+Theorem 4. HOL∗ and HOL are equivalent, i.e., if Γ ⊢ p : Bool in HOL∗ and
+p is provable in HOL∗ , then ρ∗ (p) is provable in HOL; if Γ ⊢ p : Bool in HOL
+and p is provable in HOL, then ρℓ (p) is provable in HOL∗ for any ℓ ∈ N∗ .
+Proof. Let D be a proof of p in HOL∗ , the a proof of ρ∗ (p) in HOL can be obtained
+by forgetting universe levels in D. The converse can be proved in a similar way.
+The universe lifting procedure in Lean-auto is the translation of HOL∗ to HOL
+in the context of λC. In other words, it is the translation of the embedding of
+HOL in λC into an embedding of HOL∗ in λC.
+Definition 8. The ℓ-embedding πℓ : T→ → TC of HOL into λC is defined as
+πℓ := π ∗ ◦ ρℓ , where π ∗ is the canonical embedding of HOL∗ into λC.36
+Definition 9. A universe lifting facility consists of three families of functions
+ 1. GLiftu,v : Uu → Umax{u,v+1}
+ 2. GLift.upu,v : ∀(α : Uu ). α → GLiftu,v α
+ 3. GLift.downu,v : ∀(α : Uu ). GLiftu,v α → α
+where u, v ∈ N, such that they satisfy the following bijectivity condition:
+
+            ∀(α : Uu ).GLift.upu,v α ◦ GLift.downu,v α = λ(x : GLiftu,v α).x
+
+                 ∀(α : Uu ).GLift.downu,v α ◦ GLift.upu,v α = λ(x : α).x
+In Lean 4, universe lifting facility can be realized by the following inductive type:
+structure GLift.{u, v} (α : Sort u) : Sort (max u (v + 1)) where
+  /-- Lift a value into ‘GLift α‘ -/    up ::
+  /-- Extract a value from ‘GLift α‘ -/ down : α
+
+
+Theorem 5. Assume the existence of a universe lifting facility in λC. Then,
+for all ℓ ∈ N, there exists two families of λC functions
+
+                      Ups : s → UpType s          Downs : UpType s → s
+
+for sorts s : Uℓ′ , ℓ′ ≤ ℓ + 1, satisfying the bijectivity conditions
+
+             Ups ◦ Downs = λ(x : UpType s).x           Downs ◦ Ups = λ(x : s).s
+
+and the congruence condition
+
+                    ∀(f : α → β). Upβ (f x) = (Upα→β f ) (Upα x)
+
+where UpType is recursively defined as follows:
+                              UpType x := GLiftℓ′ ,ℓ x, for x ∈ V
+                      UpType (α → β) := UpType α → UpType β
+36
+     See Appendix F for the definition of π ∗ .
+    Lean-auto: An Interface between Lean 4 and Automated Theorem Provers         27
+
+Proof. Structural induction on s
+
+1. If s = a, where a ∈ V is a variable, then we can define
+
+                    Upa := GLift.upℓ′ ,ℓ a    Downa := Glift.downℓ′ ,ℓ a
+
+2. If s = (α → β) and the induction hypothesis holds for α and β, then we can
+   define
+
+          Upα→β := λ(f : α → β) (x : UpType α). Upβ (f (Downα x))
+        Downα→β := λ(f : UpType α → UpType β) (x : α). Downβ (f (Upα x))
+
+
+    The rationale of UpType (α → β) := UpType α → UpType β is that, given
+f x in the canonical embedding of HOL∗ , where f : α → β and x : α, we would
+like (Upα→β f ) (Upα x) to be type correct.
+    Given Ups , Downs and UpType satisfying Theorem 5 with ℓ taken to be larger
+than all universe levels in the input terms, the universe lifting procedure, or the
+translation of the canonical embedding of HOL∗ into the ℓ-embedding of HOL,
+denoted as ULiftTrans, works as follows:
+
+ 1. If x is a variable and x : s, then ULiftTrans(x) := x′ . If x is not a free
+    variable, then we define x′ as x′ := Ups x in Lean 4. If x is a bound variable,
+    no further operation is needed.
+ 2. ULiftTrans(f x) := ULiftTrans(f ) ULiftTrans(x)
+ 3. ULiftTrans(λ(x : s). y) := λ(x′ : UpType s). ULiftTrans(y)
+
+   It’s easy to verify that ULiftTrans(e) is definitionally equal to Ups e for all
+terms e : s in the canonical embedding of HOL∗ .
+
+
+F     Essentially Higher-order Problem
+
+In this appendix, we give a formal definition of essentially higher-order problems
+(EHOPs) and discuss some of its theoretical properties.
+
+Definition 10. Let σ : V → TC be a mapping. Define its extension σ : TC → TC
+as
+
+     σ(Uℓ ) := Uℓ      σ(x) := σ(x), for x ∈ V          σ(M N ) := σ(M ) σ(M )
+
+                       σ(λx : s.M ) := λx : σ(s).σ[x 7→ x](M )
+                       σ(∀x : s.M ) := ∀x : σ(s).σ[x 7→ x](M )
+where                                    (
+                                          t        x=u
+                        σ[u → t](x) :=
+                                             σ(x) x ∈ V \{u}
+28            Y. Qian et al.
+
+Definition 11. A substitution is a triple (Γ, Γ ′ , σ) where Γ, Γ ′ are λC contexts
+and σ : V → TC , such that for all (u : τ ) ∈ Γ ,
+
+                                          Γ ′ ⊢ σ(u) : σ(τ )
+
+Γ is called the domain of the substitution, and Γ ′ is called the codomain of the
+substitution.
+
+Theorem 6. Let (Γ, Γ ′ , σ) be a substitution. If Γ ⊢ t : s, then Γ ′ ⊢ σ(t) : σ(s)
+
+Proof. Induction on the derivation of Γ ⊢ t : s.
+
+Definition 12. Let Γ be a λC context and t1 , t2 be λC terms. If variable set M
+and substitution (Γ, Γ ′ , σ) satisfies
+
+ 1. There exists a λC term s such that Γ ′ ⊢ σ(t1 ) : s and Γ ′ ⊢ σ(t2 ) : s.
+ 2. σ(t1 ) ∼
+           = σ(t2 ) (i.e., σ(t1 ) and σ(t2 ) are βη-equivalent)
+ 3. For all variables v ∈ Γ \M , σ(v) = v.
+
+Then (Γ, Γ ′ , σ) is called a M -unifier of t1 and t2 . In the context of Lean, this
+corresponds to a unifier of t1 and t2 under context Γ , with M as the set of
+metavariables.
+
+Definition 13. The canonical embedding π ∗ : T→
+                                              ∗
+                                                → TC of HOL∗ into λC is
+defined as follows:
+
+π ∗ (Bool) := U0            π ∗ (Uℓ ) := Uℓ      π ∗ (U′ℓ ) := Uℓ+1       π ∗ (x) := x, for x ∈ V
+π ∗ (M N ) := π ∗ (M ) π ∗ (N )           π ∗ (λ(x : s).M ) := λ(x : π ∗ (s)).π ∗ (M )
+π ∗ (⊥′ ) := ∀(α : U0 ).α               π ∗ (→′ ) := λ(p q : U0 ).p → q
+    ∗
+π       (∀′s ) := λ(p : π ∗ (s) → U0 ).∀(x : π ∗ (s)).p x
+
+π ∗ is extended to contexts as follows: π ∗ (∅) := ∅, π ∗ (Γ, x : σ) := π ∗ (Γ ), x : π ∗ (σ)
+
+Theorem 7. Canonical embedding preserves judgement, i.e. if Γ ⊢ t : s in
+HOL∗ , then π ∗ (Γ ) ⊢ π ∗ (t) : π ∗ (s) in λC
+
+Proof. Induction on the derivation rules of HOL∗ .
+
+Definition 14. An (HOL∗ /λC) problem is a tuple (Γ, p), denoted as Γ ⊢?p,
+where Γ is a (HOL∗ /λC) context, called the hypotheses of the problem, and p
+is an (HOL∗ /λC) term, called the goal of the problem. A λC problem Γ ⊢?p
+is provable iff there exists a λC term t such that Γ ⊢ t : p. An HOL∗ problem
+Γ ⊢?p is provable iff there exists a λC term t such that π ∗ (Γ ) ⊢ t : π ∗ (p).
+
+Definition 15. A λC problem Γ ⊢?p is essentially higher-order provable (EH-
+OP) iff there exists a provable HOL∗ problem Γ ′ ⊢?p′ and a substitution (π ∗ (Γ ′ ),
+Γ, σ) such that p ∼
+                  = σ(π ∗ (p′ )).37
+37
+     This is the same as Definition 1 in Sect. 5.
+   Lean-auto: An Interface between Lean 4 and Automated Theorem Provers             29
+
+Theorem 8. If a λC problem Γ ⊢?p is EHOP, then it is provable.
+Proof. By the definition of EHOP, there exists a provable HOL∗ problem Γ ′ ⊢?p′
+and substitution (π ∗ (Γ ′ ), Γ, σ) such that p ∼= σ(π ∗ (p′ )). By the definition of
+    ∗
+HOL provability, there exists a term t such that π ∗ (Γ ′ ) ⊢ t′ : π ∗ (p′ ). By
+                                             ′
+
+Theorem 7, Γ ⊢ σ(t′ ) : σ(π ∗ (p′ )), thus Γ ⊢?p is provable.
+    We assume that excluded middle is implicitly contained in the hypotheses of
+all HOL∗ and λC problems. In λC, excluded middle is em : ∀(p : U0 ), p ∨ ¬p; in
+HOL∗ , it is em′ : ∀(p : Bool).p ∨′ ¬′ p.
+Example 1. Consider the λC problem Γ ⊢?p where
+
+    Γ := N : U1 , Fin : N → U1 , add : ∀(n : N).(Fin n → Fin n → Fin n), n : N
+     p := (∀(u v : Fin n).add n u v =1 add n v u) →
+             ∀(u v w : Fin n).add n (add n x y) z =1 add n z (add n y x)
+
+Given
+
+                Γ ′ := α : U1 , f : α → α → α
+                p′ := (∀′ (u v : α).f u v =′α f v u) →′
+                         ∀′ (u v w : α).f (f u v) w =′α f w (f v u)
+
+The HOL∗ problem Γ ′ ⊢?p′ is provable. Moreover, given
+
+                           σ(α) := Fin n, σ(f ) := add n
+
+The triple (π ∗ (Γ ′ ), Γ, σ) forms a substitution, and p ∼
+                                                          = σ(π ∗ (p′ )). Therefore,
+Γ ⊢?p is EHOP.
+  Note that moving implications in the goal into hypotheses (and vice versa)
+may change the EHOP status of a problem. For example,
+
+                     α : U1 , x : α, p : α → U0 ⊢? (p x → p x)
+
+is EHOP. However, if we introduce p x into the hypotheses, the problem is no
+longer EHOP:
+                  α : U1 , x : α, p : α → U0 , h : p x ⊢? p x            (2)
+Theorem 9. The λC problem (2) is provable but not EHOP.
+Proof. Note that h : p x under the hypotheses of (2), thus (2) is provable. To
+show that (2) is not EHOP, we use proof by contradiction. Suppose there is an
+HOL∗ problem Γ ′ ⊢?p′ and a substitution (Γ ′ , Γ, σ) such that p x ∼   = σ(π ∗ (p′ )).
+                                  ′
+Then, the βη normal form of p must be of the form f t1 . . . tk where f is a
+free variable. Note that Γ ′ , as a context of λ∗→ , consists solely of HOL∗ (type
+or term) variable declarations, and cannot contain premises like λC contexts.
+Note that there exists models where f t1 . . . tk is false, for example when f is
+a function that takes k arguments and always returns ⊥. Therefore, Γ ′ ⊢?p′ is
+not provable in HOL∗ , thus (2) is not EHOP.
+30       Y. Qian et al.
+
+G     λ∗→ Abstraction Algorithm
+In this appendix, we give a formal presentation of the λ∗→ abstraction algorithm.
+When given a λC problem Γ ⊢?p, the algorithm attempts to find a λ∗→ problem
+Γ ′ ⊢?p′ and a substitution (π ∗ (Γ ′ ), Γ, σ) such that p ∼
+                                                           = σ(π ∗ (p′ )), and that p′
+retains as much information in p as possible.
+    Note that the output of Lean-auto’s quantifier instantiation is a list of λC
+terms h1 , . . . , hn , and we would like to prove ⊥ using these terms. Suppose the
+λC context of the problem is Γ . According to the above discussion, the input
+to the λ∗→ abstraction algorithm should be Γ ⊢? (h1 → · · · → hn → ⊥). In
+practice, we run λ∗→ abstraction consecutively on each of hi (1 ≤ i ≤ n) under
+context Γ , which produces equivalent results. Therefore, we can either think of
+the input of λ∗→ abstraction as one λC term h1 → · · · → hn → ⊥, or as a list of
+λC terms h1 , . . . , hn .
+    First, we give a formal definition of dependent arguments. This definition
+accounts for the fact that dependent arguments are dynamic. Note that in the
+argument list of functions, dependent and non-dependent arguments may inter-
+leave with each other.
+
+Definition 16. Suppose Γ ⊢ s : Ul in λC. If s = (∀(x : s1 ).s2 ) and x oc-
+curs in s2 , then s is said to be a Γ -leading argument dependent type, denoted
+as LADT(Γ ; s). Suppose Γ ⊢ t : s in λC, where s is in β normal form. If
+LADT(Γ ; s), then t is said to be Γ -leading argument dependent (Γ -lad), denoted
+as LAD(Γ ; t).
+
+Definition 17. Suppose the term a0 a1 . . . ak is type correct under context Γ
+in λC. Then for 1 ≤ i ≤ k, a0 is said to have dependent i-th argument with
+respect to Γ and argument list (a1 , . . . , ak ), or i-dep w.r.t Γ and (a1 , . . . , ak ), iff
+LAD(Γ ; a0 a1 . . . ai−1 ). For convenience, we use the predicate
+
+                     Dep(Γ ; a0 , (a1 , . . . , ak ), i)   (k ≥ 0, 1 ≤ i ≤ k)
+
+to denote that a0 is i-dep w.r.t Γ and (a1 , . . . , ak ). Furthermore, we define
+
+       LFun(Γ ; a0 , (a1 , . . . , ak )) := λ(xi1 : si1 ) . . . (xim : sim ).a0 w1 . . . wm
+
+                       DArgs(Γ ; a0 , (a1 , . . . , ak )) := (bi1 , . . . , bim )
+                     LArgs(Γ ; a0 , (a1 , . . . , ak )) := (aj1 , . . . , ajk−m )
+where i1 < i2 < · · · < im are all the arguments that are dependent, j1 < j2 <
+· · · < jk−m are all the arguments that are non-dependent, Γ ⊢ ai : si , and
+                             (
+                               ai , Dep(Γ ; a0 , (a1 , . . . , ak ), i)
+                       wi :=
+                              xi ,                      otherwise
+
+Example 2. Let
+
+      Γ := compose : ∀(β γ : U1 ).(β → γ) → ∀(α : U1 ).(α → β) → (α → γ),
+  Lean-auto: An Interface between Lean 4 and Automated Theorem Provers                    31
+
+           A : U1 , B : U1 , C : U1 , f : B → C, g : A → B, x : A
+
+Then
+                        compose, compose B, compose B C f
+are Γ -lad, while
+
+              compose B C, compose B C f A, compose B C f A g
+
+are not. Therefore, the dependent arguments of compose w.r.t (B, C, f, A, g, x)
+are 1, 2 and 4, and we have
+
+     LFun(Γ ; compose, (A, B, C, f, g, x)) = λ(f : B → C).compose A B f C
+
+                    LArgs(Γ ; compose, (A, B, C, f, g, x)) = (f, g, x)
+Example 3. Let
+
+              Γ := func : ∀(α : U1 → U1 ) (β : U1 ).α β, A : U1 , B : U1
+
+Then func is Γ -lad, while
+
+                    func (λβ.A) : U1 → A          func (λβ.A) B : A
+
+are not. Therefore, the dependent argument of func w.r.t (λβ.A, B) is 1, and we
+have
+
+   LFun(Γ ; func, (λβ.A, B)) = func (λβ.A)           LArgs(Γ ; func, (λβ.A, B)) = B
+
+    Now, we define quasi-monomorphic terms, the set of λC terms that λ∗→ ab-
+straction can successfully translate to HOL∗ . The predicate QMono(Γ ; B, t) will
+be used to represent “t is a quasi-monomorphic term under context Γ , with
+variables in B being bound variables”. It is used both in λ∗→ abstraction and in
+quantifier instantiation.
+Definition 18. We define the predicate QMono(Γ ; B, t) inductively, where Γ is
+a λC context, B is a set of variables, and t is a λC term
+1. For variable x ∈ B and terms t1 , . . . , tn ,
+
+            QMono(Γ ; B, x t1 . . . tn ) := DArgs(Γ ; x, (t1 . . . tn )) = ∅∧
+                                              ∀i ∈ {1, . . . , n}.QMono(Γ ; B, ti )
+2. For variable x ∈
+                  / B and terms t1 , . . . , tn ,
+
+    QMono(Γ ; B, x t1 . . . tn ) := (∀t ∈ DArgs(Γ ; x, (t1 , . . . , tn )).F V (t) ∩ B = ∅)∧
+                                     (∀t ∈ LArgs(Γ ; x, (t1 , . . . , tn )).QMono(Γ ; B, t))
+3. For variable x and terms s, t
+
+              QMono(Γ ; B, λ(x : s).t) := F V (s) ∩ B = ∅ ∧ (Γ ̸⊢ s : U0 )
+                                               ∧ QMono(Γ, x : s; B ∪ {x}, t)
+32       Y. Qian et al.
+
+4. For variable x and terms s, t such that x ∈ F V (t),
+      QMono(Γ ; B, ∀(x : s).t) := ¬F V (s) ∩ B = ∅ ∧ (Γ ̸⊢ s : U0 ) ∧ (Γ ⊢ t : U0 )∧
+                                   QMono(Γ, x : s; B ∪ {x}, t)
+5. For terms s, t,
+              QMono(Γ ; B, s → t) := (Γ ⊢ s : U0 ) ∧ (Γ ⊢ t : U0 )∧
+                                        QMono(Γ ; B, s) ∧ QMono(Γ ; B, t)
+According to the definition of QMono, terms coming from canonical embedding
+of HOL∗ terms are automatically quasi-monomorphic, e.g.
+               QMono(α : U1 , p : (α → α) → U0 ; ∅, ∀(p : α → α).f p)
+Proofs are not allowed to be quantified by λ or dependent ∀ binders:
+                     ¬QMono(p : U0 , q : p → U0 ; ∅, ∀(x : p).q x)
+Occurrence of a dependently typed free variable does not break the quasi-
+monomorphic property iff its dependent arguments do not contain bound vari-
+ables (assuming B = ∅):
+     QMono(N : U1 , Fin : N → U1 , add : ∀(n : N).Fin n → Fin n → Fin n, k : N;
+             ∅, ∀(x y : Fin k).add k x y = add k y x)
+Occurrence of a dependently typed bound variable does not break the quasi-
+monomorphic property iff its dependent arguments are not instantiated:
+      QMono(∅; ∅, λ(f : (∀(α : U0 ).α) → (∀(α : U0 ).α)) (x : ∀(α : U0 ).α).f x)
+Except for within type declarations of bound variables, bodies of ∀ abstractions
+must be propositions:
+                    ¬QMono(α : U1 , β : α → U1 ; ∅, ∀(x : α).β x)
+   Now, we describe the λ∗→ abstraction procedure lamAbst of Lean-auto. The
+algorithm is shown in Algorithm 2. A global hash map H is used to record the
+HOL∗ variables associated with abstracted λC terms. A few auxiliary functions
+are used in the algorithm:
+1. For a term t, if t is in H, then getLVarName(t) returns the HOL∗ free variable
+   corresponding to t, otherwise it creates a new HOL∗ free variable for t.
+2. For a term t = w t1 . . . tn where w is not an application, getAppFn(t) =
+   w, getAppArgs(t) = (t1 , . . . , tn ).
+3. For terms w, t1 , . . . , tn , mkAppN(w, (t1 , . . . , tn )) = w t1 . . . tn .
+4. For a context Γ and a term t, inferType(Γ, t) computes the β-normal form
+   of the type of t under Γ .
+Note that lamAbst only returns the HOL∗ problem (as a HOL∗ term). The
+“substitution” from HOL∗ to λC needs to be obtained by computing the inverse
+of H after the execution of the algorithm. Also, note that the implementation of
+this algorithm in Lean-auto checks whether t breaks the requirements of quasi-
+monomorphic-ness and fails if it does. For simplicity, these checks have been
+omitted in lamAbst.
+Lean-auto: An Interface between Lean 4 and Automated Theorem Provers   33
+
+
+
+
+Function lamAbst(Γ ; B, t)
+   In : λC context Γ , variable set B, and λC term t satisfying
+         QMono(Γ ; B, t)
+   Out : a λ∗→ term
+   match t with
+      case a b /* Function application */
+          f := getAppFn(t)
+          args := getAppArgs(t)
+          if f ∈ B then
+              for a : args do
+                  a := lamAbst(Γ ; B, a)
+              return mkAppN(f, args)
+          lf := LFun(Γ ; f, args)
+          largs := LArgs(Γ ; f, args)
+          lvar := getLVarName(lf )
+          return mkAppN(lvar , largs)
+      case ∀(v : a).b
+          atype := inferType(Γ ; a)
+          babst := lamAbst(Γ, v : a; B ∪ {v}, b)
+          if atype = U0 then
+              aabst := lamAbst(Γ ; B, a)
+              return aabst → babst
+          return ∀(v : a).babst
+      case λ(v : a).b
+          babst := lamAbst(Γ, v : a; B ∪ {v}, b)
+          return λ(v : a).babst
+      otherwise
+          return getLVarName(t)
+end
+
+Function getLVarName(t)
+   In : λC term t
+   Out : λ∗→ variable name corresponding to t
+   if H.contains(t) then
+       return H.find(t)
+   newname := freshVarName()
+   H.add(t, newname)
+   return newname
+end
+       Algorithm 2: λ∗→ abstraction algorithm of Lean-auto
+34      Y. Qian et al.
+
+H     Quantifier Instantiation
+In this appendix, we present the technical details of Lean-auto’s quantifier in-
+stantiation procedure. First, we give a formal definition of instance:
+Definition 19. Let Γ be a λC context, and t be a λC term which is type correct
+under Γ .
+1. A constant instance of t is a λC term of the form λ(x1 : s1 ) . . . (xm :
+   sm ).t t1 . . . tk that is type correct under Γ , where s1 , . . . , sm , t1 , . . . tk are
+   λC terms.
+2. For t = ∀(x1 : r1 ) . . . (xn : rn ).b, a hypothesis instance of t is a λC term of the
+   form ∀(y1 : s1 ) . . . (ym : sm ).b[t1 /x1 ] . . . [tn /xn ], where s1 , . . . , sm , t1 , . . . , tn
+   are λC terms, and t1 [t2 /x] stands for the term obtained by replacing all the
+   x in t1 with t2 .
+    Unless otherwise stated, when discussing instances of functions, we will al-
+ways be referring to constant instances; when discussing instances of hypotheses,
+we will always be referring to hypothesis instances. An instance of a function is
+called an HOL∗ instance iff all of the function’s dependent arguments are in-
+stantiated with terms that do not contain bound variables. Formally, the set of
+all HOL∗ instances in a λC term is defined as follows:
+Definition 20. Let Γ be a λC context and B be a set of variables, then
+1. For variable x and terms t1 , . . . , tn ,
+                                                        (
+                                                         S ∪ {l},       F V (l) ∩ B = ∅
+                holInsts(Γ ; B, x t1 . . . tn ) :=
+                                                                  S,            otherwise
+     where
+                                                                   [
+       l := LFun(Γ ; x, (t1 . . . tn ))          S :=                                 holInsts(Γ ; V, t)
+                                                        t∈LArgs(Γ ;x,(t1 ,...,tn ))
+
+2. For variable x and terms a, b,
+                    holInsts(Γ ; B, ∀(x : a).b) = holInsts(Γ ; B, λ(x : a).b)
+                       := holInsts(Γ ; B, a) ∪ holInsts(Γ, x : a; B ∪ {x}, b)
+3. Otherwise, holInsts(Γ ; B, t) := ∅.
+   The matching procedure in the saturation loop is handled by matchInst and
+match.
+1. Given context Γ , variable set M and terms m, h, match(Γ ; M, m, h) returns
+   all M -unifiers between term m and the LFun of subterms of h. The pseu-
+   docode for match is given in Algorithm 3. An auxiliary function unify is used
+   in the pseudocode. Given λC context Γ , variable set M and two λC terms
+   t1 , t2 , unify(Γ ; M, t1 , t2 ) returns a complete set of M -unifiers of t1 and t2
+   under Γ . In Lean 4, the isDefEq function can be used perform unification,
+   but it is incomplete and returns at most one unifier.
+     Lean-auto: An Interface between Lean 4 and Automated Theorem Provers              35
+
+      Function match(Γ ; M, m, h)
+         In : λC context Γ , variable set M , and λC terms m, h
+         Out : A set of unifiers
+         match h with
+            case a b /* Function application */
+                matches := ∅
+                f := getAppFn(t)
+                args := getAppArgs(t)
+                for a : args do
+                    matches := union(matches, match(Γ ; M, m, a))
+                lf := LFun(Γ ; f, arg)
+                matches := union(matches, unify(Γ ; M, m, lf ))
+            case ∀(v : a).b
+                return union(match(Γ ; M, m, a), match(Γ, v : a; M, m, b))
+            case λ(v : a).b
+                return union(match(Γ ; M, m, a), match(Γ, v : a; M, m, b))
+            otherwise
+                return ∅
+      end
+          Algorithm 3: Matching algorithm for quantifier instantiation
+
+
+ 2. Given context Γ and terms m, h, matchInst(Γ ; m, h) computes all instances
+    of the hypothesis h which has some subterm whose LFun is βη-equivalent
+    to m. To do this, matchInst introduces all leading non-prop ∀ quantifiers
+    into the context (as free variables), collects all the newly introduced free
+    variables into a variable set M , then computes match(Γ ′ ; M, m, h′ ), where
+    Γ ′ , h′ are Γ, h after introduction of free variables. For each unifier (Γ, Γ ′ , σ)
+    in match(Γ ′ ; M, m, h), matchInst computes σ(h), then abstracts newly in-
+    troduced free variables in σ as ∀ binders to generate an instance of h.
+    matchInst(Γ ; m, h) returns the set of instances of h generated by this proce-
+    dure.
+    The saturation loop of quantifier instantiation is shown in Algorithm 4.38 For
+simplicity, equational theorem generation is not shown here. Given a λC context
+Γ and a list H of hypotheses, saturate returns a list of instances of hypotheses in
+H that are suitable for λ∗→ abstraction (i.e. satisfy the QMono predicate). Note
+that, in Lean-auto, when checking whether a hypothesis instance belongs to a
+collection (e.g., set, list, queue, etc.) of hypothesis instances, we test equality
+only up to hypothesis equivalence.
+Definition 21. For two λC terms t1 , t2 , t1 and t2 are equivalent as hypotheses
+iff t1 is a hypothesis instance of t2 and t2 is a hypothesis instance of t1 .39
+    Checking membership up to equivalence ensures that collections of hypothesis
+instances in our algorithms are free of redundant entries. Note that equivalence
+38
+     This is the same as Algorithm 1 in Sect. 6.
+39
+     In higher-order logic and beyond, there exists terms that are instances of each other
+     but not definitionally equal.
+36       Y. Qian et al.
+
+
+
+
+     Function saturate(Γ ; H, maxInsts)
+        In : λC context Γ , list of λC terms H, and threshold maxInsts
+        Out : A list of λC terms
+        hi := H /* A list of hypothesis instances */
+        ci := List.empty() /* A list of constant instances */
+        /* A queue of active constant and hypothesis instances */
+        active := Queue.empty()
+        for h : H do
+            hi.push((0, h))
+            for c : holInsts(Γ ; ∅, h) do
+                ci.push(c); active.push((1, c))
+        while ! active.empty() do
+            if hi.size() + ci.size() > maxInsts then break
+            (type, front) := active.front()
+            active.popFront()
+            if type = 0 then
+                prevci := ci.copy()
+                for c : prevci do
+                     matchOnePair(c, front, ci, hi, active)
+            else
+                prevhi := hi.copy()
+                for h : prevhi do
+                     matchOnePair(front, h, ci, hi, active)
+            end
+        end
+        monohi := List.empty()
+        for h : hi do
+            if QMono(Γ ; ∅, h) then monohi.push(h)
+        return monohi
+     end
+
+     Function matchOnePair(c, h, ci, hi, active)
+        newhi := matchInst(Γ ; c, h)
+        for nh : newhi do
+            if nh ∈ hi then continue
+            hi.push(nh); active.push((0, nh))
+            newci := holInsts(Γ ; ∅, nh)
+            for nc : newci do
+                if nc ∈ ci then continue
+                ci.push(nc); active.push((1, nc))
+     end
+        Algorithm 4: Main saturation loop of quantifier instantiation
+     Lean-auto: An Interface between Lean 4 and Automated Theorem Provers           37
+
+testing can be reduced to unification, which can in turn be approximated by
+isDefEq.
+
+
+I      Experiment on Translation
+
+In this appendix, we present the result of our small-scale experiment on the com-
+parison between encoding-based translation and monomorphization. We would
+like to compare the output sizes of the translation procedures on the same Lean 4
+problem. For monomorphization, we use Lean-auto’s translation procedure and
+compute the sum of the sizes of the output HOL problem. Since Lean-auto does
+not support encoding-based translation, we use the size of the original Lean 4
+expression as the surrogate for the output size. This is justified by the fact that
+encoding-based translations usually produce outputs that are larger than the
+input problems.
+    We randomly sample 512 user-declared theorems from Mathlib4. For each
+theorem, we generate its corresponding problem, which consists of the statement
+of the theorem and the statements of all the theorems used in its proof. The
+size of a problem is the sum of the sizes of all the expressions in the problem.
+We use Lean 4’s deterministic timeout mechanism and set “maxHeartbeats” to
+“65536” for the monomorphization of each problem, without imposing extra time
+or memory limit.
+    Note that Lean-auto’s monomorphization is incomplete, and it might be un-
+fair to compare monomorphization with encoding-based translation on prob-
+lems where monomorphization fails to produce a provable output. Therefore,
+we conduct another experiment with the Lean-auto-provable40 subset of the 512
+problems. Note that if a problem is proved by Lean-auto, Lean-auto’s monomor-
+phization must have produced a provable output on the problem, regardless of
+the backend solver.
+
+
+                                                 Full        Filtered
+                       #Theorems                 512            188
+                         #Fails                   88             0
+                       Avg enc size             1503.4         643.5
+                      Avg mono size             112.3           62.6
+                 Avg (mono size)/(enc size)     0.2325        0.2308
+
+
+                       Fig. 7. Result of experiment on translation
+
+
+
+   The result is presented in Figure 7. “#Fails” is the number of theorems where
+Lean-auto’s monomorphization produces error. Failed theorems are not included
+40
+     Here we use Duper as the backend solver, and employ Experimental Setup 1 described
+     in Appendix L. The option “auto.mono.ignoreNonQuasiHigherOrder” is set to “true”,
+     and “maxHeartbeats” is set to “65536”.
+38     Y. Qian et al.
+
+when computing statistics. “Avg enc size” is the average size of the output of
+encoding-based translation. As mentioned before, we use the size of the original
+problem as an under-approximation. “Avg mono size” is the average size of the
+monomorphized problem. “Avg (mono size)/(enc size)” is the average ratio of
+the monomorphized size and the encoding-based size. The result indicates that
+monomorphization produces significantly smaller results compared to encoding-
+based translation.
+
+
+J    Experiment on Reduction
+
+In this appendix, we investigate the possibility of reducing the input expressions
+before sending them to Lean-auto. When reducing expressions, Lean 4 allows
+users to control which constants are unfolded, with three transparency levels: re-
+ducible, default and all. In the reducible level, only a small portion of constants
+are unfolded. Lean-auto reduces all input expressions with the reducible level,
+because this helps alleviate the definitional equality problem, and usually don’t
+increase the expression size by too much. In the default level, most non-theorem
+constants are reduced. Reducing with default level will make many definitionally
+equal input expressions become syntactically identical, but might make the ex-
+pressions become unacceptably large. In the all level, all constants are unfolded
+(except for those marked with the special tag opaque). Reducing with all level
+will produce even larger expressions than with the default level.
+    We use the same 512 Mathlib4 theorems in Appendix I, and generate their
+corresponding problems in the same way. Experiment is conducted on Amazon
+EC2 c5ad.16xlarge. The time limit for each problem is 120 seconds, and the
+memory limit is 8GB.
+
+
+                                   reducible      default        all
+                #Fails                 0             83          202
+            Avg size before          791.5         588.3        487.7
+             Avg size after         2449.8     138579513.0   258118331.0
+           Avg size increase         5.8×       309146.5×    1216555.0×
+            #10× increase             48            215          151
+        #10× increase + #Fails        48            298          353
+
+
+            Fig. 8. Result of experiment on reducing input expressions
+
+
+    The result is presented in Figure 8. “#Fails” is the number of problems that
+exceeds time or memory limit. This represents the problems which are complex
+enough such that running reduction on them are prohibitively expensive. For
+each transparency level, the problems it fails on are excluded when computing
+its statistics. “#10× increase” is the number of problems whose size increases
+to at least 10× its original size after reduction. Therefore, “#10× increase +
+     Lean-auto: An Interface between Lean 4 and Automated Theorem Provers            39
+
+#Fails” roughly corresponds to the problems that become much harder to prove
+after reducing with the given transparency level. According to “#10× increase +
+#Fails”, both the default and all level produce unacceptable results on at least
+50% of the theorems, while for reducible it’s less than 10%. This suggests that
+we should not reduce the input problem with default or all level, and therefore
+should handle the definitional equality problem using other methods.
+
+
+
+K       Experiment on Duper
+
+
+We conduct a small-scale experiment to compare the performance of Duper with
+and without Lean-auto. We use the same 512 Mathlib4 theorems in Appendix I,
+and generate their corresponding problems in the same way. We use Lean 4’s
+deterministic timeout mechanism for resource control and set the timeout option
+“maxHeartbeats” to 65536. The option “auto.mono.ignoreNonQuasiHigherOrder”
+of Lean-auto is set to “true”. As explained in Appendix L, we employ Experi-
+mental Setup 1 in this experiment.
+
+
+                                        Solved         Avg Time(ms)
+                    With Lean-auto    189(36.9%)          1375.7
+                    Without Lean-auto 42(8.2%)            1856.3
+
+
+               Fig. 9. Comparison of Duper with and without Lean-auto.
+
+
+
+   We see that when Duper is used without Lean-auto, it only solves 8.2% of
+the problems, and it is slower on solved problems compared to “Duper with
+Lean-auto”. Duper also exhibits unexpected behaviors during the experiment.
+We find that Duper gets stuck on 7 of the 512 problems for more than 5 min-
+utes. Moreover, we find that Duper spends 1741174 heartbeats on the theorem
+“MeasureTheory.Lp.simpleFunc.isDenseEmbedding” before failing, which vastly
+exceeds our limit 65536. We suspect that in these cases, Duper runs into code
+not controlled by Lean 4’s deterministic timeout mechanism.
+   When we attempted full-scale evaluation of “Duper without Lean-auto” on
+Mathlib4, we found similar issues. Duper gets stuck on problems for minutes
+and even hours. Manually recording these problems and filtering them out would
+require significant manual work.41 Therefore, we decided to not include “Duper
+without Lean-auto” in our full-scale evaluation.
+
+41
+     Similar issues are also present when evaluating other tools, but are much less pro-
+     nounced compared to “Duper without Lean-auto”. Therefore, we were able to man-
+     ually filter out these problems.
+40      Y. Qian et al.
+
+L    Details on Theorem Proving Experiments
+
+Multiple experiments in this paper involve running Lean-auto or existing tools
+on Lean 4 theorems. Here, we present technical details of experimental setups
+used in these experiments.
+   All the tools we evaluate, including Lean-auto and existing tools, are imple-
+mented as tactics in Lean 4. Each tactic in Lean 4 has a user-facing syntax and an
+underlying tactic function. To invoke a tactic, users can input the syntax of the
+tactic in Lean 4, potentially with extra information (such as a list of premises).
+Lean 4 will elaborate the syntax and call the underlying tactic function.
+   A straightforward way to evaluate a tactic tac on a list Ts of Mathlib4
+theorems is shown as Experimental Setup 1 in Figure 10.
+
+
+         To run a tactic tac on a list Ts of Mathlib4 theorems:
+
+          1. Import the entire Mathlib4
+          2. For each theorem T in Ts, collect all the theorems h1 , . . . , hn
+             used in the proof of T . Then, call the underlying tactic function
+             of tac on the statement of T and record the result. If tac accepts
+             premises, supply h1 , . . . , hn as the list of premises to the under-
+             lying tactic function.
+
+
+
+                             Fig. 10. Experimental Setup 1
+
+
+
+    However, Experimental Setup 1 is unfair because it favors simp_all and
+aesop. This is related to the fact that these two tactics have access to theorems
+tagged with the “simp” attribute. Suppose a theorem T in Mathlib4 is tagged
+with “simp”. If we run simp_all on T after importing Mathlib4, then simp_all
+will have access to the “simp”-tagged T , which might cause it to find a proof of
+T that uses T itself.
+    Therefore, we would like to make sure that a theorem T is not already tagged
+with “simp” when we run evaluation on T . A way to achieve this is to retrieve
+the Lean 4 file that declares T , execute all the commands before the declaration
+of T , then run evaluation on the statement of T . This makes sure that T is not
+declared (thus not marked with “simp”) when we run evaluation on it.
+    However, this method causes another problem. There are commands in Lean
+4 that simultaneously decare multiple constants c1 , . . . , cn . If there exists i, j such
+that ci is a theorem and cj occurs in the statement of ci , then running evaluation
+using the above method on ci will cause an “unknown constant” error, because
+cj is not declared when we run evaluation on the statement of ci . Similarly, if cj
+occurs in the proof of ci , then running evaluation using the above method is also
+problematic because the not-yet-declared cj would be passed to those tools that
+  Lean-auto: An Interface between Lean 4 and Automated Theorem Provers                41
+
+accept premises. Therefore, we would like to filter out theorems whose proof or
+type contains constants declared by the same command.
+    To make our evaluation more closely resemble real use cases of Lean 4, we
+would like to invoke the user-facing syntax of the tactics instead of their underly-
+ing functions. This causes some more fails for premise-accepting tactics because
+many Mathlib4 proofs use non-user-declared theorems that are inaccessible to
+users.
+    Our modified evaluation method is presented as Experimental Setup 2 in
+Figure 11. We employ a per-file evaluation scheme for better efficiency.
+
+
+        To run a tactic tac on a Mathlib4 file F :
+
+         1. Retrieve the content of F
+         2. For each command C in F :
+            (a) Record the environment E before executing C. E contains
+                all the constants declared by commands prior to C.
+            (b) Run command C and record the constants c1 , . . . , cn declared
+                by it.
+            (c) Record the environment E ′ .
+            (d) Set the environment to E. This effectively removes c1 , . . . , cn
+                from the environment.
+            (e) For each 1 ≤ i ≤ n, if ci is a theorem and does not contain
+                cj (1 ≤ j ≤ n) in its proof or type:
+                   i. Collect all the theorems h1 , . . . , hn used in the proof of
+                      ci
+                  ii. Create the syntax S that invokes tac on ci . If tac accepts
+                      premises, h1 , . . . , hn should be supplied to tac in the
+                      syntax.
+                 iii. Run Lean 4 on S and record the result.
+            (f) Set environment to E ′ . This adds back constants declared by
+                C, which is necessary to the execution of later commands.
+
+
+
+                            Fig. 11. Experimental Setup 2
+
+
+    The experiments in Sect. 8 employ Experimental Setup 2. For other small-
+scale experiments in our paper, we use Experimental Setup 1. This is because
+these small-scale experiments do not involve simp_all and aesop, and Experi-
+mental Setup 1 is a cleaner evaluation method compared to Experimental Setup
+2.
+    Now, we discuss details of resource limit and benchmark generation.
+
+Resource Limit: For efficiency reasons, we would like each Lean 4 process to
+test multiple problems (instead of one problem per process). Lean 4 does not
+support setting time limit or memory limit for native code. Instead, it provides
+42      Y. Qian et al.
+
+a resource control mechanism called deterministic timeout, which is controlled
+by the “maxHeartbeats” option. The deterministic timeout mechanism counts
+the number of times a low-level Lean 4 function is called, and interrupts the
+program if it exceeds “maxHeartbeats”.
+   In the experiments in Sect. 8, we mentioned that all the tools are given a time
+limit of 10 seconds. For native Lean 4 tools, including “rfl”, “simp_all”, “Aesop”
+and “Lean-auto + Duper”, we set “maxHeartbeats” to 65536, which we have
+found to roughly correspond to 10 seconds in our experiments. For “Lean-auto
++ TPTP/SMT Solver”, we set “maxHeartbeats” to 65536 for Lean-auto’s native
+Lean 4 code, and set timeout to 10 seconds for TPTP and SMT Solvers. Note
+that the setups are not imposing a strict 10 seconds limit on any of the tools.
+Therefore, we also record the total execution time of each tool on each problem,
+and problems that takes more than 10 seconds to solve are counted as fails.
+   Note that the above discussion only applies to Sect. 8. For other small-scale
+experiments in our paper, since they do not involve external solvers, we set
+“maxHeartbeats” to a fixed value without imposing extra time or memory limits.
+
+
+Benchmark Generation: Either of Experimental Setup 1 or Experimental
+Setup 2 naturally gives rise to a benchmark generation method. For Experimental
+Setup 1, the corresponding benchmark set is all the user-declared Mathlib4 the-
+orems42 in the environment after importing Mathlib4, which amounts to 178026
+theorems. For Experimental Setup 2, the corresponding benchmark set is all the
+user-declared theorems generated by the commands (in the Mathlib4 files) exe-
+cuted during the experiment. We find a slight difference (around 100 theorems)
+in the benchmark sets generated by Experimental Setup 2 when testing different
+tools. This is potentially due to issues related to individual tools.43
+    In the experiments in Sect. 8, the benchmark set we use is the intersection of
+the above two benchmark sets. For each Mathlib4 file F , we record both the set
+of theorems from F after importing the entire Mathlib4 and the set of theorems
+generated by executing commands in F , then compute the intersection of the two
+sets. This gives a total of 176904 theorems. After filtering out the 27762 theorems
+whose proof or type contains constants declared in the same command, our final
+benchmark set consists of 149142 theorems.
+    Note that the above benchmark generation method only applies to Sect. 8.
+For our small-scale experiment, we randomly sample from user-declared Math-
+lib4 theorems in the environment after importing Mathlib4.
+
+
+
+42
+   A constant is a Mathlib4 constant iff it is declared by a .lean file in Mathlib4. Note
+   that the environment after importing Mathlib4 also contains constants declared in
+   libraries that Mathlib4 depend on.
+43
+   Note that in Experimental Setup 2, execution of tools interleave with execution of
+   commands in Mathlib4 files, and execution of commands produce constants, which
+   are then filtered to produce the benchmark set. If the tool crashes or causes other
+   side effects, it could affect the constants produced by the commands.
+

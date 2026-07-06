@@ -1,0 +1,78 @@
+\section{Related work}
+\label{sec:related}
+
+\paragraph{Program extraction.}  The erasure calculus, the treatment of
+singleton eliminations, informative-singleton unboxing and
+logical-argument pruning follow Letouzey
+\cite{Letouzey2004,Letouzey2003,Letouzey2008}, whose extraction descends
+from Paulin-Mohring's realizability-based extraction for the Calculus of
+Constructions \cite{PaulinMohring1989}, itself in the tradition of
+Kleene realizability \cite{Kleene1945,TroelstraVanDalen1988}.  Our
+specification extraction $\guardf$ is precisely the structural
+realizability predicate of \cite{PaulinMohring1989} and the simulation
+predicate $\sem{\cdot}$ of \cite[\S 2.4]{Letouzey2004}, read as a
+first-order formula about the extracted constant; the fundamental lemma
+(\cref{lem:fundamental}) plays the role of extraction correctness.  The
+differences are dictated by the target: extraction must protect
+evaluation order (dummy abstractions, argument-absorbing fixpoints),
+which an equational target does not care about, so erasure can prune
+outright (\cref{sec:lambdabox}); conversely an equational target cannot
+rely on lazy non-execution, which is why well-founded recursion is a
+genuine boundary (\cref{sec:limitations-wf}) rather than a solved case.
+Machine-checked accounts of erasure correctness exist in the MetaCoq
+project \cite{SozeauEtAl2020}; formally connecting our $\erasef$ to
+MetaCoq's verified erasure is an attractive future step.
+
+\paragraph{Hammer translations.}  The immediate context is the
+CoqHammer translation \cite{CzajkaKaliszyk2018,CzajkaKaliszyk2016} and
+its proof-theoretically sound core, the shallow embedding of
+proof-irrelevant PTSs into first-order logic \cite{Czajka2018}.
+Relative to \cite{Czajka2018}, this paper adds what that paper
+explicitly leaves out --- inductive types, pattern matching, recursion
+and refinement types --- at the price of a model-theoretic rather than
+proof-theoretic soundness statement, and of assuming a stratified
+monomorphic fragment rather than an arbitrary logical piPTS.  Relative
+to \cite{CzajkaKaliszyk2018}, the case-axiom and inhabitation-atom
+layers are replaced by the extraction-factored design, whose possibility
+is conjectured in \S 9 of that paper.  For HOL-based hammers the
+corresponding translation stack --- $\lambda$-lifting, arity
+optimisation, type guards and tags with monotonicity-based soundness
+proofs --- is developed by Meng and Paulson \cite{MengPaulson2008} and
+Blanchette et al.\ \cite{BlanchetteEtAl2016}; our guard predicates are
+the unary (``featherweight'') end of that design space, and our
+model-with-junk construction is the same proof pattern used there for
+guard-omission soundness.  Sledgehammer's practice
+\cite{PaulsonBlanchette2010,BlanchetteEtAl2016qed} supplies the
+operational evidence for S5: HOL hammers export per-constructor
+\texttt{simps} equations produced by the definitional packages
+\cite{Krauss2010}, never disjunctive match axioms.  Early precedents for
+encoding dependent products with type predicates in untyped first-order
+logic go back to Tammet and Smith \cite{TammetSmith1998}; the
+types-as-predicates discipline is also Mizar's \cite{Wiedijk2007}.
+
+\paragraph{Dependent type theory to ATPs.}  Lean-auto
+\cite{QianEtAl2025} translates Lean~4 goals through monomorphisation
+into higher-order logic, deliberately consuming the elaborator's
+\emph{equational lemmas} for defined functions instead of raw
+match-trees --- independent confirmation that equations are the right
+currency for provers, obtained there from the frontend, here from the
+translation itself.  \v{S}inkarovs and Rawson's Agda--Vampire bridge
+\cite{SinkarovsRawson2026} restricts to an equational-Horn fragment
+shared by both systems, again matching the shape our compilation
+produces.  The Equations package \cite{SozeauMangin2019} generates
+defining equations and elimination principles inside Coq for its own
+definitions; our compilation produces the analogous equations uniformly
+for plain definitions, at the FOL level.
+
+\paragraph{Semantics and termination.}  The proof-irrelevant,
+classical interpretation of propositions is the standard
+proof-irrelevant model construction for CIC-like theories
+\cite{Werner1997,MiquelWerner2003}, cut down to a truth-value semantics
+over a syntactic domain.  The rank-restricted interpretations used for
+the fix case of \cref{lem:fundamental} are the semantic counterpart of
+guarded recursion in the style of Giménez \cite{Gimenez1995} and of
+type-based termination \cite{BartheEtAl2004}; inductive definitions by
+stages are classical \cite{Aczel1977}.  The confluence proof of
+\cref{sec:confluence} is Takahashi's method \cite{Takahashi1995};
+orthogonality-based alternatives go back to Klop \cite{Klop1980} and
+are textbook material \cite{BaaderNipkow1998}.

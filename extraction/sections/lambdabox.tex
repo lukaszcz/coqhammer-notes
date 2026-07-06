@@ -1,0 +1,209 @@
+\section{The intermediate language and program extraction}
+\label{sec:lambdabox}
+
+The first half of the translation is Letouzey-style program extraction:
+an erasure of $\CICm$ terms into an untyped functional calculus $\lbox$.
+The calculus and the erasure function follow
+\cite[Ch.~2]{Letouzey2004}, with two simplifications licensed by our
+setting.  First, since the target of the overall translation is an
+equational theory rather than a programming language with an evaluation
+order, erased arguments can simply be \emph{dropped} instead of being
+replaced by a dummy constant with dummy abstractions retained: the
+evaluation-order problems that force Letouzey to keep dummy
+$\lambda$-abstractions \cite[\S 2.1]{Letouzey2004} concern strict
+evaluation of extracted code, and no code is run here.  (The same
+simplification would be unsound for well-founded recursion, which is
+excluded from $\CICm$; see \cref{sec:limitations-wf}.)  Second, the
+singleton eliminations and refinement unboxing are already primitive in
+$\CICm$, so their erasure clauses are structural.
+
+\subsection{The calculus \texorpdfstring{$\lbox$}{lambda-box}}
+
+\begin{definition}[Syntax of $\lbox$]
+\label{def:lbox-syntax}
+Fix the datatype constructors $\wcns{c}$ (with their arities $r$) and the
+term-definition constants $c$ of a $\CICm$ environment $\Env$, and a
+distinguished constant $\bx$ (``dead code'').  The terms of $\lbox$ are
+\[
+  e \Coloneqq x \mid c \mid \bx \mid \lambda x.e \mid e\,e'
+    \mid \wcns{c}(e_1, \dots, e_r)
+    \mid \mathsf{case}(e;\, \{\wcns{c}_i(\tup{x}_i) \Rightarrow e_i\}_i)
+    \mid \mathsf{fix}\,f.\,e
+\]
+where constructors are fully applied and a case expression carries one
+branch for each constructor of the datatype of its constructors.
+\end{definition}
+
+\begin{definition}[Reduction of $\lbox$]
+\label{def:lbox-red}
+The relation $\lred$ is the contextual closure of:
+\begin{align*}
+  (\lambda x.e)\,e' &\lred \subst{e}{e'}{x}
+  &&(\beta)\\
+  \mathsf{case}(\wcns{c}_i(\tup{e});\, \{\wcns{c}_j(\tup{x}_j) \Rightarrow
+    e_j\}_j) &\lred \subst{e_i}{\tup{e}}{\tup{x}_i}
+  &&(\iota)\\
+  \mathsf{fix}\,f.\,e &\lred \subst{e}{\mathsf{fix}\,f.e}{f}
+  &&(\mu)\\
+  c &\lred \erase{t} \quad \text{if } (c \defeq t : \sigma) \in \Env
+  &&(\delta)
+\end{align*}
+where $\erasef$ is the erasure of \cref{def:erasure} (the $\delta$-rule is
+well defined because the body of $c$ mentions only constants declared
+before $c$).  We write $\lconv$ for the least congruence containing
+$\lred$ ($\lbox$-conversion).
+\end{definition}
+
+The four rule families have pairwise distinct, non-overlapping, left-linear
+redex shapes with rigid heads; $\lbox$ is an orthogonal higher-order
+rewrite system.  We prove confluence directly:
+
+\begin{theorem}[Confluence of $\lbox$]
+\label{thm:confluence}
+The relation $\lred$ is confluent: if $e \lreds e_1$ and $e \lreds e_2$
+then there is $e'$ with $e_1 \lreds e'$ and $e_2 \lreds e'$.
+Consequently, $e_1 \lconv e_2$ if and only if $e_1$ and $e_2$ have a
+common $\lreds$-reduct.
+\end{theorem}
+
+\begin{proof}
+By the Tait--Martin-L{\"o}f parallel-reduction method in Takahashi's
+formulation; the full proof is in \cref{sec:confluence}.  Alternatively,
+$\lbox$ is an orthogonal combinatory reduction system, so confluence
+follows from Klop's general theorem \cite{Klop1980}.
+\end{proof}
+
+\begin{corollary}[Constructor discrimination and injectivity]
+\label{cor:discrimination}
+Let $\wcns{c}, \wcns{d}$ be constructors.
+\begin{enumerate}[leftmargin=2em]
+\item If $\wcns{c}(\tup{e}) \lconv \wcns{d}(\tup{e}')$ then $\wcns{c} =
+  \wcns{d}$ and $e_i \lconv e'_i$ for all $i$.
+\item An application $e_1\,e_2$ in which $e_1$ is normal and not a
+  $\lambda$-abstraction (for instance $e_1 = \wcns{c}(\tup{e})$ with
+  $\tup{e}$ normal) is not convertible to any constructor form
+  $\wcns{d}(\tup{e}')$.
+\end{enumerate}
+\end{corollary}
+
+\begin{proof}
+(1) Constructor-headed terms only reduce internally: every reduct of
+$\wcns{c}(\tup{e})$ has the form $\wcns{c}(\tup{e}'')$ with $e_i \lreds
+e''_i$.  By \cref{thm:confluence}, $\wcns{c}(\tup{e})$ and
+$\wcns{d}(\tup{e}')$ have a common reduct, which is then simultaneously
+$\wcns{c}$-headed and $\wcns{d}$-headed, forcing $\wcns{c} = \wcns{d}$;
+its arguments are common reducts of the respective $e_i, e'_i$.
+(2) Such an application is $\lred$-normal apart from reductions inside
+$e_1$ and $e_2$, which preserve the application shape (the head stays
+normal and non-$\lambda$, so no $\beta$, $\iota$, $\mu$ or $\delta$ redex
+ever appears at the root); a common reduct with a constructor form is
+impossible as in (1).
+\end{proof}
+
+\subsection{Erasure}
+
+\begin{definition}[Erasure]
+\label{def:erasure}
+The function $\erasef$ from $\CICm$ terms to $\lbox$ terms is defined by
+structural recursion:
+\begin{align*}
+  \erase{x} &= x
+  & \erase{c} &= c
+  \\
+  \erase{t\,a} &= \erase{t}\,\erase{a}
+  & \erase{t\,\pi} &= \erase{t}
+  \\
+  \erase{\lambda x{:}\sigma.t} &= \lambda x.\erase{t}
+  & \erase{\lambda p{:}\varphi.t} &= \erase{t}
+  \\
+  \erase{\wcns{c}(\tup{a})} &= \wcns{c}(\erase{\tup{a}})
+  & \erase{\tfix\,f{:}T.t} &= \mathsf{fix}\,f.\erase{t}
+  \\
+  \erase{\tcase{a}{z.\tau}{\{\wcns{c}_i(\tup{y}_i) \Rightarrow t_i\}_i}}
+    &\mathrlap{{}= \mathsf{case}(\erase{a};\,
+       \{\wcns{c}_i(\tup{y}_i) \Rightarrow \erase{t_i}\}_i)}
+  \\
+  \erase{\trefine{t}{\pi}} &= \erase{t}
+  & \erase{\tval{t}} &= \erase{t}
+  \\
+  \erase{\tsplit{\pi}{p_1 p_2.t}} &= \erase{t}
+  & \erase{\tcast{\pi}{z.\tau}{t}} &= \erase{t}
+  \\
+  \erase{\texfalso{\pi}{\sigma}} &= \bx
+\end{align*}
+\end{definition}
+
+Note what the clauses say: propositional arguments and abstractions vanish
+without residue; refinement values unbox to their informative component;
+matches on conjunctions and transports along equations collapse to the
+translated branch; $\bot$-elimination is dead code.  Proofs are never
+inspected --- $\erasef$ does not recurse into the category of proofs at
+all --- which is the syntactic form of proof irrelevance.
+
+Because $\erasef$ ignores proofs, types and annotations, the following two
+lemmas are direct.
+
+\begin{lemma}[Erasure commutes with substitution]
+\label{lem:erase-subst}
+$\erase{\subst{t}{a}{x}} = \subst{\erase{t}}{\erase{a}}{x}$;\quad
+$\erase{\subst{t}{\pi}{p}} = \erase{t}$;\quad
+$\erase{\subst{t}{P}{q}} = \erase{t}$.
+\end{lemma}
+
+\begin{proof}
+Induction on $t$.  For the first equation the only interesting cases are
+the ones in which $t$ mentions $x$: the variable case is immediate, and
+all other cases follow from the induction hypothesis because $\erasef$ is
+homomorphic in exactly the informative positions and substitution acts
+pointwise on them.  For the second equation, observe that $p$ can occur in
+$t$ only inside proof positions or annotations, which $\erasef$ discards;
+similarly for the third ($q$ occurs only inside propositions, predicate
+positions and annotations).
+\end{proof}
+
+\begin{lemma}[Erasure simulates reduction]
+\label{lem:erase-sim}
+If $t \red u$ then $\erase{t} \lred \erase{u}$ or $\erase{t} =
+\erase{u}$.  Consequently $t \conv u$ implies $\erase{t} \lconv
+\erase{u}$.
+\end{lemma}
+
+\begin{proof}
+By induction on the derivation of $t \red u$.  For root steps:
+\begin{itemize}[leftmargin=2em]
+\item $(\lambda x{:}\sigma.t)\,a \red \subst{t}{a}{x}$: the erasure of the
+  left side is $(\lambda x.\erase{t})\,\erase{a}$, which $\beta$-reduces to
+  $\subst{\erase{t}}{\erase{a}}{x} = \erase{\subst{t}{a}{x}}$ by
+  \cref{lem:erase-subst}.
+\item $(\lambda p{:}\varphi.t)\,\pi \red \subst{t}{\pi}{p}$: both sides
+  erase to $\erase{t}$ by \cref{lem:erase-subst}; zero steps.
+\item $\iota$: erases to an $\iota$-step, using \cref{lem:erase-subst} for
+  the branch instantiation.
+\item $\mu$ (fixpoint unfolding) and $\delta$: erase to the corresponding
+  $\lbox$ steps, again via \cref{lem:erase-subst} (for $\delta$, by the
+  definition of the $\delta$-rule of $\lbox$).
+\item the singleton rules
+  $\tval{\trefine{t}{\pi}} \red t$ \ and \
+  $\tcast{\mathsf{refl}}{z.\tau}{t} \red t$ \ and \
+  $\tsplit{\langle\pi_1,\pi_2\rangle}{p_1p_2.t} \red
+  \subst{t}{\pi_1,\pi_2}{p_1,p_2}$: both sides erase to
+  $\erase{t}$ (using \cref{lem:erase-subst} for the proof substitutions);
+  zero steps.
+\end{itemize}
+For congruence steps: a step inside an informative position maps to a step
+(or equality) in the corresponding position of the erasure by the
+induction hypothesis; a step inside a proof, type, proposition or
+annotation position leaves the erasure unchanged.  The consequence for
+$\conv$ follows because $\lconv$ is reflexive, symmetric, transitive and
+contains $\lred$.
+\end{proof}
+
+\begin{remark}
+\Cref{lem:erase-sim} is the equational shadow of extraction correctness
+\cite[\S 2.3]{Letouzey2004}: source computation is simulated by target
+computation.  The semantic half of extraction correctness --- the
+extracted term \emph{realizes} its type --- becomes, in our setting, the
+fundamental lemma of \cref{sec:soundness} (\cref{lem:fundamental}), with
+Letouzey's simulation predicates $\sem{\tau}$ replaced by the
+interpretations $\semr{\tau}{\rho}$ of \cref{sec:semantics}.
+\end{remark}

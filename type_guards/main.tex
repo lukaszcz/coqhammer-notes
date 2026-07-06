@@ -1,0 +1,69 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue!60!black,citecolor=green!40!black,urlcolor=blue!60!black]{hyperref}
+\usepackage[capitalize,noabbrev]{cleveref}
+
+\input{macros}
+
+\title{Sound Omission of Type Guards and Type Arguments\\
+  in Hammer Translations of Dependent Type Theory\\
+  to Untyped First-Order Logic}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+  Hammer-style automation for proof assistants based on the Calculus of
+  Inductive Constructions (CIC) translates goals and premises into untyped
+  first-order logic and discharges them with automated theorem provers.  The
+  standard translation relativizes every quantifier with a \emph{type guard}
+  $\T(x,\tau)$ and applies every polymorphic constant to explicit \emph{type
+  arguments}; both are a major source of clause bloat and are known to degrade
+  automated-prover performance.  We formulate precise, syntactic criteria for
+  omitting (i)~type guards whose bodies are \emph{covered} by a hypothesis
+  atom that forces the type of the guarded variable (so that, e.g.,
+  $\forall x.\ \T(x,\mathit{nat}) \imp \mathit{Even}(x) \imp \phi$ may be
+  replaced by $\forall x.\ \mathit{Even}(x) \imp \phi$), and (ii)~type
+  arguments of function and constructor symbols that are recoverable from the
+  type of a retained term argument (so that $\mathit{cons}(\alpha,x,l)$ may be
+  replaced by $\mathit{cons}(x,l)$ while $\mathit{nil}(\alpha)$ must keep its
+  argument).  We prove both criteria sound, and the guard criterion moreover
+  conservative, with respect to a polymorphic first-order fragment of CIC with
+  inductive types and inductive predicates.  Soundness is established
+  model-theoretically: from any many-sorted model of the source theory we
+  construct an untyped model with explicit ill-typed (``junk'') elements that
+  validates the translation together with a set of \emph{typehood-completion
+  axioms}; guard omission is then a logical equivalence relative to the
+  completion axioms, and type-argument erasure preserves truth in the
+  constructed model.  We further show the criteria are tight: relaxing any of
+  their clauses admits translations that derive goals false in the source
+  theory.  The criteria are directly implementable as a post-processing pass
+  over the clause forms produced by existing hammer translations.
+\end{abstract}
+
+\tableofcontents
+
+\input{sections/intro}
+\input{sections/overview}
+\input{sections/prelim}
+\input{sections/fragment}
+\input{sections/translation}
+\input{sections/guards}
+\input{sections/typeargs}
+\input{sections/tightness}
+\input{sections/related}
+
+\bibliographystyle{alpha}
+\bibliography{refs}
+
+\end{document}

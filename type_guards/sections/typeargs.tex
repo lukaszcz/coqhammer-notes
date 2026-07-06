@@ -1,0 +1,307 @@
+\section{Type-argument omission}
+\label{sec:typeargs}
+
+We now treat the second optimization: erasing type arguments of function
+and constructor symbols.  The criterion is a condition on declared types;
+soundness is proved by constructing an intended model of the \emph{erased}
+signature in which the omitted arguments are recovered --- uniquely ---
+from the tags of the term arguments.
+
+\subsection{Criterion and erased translation}
+
+\begin{definition}[Erasable positions]
+  \label{def:erasable}
+  Let $h \in \Constr \cup \Fun$ with declared type
+  $\forall\seq{\alpha}{k_h}.\ \tau^h_1 \times \dots \times \tau^h_{m_h}
+  \arr \tau^h_0$.  A type-argument position $j \le k_h$ is
+  \emph{erasable} if $\alpha_j \in \ftv{\tau^h_i}$ for some \emph{term}
+  position $1 \le i \le m_h$.  An \emph{erasure policy} $\Er$ assigns to
+  every $h \in \Constr \cup \Fun$ a set $\Er(h)$ of erasable positions of
+  $h$ (any subset; the identity policy $\Er \equiv \emptyset$ recovers
+  \cref{sec:translation,sec:guards}).  Predicate symbols and type formers
+  are never erased.
+\end{definition}
+
+Thus for $\mathit{cons} : \forall\alpha.\ \alpha \times
+\mathit{list}(\alpha) \arr \mathit{list}(\alpha)$ position $1$ is
+erasable ($\alpha$ occurs in both argument types); for
+$\mathit{nil} : \forall\alpha.\ () \arr \mathit{list}(\alpha)$ it is not
+($m_{\mathit{nil}} = 0$); for a phantom constant
+$g : \forall\alpha.\ \mathit{nat} \arr \mathit{nat}$ it is not
+($\alpha$ occurs in no argument type, only vacuously).  Occurrences in the
+\emph{result} type $\tau^h_0$ do not count; \cref{prop:tight-nil} shows
+they must not.
+
+\begin{remark}[Rigidity]
+  \label{rem:rigidity}
+  In \Frag, types are first-order terms over $\Ind$, so every occurrence
+  of $\alpha_j$ in $\tau^h_i$ is \emph{rigid}: it sits under inductive
+  type formers only, and \cref{lem:subst-inj} below exploits exactly this.
+  In richer calculi the criterion must additionally require rigidity of
+  the occurrence --- not under a defined type-level function, a binder, or
+  a match --- since e.g.\ a type function $F$ with $F(\mathit{nat}) =
+  F(\mathit{bool})$ destroys the injectivity that inference relies on.
+\end{remark}
+
+\begin{lemma}[Injectivity of type substitution]
+  \label{lem:subst-inj}
+  Let $\sigma \in \Ty{\{\tup\alpha\}}$ with $\alpha_j \in \ftv{\sigma}$,
+  and let $\tup\tau, \tup\tau' \in \GTy^{k}$.  If
+  $\sigma[\tup\tau/\tup\alpha] = \sigma[\tup\tau'/\tup\alpha]$ then
+  $\tau_j = \tau'_j$.
+\end{lemma}
+
+\begin{proof}
+  Induction on $\sigma$.  If $\sigma = \alpha_j$ the claim is the
+  hypothesis.  $\sigma$ cannot be another variable (then
+  $\alpha_j \notin \ftv{\sigma}$).  If $\sigma = I(\tup\sigma)$ then
+  $\alpha_j \in \ftv{\sigma_l}$ for some $l$, and equality of the two
+  instances gives, since $\GTy$ is a free term algebra, componentwise
+  equality $\sigma_l[\tup\tau/\tup\alpha] =
+  \sigma_l[\tup\tau'/\tup\alpha]$; apply the induction hypothesis.
+\end{proof}
+
+\begin{lemma}[Uniqueness of inferred type arguments]
+  \label{lem:inference-unique}
+  Let $h \in \Constr\cup\Fun$ and let
+  $\tup\tau, \tup\tau' \in \GTy^{k_h}$ satisfy $\tau_j = \tau'_j$ for all
+  $j \notin \Er(h)$ and
+  $\tau^h_i[\tup\tau/\tup\alpha] = \tau^h_i[\tup\tau'/\tup\alpha]$ for
+  all $1 \le i \le m_h$.  Then $\tup\tau = \tup\tau'$.
+\end{lemma}
+
+\begin{proof}
+  For $j \in \Er(h)$, by \cref{def:erasable} pick $i$ with
+  $\alpha_j \in \ftv{\tau^h_i}$ and apply \cref{lem:subst-inj} to
+  $\sigma = \tau^h_i$.  For $j \notin \Er(h)$ the components agree by
+  assumption.
+\end{proof}
+
+This is the fragment counterpart of the ``inferable type argument''
+uniqueness lemma of Blanchette et
+al.~\cite{BlanchetteBohmePopescuSmallbone2016}; in our setting it is a
+two-line consequence of the freeness of the type algebra, which is
+precisely what \cref{rem:rigidity} preserves.
+
+\begin{definition}[Erased signature and translation]
+  \label{def:erased-translation}
+  The signature $\SigE$ is $\Sig$ with each $\hat h$
+  ($h \in \Constr \cup \Fun$) replaced by $\hat h_\eps$ of arity
+  $(k_h - |\Er(h)|) + m_h$; predicate symbols, $\T$, $\TypeC$ and the
+  $\hat I$ are unchanged.  The erasure map $\eps$ on $\Sig$-terms and
+  formulas is the homomorphic extension of
+  \[
+    \eps\bigl(\hat h(\seq{s}{k_h}, \tup t)\bigr) \defeq
+    \hat h_\eps\bigl(\restr{\tup{\eps(s)}}{\notin\Er(h)},\
+    \eps(\tup t)\bigr),
+  \]
+  where $\restr{\cdot}{\notin\Er(h)}$ keeps the components at non-erased
+  positions in order.  The \emph{erased problem} for $(\Env, \phi_0)$ is
+  \[
+    \AxE \cup \Comp \cup \{\neg\, \eps(\enc{\phi_0})\},
+    \qquad
+    \AxE \defeq \eps(\mathrm{TA}) \cup \mathrm{ID}_\eps \cup
+    \eps\bigl(\enc{\mathrm{Prem}(\Env)} \cup
+    \enc{\StructAx_\exists}\bigr),
+  \]
+  where $\mathrm{ID}_\eps$ contains, for each constructor $c$, the
+  injectivity axiom
+  \[
+    \forall\dots\
+    \hat c_\eps(\restr{\tup\alpha}{\notin\Er(c)}, \tup x) =
+    \hat c_\eps(\restr{\tup\alpha'}{\notin\Er(c)}, \tup x') \imp
+    \textstyle\bigwedge_{j \notin \Er(c)} \alpha_j = \alpha'_j \wedge
+    \bigwedge_i x_i = x'_i
+  \]
+  --- the equality conjuncts at \emph{erased} positions are dropped ---
+  and the discrimination axioms with erased argument lists.  Note
+  $\eps(\Comp) = \Comp$: completion axioms mention only predicate atoms,
+  $\T$, and translated types, none of which are touched by $\eps$.
+\end{definition}
+
+The special-casing of $\mathrm{ID}_\eps$ is forced: the blind erasure of
+the injectivity axiom would retain a conjunct $\alpha_j = \alpha'_j$
+whose variables no longer occur in the antecedent, yielding a sentence
+that entails $\forall \alpha\,\alpha'.\ \alpha = \alpha'$ and is false in
+every model with more than one element.  Erasure removes exactly the
+parameter-injectivity claims that the omitted arguments used to carry.
+
+\subsection{The erased intended models}
+
+Fix $\NN \models \Th$.  The structure $\MNe$ is built by the same recipe
+as $\MN$ (\cref{def:domain,def:MN}), over the signature $\SigE$: the
+domain is $\Dom_\eps \defeq \Dom_0 \uplus \Junk_\eps$ with $\Dom_0$
+unchanged and $\Junk_\eps$ the free junk universe over the
+$\SigE$-symbols, and $\TypeC$, the $\hat I$, $\T$ and the $\hat p$ are
+interpreted verbatim as in \cref{def:MN}.  Only the erased function
+symbols need a new clause:
+
+\begin{definition}[Interpretation of erased symbols]
+  \label{def:MNe}
+  For $h \in \Constr \cup \Fun$ let
+  $n \defeq k_h - |\Er(h)|$ and let
+  $\tup e \in \Dom_\eps^{\,n}$, $\tup d \in \Dom_\eps^{\,m_h}$.  Say that
+  $\tup\tau \in \GTy^{k_h}$ \emph{matches} $(\tup e, \tup d)$ if
+  $\restr{\tup\tau}{\notin\Er(h)} = \tup e$ (in particular each
+  $e_l \in \GTy$) and
+  $d_i = (\tau^h_i[\tup\tau/\tup\alpha], a_i)$ with
+  $a_i \in \NN_{\tau^h_i[\tup\tau/\tup\alpha]}$ for all $i \le m_h$.  By
+  \cref{lem:inference-unique} at most one $\tup\tau$ matches.  Define
+  \[
+    \hat h_\eps^{\MNe}(\tup e, \tup d) \defeq
+    \begin{cases}
+      \bigl(\tau^h_0[\tup\tau/\tup\alpha],\
+            h^{\NN}_{\tup\tau}(\tup a)\bigr)
+      & \text{if some (unique) } \tup\tau \text{ matches } (\tup e,\tup d),\\
+      (\hat h_\eps, \tup e\,\tup d) \in \Junk_\eps & \text{otherwise.}
+    \end{cases}
+  \]
+\end{definition}
+
+\begin{lemma}[Erased denotation and relativization]
+  \label{lem:erasure-relativization}
+  Let $\phi, t, \sigma$ be well formed in $(V;\Gamma)$, let
+  $\theta : V \arr \GTy$ and let $v$ be a proper valuation, with
+  $w_{\theta,v}$ as before (now valued in $\Dom_\eps$).  Then:
+  \begin{enumerate}[label=(\roman*)]
+  \item $\den{\enc{\sigma}}{\MNe, w_{\theta,v}} = \sigma\theta$, and
+    $\den{\eps(\enc{t})}{\MNe, w_{\theta,v}} =
+    (\tau\theta, \den{t\theta}{\NN,v})$ where $\tau$ is the type of $t$;
+  \item for type-quantifier-free $\phi$:\ \
+    $\MNe, w_{\theta,v} \models \eps(\enc{\phi})$ iff
+    $\NN, v \models \phi\theta$; and for every sentence $\phi_0$:
+    $\MNe \models \eps(\enc{\phi_0})$ iff $\NN \entg \phi_0$.
+  \end{enumerate}
+\end{lemma}
+
+\begin{proof}
+  (i) Types are unchanged by $\eps$ and their denotation clause is
+  verbatim that of $\MN$; the first claim is \cref{lem:denotation}'s
+  type part.  For terms, induction:\ the variable case is the definition
+  of $w_{\theta,v}$.  For $t = h\langle\tup\sigma\rangle(\tup t)$, the
+  retained type arguments denote
+  $\restr{\tup\sigma\theta}{\notin\Er(h)}$ and, by the induction
+  hypothesis, the term arguments denote
+  $(\tau^h_i[\tup\sigma\theta/\tup\alpha], \den{t_i\theta}{\NN,v})$.
+  Hence $\tup\tau \defeq \tup\sigma\theta$ matches, is the unique match,
+  and the first clause of \cref{def:MNe} returns
+  $(\tau^h_0[\tup\sigma\theta/\tup\alpha],
+  \den{(h\langle\tup\sigma\rangle(\tup t))\theta}{\NN,v})$ as required.
+
+  (ii) The induction of \cref{lem:relativization} goes through verbatim:
+  atoms and equations use (i) (predicate atoms are untouched by $\eps$
+  except inside their argument terms), the guard analysis in the
+  quantifier cases uses only $\T$, $\TypeC$ and type denotations, which
+  are unchanged.
+\end{proof}
+
+\begin{theorem}[Model correctness, erased]
+  \label{thm:erased-correct}
+  $\MNe \models \AxE \cup \Comp$.
+\end{theorem}
+
+\begin{proof}
+  \emph{$\eps(\mathrm{TA})$.}  Consider the erased typing axiom of $h$;
+  its quantifier prefix and guards are unchanged (all $k_h$ type
+  variables are still quantified and guarded --- only the term
+  $\hat h(\tup\alpha, \tup x)$ shrank).  Assume the guards under a
+  valuation $w$: then $w(\tup\alpha) = \tup\tau \in \GTy^{k_h}$ and
+  $w(x_i) = (\tau^h_i[\tup\tau/\tup\alpha], a_i)$ as in the proof of
+  \cref{thm:base-soundness}(T1).  Then $\tup\tau$ matches
+  $(\restr{\tup\tau}{\notin\Er(h)}, w(\tup x))$, so
+  $\hat h_\eps^{\MNe}$ returns
+  $(\tau^h_0[\tup\tau/\tup\alpha], h^{\NN}_{\tup\tau}(\tup a))$ and the
+  conclusion $\T$-atom holds.  The $\hat I$ axioms are unchanged.
+
+  \emph{$\mathrm{ID}_\eps$.}  As in \cref{thm:base-soundness}(T2), with
+  three cases on the two values.  If both are proper, their tags are
+  $I(\tup\tau)$ and $I(\tup\tau')$ for the (unique) matching full
+  instantiations; equality of tags gives $\tup\tau = \tup\tau'$, whence
+  the retained conjuncts $\alpha_j = \alpha'_j$ ($j \notin \Er(c)$,
+  components of $\tup\tau, \tup\tau'$) and, via $\NN \entg$ (S1),
+  $\tup x = \tup x'$.  If both are junk, freeness of $\Junk_\eps$ gives
+  componentwise equality of the (erased) argument tuples, which contains
+  every retained conjunct.  Mixed cases falsify the antecedent.
+  Discrimination: distinct heads or (S2) as before.
+
+  \emph{$\eps$ of translated sentences.}  Each is
+  $\eps(\enc{\phi})$ with $\NN \entg \phi$; apply
+  \cref{lem:erasure-relativization}(ii).
+
+  \emph{$\Comp$.}  The interpretations of $\hat p$, $\T$, $\TypeC$,
+  $\hat I$ in $\MNe$ are those of \cref{def:MN}, so the proofs of (C1)
+  and (C2) in \cref{thm:base-soundness} apply unchanged.
+\end{proof}
+
+\subsection{Soundness and composition}
+
+\begin{theorem}[Soundness of type-argument omission]
+  \label{thm:erasure-soundness}
+  For every erasure policy $\Er$: if
+  $\AxE \cup \Comp \cup \{\neg\,\eps(\enc{\phi_0})\}$ is unsatisfiable,
+  then $\Th \entg \phi_0$.
+\end{theorem}
+
+\begin{proof}
+  Contrapositive, as in \cref{thm:base-soundness-end}: from
+  $\NN \models \Th$ with $\NN \not\entg \phi_0$,
+  \cref{thm:erased-correct} and \cref{lem:erasure-relativization}(ii)
+  exhibit $\MNe$ as a model of the erased problem.
+\end{proof}
+
+\begin{theorem}[Composition]
+  \label{thm:composition}
+  All results of \cref{sec:guards} hold verbatim for the erased problem:
+  the typing consequences $\tc{\cdot}$, covers, and the judgments
+  $\jt/\jf$ are read over $\SigE$ with the \emph{same} defining clauses
+  (predicate atoms retain their full argument lists, and $\T$-atoms their
+  translated types, so \cref{def:tc} is unchanged), and any optimized
+  problem obtained from $\AxE \cup \Comp \cup \{\neg\eps(\enc{\phi_0})\}$
+  by the steps of \cref{def:admissible} satisfies: unsatisfiability
+  implies $\Th \entg \phi_0$.  Moreover \cref{cor:no-loss} holds for the
+  erased problem.
+\end{theorem}
+
+\begin{proof}
+  \Cref{lem:strictness,lem:junk,thm:guard-equivalence,lem:replacement,%
+lem:expansion,prop:simultaneous} are statements about arbitrary
+  structures satisfying $\Comp$ and never mention the function symbols
+  $\hat h$; they hold over $\SigE$ with identical proofs.  The soundness
+  argument of \cref{thm:guards-sound} then runs with $\MNe$ in place of
+  $\MN$, using $\MNe \models \Comp$ (\cref{thm:erased-correct}) and
+  \cref{lem:erasure-relativization}(ii) for the goal.
+  \Cref{cor:no-loss}'s proof is signature-independent.
+\end{proof}
+
+\begin{remark}[Why predicates are not erased]
+  \label{rem:no-pred-erasure}
+  The composition theorem depends on predicates keeping their type
+  arguments: the completion axiom
+  $\forall\tup\alpha\,\tup x.\ \hat p(\tup\alpha, \tup x) \imp
+  \T(x_i, \enc{\tau^p_i})$ mentions $\tup\alpha$ on both sides, and
+  erasing $\hat p$'s type arguments would leave a completion ``axiom''
+  quantifying a type variable occurring only in the conclusion --- which
+  is false in the natural erased interpretation of $\hat p$ (an atom
+  $\hat p_\eps(\tup x)$ can only assert \emph{existence} of a matching
+  instance, not pin the specific $\tup\alpha$).  Covers, and with them
+  the entire guard-omission apparatus, would silently lose their
+  justification; \cref{prop:tight-pred-erasure} shows the resulting
+  system is actually unsound, not merely unproven.  Since atom sizes are
+  not where ATP term-indexing pain concentrates (term bloat lives in
+  constructor and function spines inside equations), restricting erasure
+  to $\Constr \cup \Fun$ costs little.
+\end{remark}
+
+\begin{remark}[Choosing the policy]
+  \label{rem:policy}
+  \Cref{thm:erasure-soundness,thm:composition} hold for \emph{every}
+  $\Er$ within the erasable positions, so an implementation is free to
+  erase fewer arguments than allowed --- e.g.\ to intersect the erasable
+  positions with the positions the proof assistant itself marks as
+  implicit, which matches user-visible syntax and keeps translated
+  problems readable.  What it must not do is treat implicitness as the
+  criterion: elaboration also infers \emph{result-only} arguments (those
+  of $\mathit{nil}$) from the expected type, an information channel with
+  no counterpart at a first-order term occurrence
+  (\cref{prop:tight-nil}).
+\end{remark}

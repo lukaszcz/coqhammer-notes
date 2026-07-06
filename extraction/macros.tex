@@ -1,0 +1,112 @@
+% Macros and theorem environments.
+
+% ---------- Theorem environments ----------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{fact}[theorem]{Fact}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{convention}[theorem]{Convention}
+\newtheorem{assumption}[theorem]{Assumption}
+\newtheorem{notation}[theorem]{Notation}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% Semantic brackets without stmaryrd.
+\newcommand{\llbracket}{[\![}
+\newcommand{\rrbracket}{]\!]}
+
+% ---------- The source calculus ----------
+\newcommand{\CIC}{\ensuremath{\mathrm{CIC}}}
+\newcommand{\CICm}{\ensuremath{\CIC^{-}}}
+\newcommand{\Prop}{\ensuremath{\mathsf{Prop}}}
+\newcommand{\Set}{\ensuremath{\mathsf{Set}}}
+\newcommand{\Env}{\ensuremath{\mathbb{E}}}             % global environment
+\newcommand{\emptyEnv}{\ensuremath{\langle\rangle}}
+\newcommand{\wf}{\ensuremath{\;\mathsf{wf}}}
+\newcommand{\styp}{\ensuremath{\;\mathsf{type}}}       % set-type wf judgement
+\newcommand{\sprop}{\ensuremath{\;\mathsf{prop}}}      % proposition wf judgement
+\newcommand{\skind}[1]{\ensuremath{\;\mathsf{pred}(#1)}} % predicate wf judgement
+\newcommand{\fv}[1]{\ensuremath{\mathrm{FV}(#1)}}
+\newcommand{\dom}[1]{\ensuremath{\mathrm{dom}(#1)}}
+
+% Term formers
+\newcommand{\tcase}[3]{\ensuremath{\mathsf{case}(#1;\,#2;\,#3)}}
+\newcommand{\tfix}{\ensuremath{\mathsf{fix}}}
+\newcommand{\trefine}[2]{\ensuremath{\mathsf{refine}(#1,#2)}}
+\newcommand{\tval}[1]{\ensuremath{\mathsf{val}(#1)}}
+\newcommand{\tvalid}[1]{\ensuremath{\mathsf{valid}(#1)}}
+\newcommand{\tsplit}[2]{\ensuremath{\mathsf{split}(#1;\,#2)}}
+\newcommand{\tcast}[3]{\ensuremath{\mathsf{cast}(#1;\,#2;\,#3)}}
+\newcommand{\texfalso}[2]{\ensuremath{\mathsf{efq}(#1;\,#2)}}
+\newcommand{\tind}[1]{\ensuremath{\mathsf{ind}_{#1}}}
+\newcommand{\refty}[2]{\ensuremath{\{#1 \mid #2\}}}
+
+% Reduction / conversion
+\newcommand{\red}{\ensuremath{\rightarrow}}
+\newcommand{\reds}{\ensuremath{\rightarrow^{*}}}
+\newcommand{\conv}{\ensuremath{\simeq}}                % source conversion
+
+% ---------- The intermediate language ----------
+\newcommand{\lbox}{\ensuremath{\lambda_{\square}}}
+\newcommand{\bx}{\ensuremath{\square}}
+\newcommand{\lred}{\ensuremath{\rightarrow_{\square}}}
+\newcommand{\lreds}{\ensuremath{\rightarrow_{\square}^{*}}}
+\newcommand{\lconv}{\ensuremath{=_{\square}}}
+\newcommand{\erase}[1]{\ensuremath{\mathcal{E}(#1)}}
+\newcommand{\erasef}{\ensuremath{\mathcal{E}}}
+
+% ---------- The translation ----------
+\newcommand{\SigFOL}{\ensuremath{\Sigma_{\Env}}}
+\newcommand{\comp}[1]{\ensuremath{\mathcal{C}(#1)}}    % term translation
+\newcommand{\compf}{\ensuremath{\mathcal{C}}}
+\newcommand{\F}[1]{\ensuremath{\mathcal{F}(#1)}}       % proposition translation
+\newcommand{\Ff}{\ensuremath{\mathcal{F}}}
+\newcommand{\guard}[2]{\ensuremath{\mathcal{G}_{#1}(#2)}} % type -> guard formula
+\newcommand{\guardf}{\ensuremath{\mathcal{G}}}
+\newcommand{\spec}[2]{\ensuremath{\mathcal{S}_{#1}(#2)}}  % spec of a constant
+\newcommand{\specf}{\ensuremath{\mathcal{S}}}
+\newcommand{\Th}{\ensuremath{\Delta}}                  % the FOL theory
+\newcommand{\ThE}{\ensuremath{\Delta(\Env,G)}}
+\newcommand{\fapp}{\ensuremath{\mathbin{@}}}
+\newcommand{\prfc}{\ensuremath{\odot}}                 % FOL proof constant
+\newcommand{\feq}{\ensuremath{\approx}}                % FOL equality
+\newcommand{\Ihat}[1]{\ensuremath{\widehat{#1}}}       % FOL symbol for source name
+\newcommand{\provesfol}{\ensuremath{\vdash_{\mathrm{FOL}}}}
+\newcommand{\Sfrag}{\ensuremath{\mathfrak{S}}}         % shallow fragment
+
+% ---------- Semantics ----------
+\newcommand{\Dom}{\ensuremath{\mathcal{D}}}
+\newcommand{\cls}[1]{\ensuremath{[#1]}}                % conversion class
+\newcommand{\sem}[1]{\ensuremath{\llbracket #1 \rrbracket}}   % set-type semantics
+\newcommand{\semr}[2]{\ensuremath{\llbracket #1 \rrbracket_{#2}}}
+\newcommand{\pv}[1]{\ensuremath{\langle #1 \rangle}}   % proposition truth value
+\newcommand{\pvr}[2]{\ensuremath{\langle #1 \rangle_{#2}}}
+\newcommand{\kv}[1]{\ensuremath{(\!| #1 |\!)}}         % predicate-expression semantics
+\newcommand{\kvr}[2]{\ensuremath{(\!| #1 |\!)_{#2}}}
+\newcommand{\ML}{\ensuremath{\mathfrak{M}}}            % the model
+\newcommand{\rank}[2]{\ensuremath{\mathrm{rk}_{#1}(#2)}}
+\newcommand{\stage}[2]{\ensuremath{\llbracket #1 \rrbracket^{#2}}}
+\newcommand{\den}[2]{\ensuremath{#1^{\ML,#2}}}         % FOL denotation
+
+% ---------- Inference rules (no mathpartir dependency) ----------
+\newcommand{\rul}[2]{\dfrac{\begin{array}{@{}c@{}}#1\end{array}}{\begin{array}{@{}c@{}}#2\end{array}}}
+\newcommand{\rname}[1]{\textsc{\scriptsize #1}}
+
+% ---------- Misc ----------
+\newcommand{\subst}[3]{\ensuremath{#1[#2/#3]}}
+\newcommand{\tup}[1]{\ensuremath{\vec{#1}}}
+\newcommand{\defeq}{\ensuremath{\mathrel{:=}}}
+\newcommand{\wcns}[1]{\ensuremath{\mathsf{#1}}}        % concrete constructor names
+\newcommand{\csO}{\wcns{O}}
+\newcommand{\csS}{\wcns{S}}
+\newcommand{\cstrue}{\wcns{true}}
+\newcommand{\csfalse}{\wcns{false}}
+\newcommand{\nat}{\ensuremath{\mathsf{nat}}}
+\newcommand{\bool}{\ensuremath{\mathsf{bool}}}

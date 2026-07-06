@@ -1,0 +1,289 @@
+\section{Signature specialisation}
+\label{sec:specialization}
+
+After monomorphisation with the \emph{drop} policy, the guard
+structure of the problem is ground: every $\hastype$-atom has a
+closed type encoding as its second argument.  The problem is
+nevertheless still written in the ``apply-everything'' dialect: a
+single binary $\app$, a single binary $\hastype$, a single unary
+$\PR$.  \emph{Signature specialisation} rewrites it, occurrence by
+occurrence, into an ordinary first-order signature: unary guard
+predicates $\guard{\tau}$, $n$-ary function symbols, $n$-ary
+predicate symbols.  Two constraints shape the definition.  First,
+the translation is to remain \emph{shallow}: specialisation is a
+per-occurrence renaming and introduces \emph{no bridging axioms}
+connecting the specialised symbols back to $\hastype$, $\app$ or
+$\PR$.\footnote{The CoqHammer implementation currently prints
+$\hastype(x, c\,t_1 \cdots t_n)$ as $c_{\$t}(t_1, \ldots, t_n, x)$
+\emph{and} emits an unconditional bridging axiom $\forall \tup{x}
+y.\ c_{\$t}(\tup{x}, y) \leftrightarrow \hastype(y, c\,\tup{x})$
+\cite[\S5.5]{CzajkaKaliszyk2018}, which keeps the generic apparatus
+alive in every problem.  The design here eliminates the bridge; the
+price is a completeness loss quantified by
+\cref{thm:spec-faithful}: none on the first-order core, only outside
+it.}  Second, soundness must be unconditional, while
+proof-preservation may legitimately be restricted to the fragment
+where the rewriting is total.
+
+Throughout this section $(\Phi, \gamma)$ is a translated problem
+(\cref{def:transl-problem}), possibly after monomorphisation
+(\cref{def:mono-op}).
+
+\begin{definition}[Specialisation maps]
+\label{def:spec}
+Let $\mathcal{T}$ be a finite set of closed $\CICm$ types and
+kind-level terms (in practice: all closed second arguments of
+$\hastype$-atoms in $\Phi \cup \{\gamma\}$, plus $\SProp$), and let
+$\mathcal{H}$ be a finite set of pairs $(c, n)$ of a constant
+(original or lifted) and an arity.  The specialisation
+$\spec{}$ of a formula is the result of exhaustively applying the
+following rewrites, innermost first, to its subterms and atoms:
+\begin{enumerate}[label=(S\arabic*),leftmargin=3em]
+\item \emph{Type-argument fusion:} an occurrence $\hat{c} \app
+  \trCn{\tau_1} \app \cdots \app \trCn{\tau_j} \app t_1 \app \cdots$
+  where $c$'s type begins with $j$ binders of domain $\STypeI$ and
+  all $\tau_i \in \mathcal{T}$ are closed, is rewritten to
+  $\hat{c}_{\langle\tup{\tau}\rangle} \app t_1 \app \cdots$, where
+  $\hat{c}_{\langle\tup{\tau}\rangle}$ is a fresh constant indexed
+  by $(c, \tup{\tau})$.
+\item \emph{Guard specialisation:} an atom $\hastype(t, u)$ where
+  $u$ is syntactically $\trCn{\tau}$ (after (S1) on $u$'s
+  arguments, if any) for some $\tau \in \mathcal{T}$, is rewritten
+  to $\guard{\tau}(t)$, a fresh unary predicate indexed by $\tau$.
+\item \emph{Arity flattening:} an occurrence $d \app t_1 \app \cdots
+  \app t_n$ with head a constant $d$ (possibly produced by (S1)) and
+  $(d, n) \in \mathcal{H}$, not itself an argument of a further
+  $\app$ with the same head chain, is rewritten to $d^{(n)}(t_1,
+  \ldots, t_n)$, a fresh $n$-ary function symbol; for $n = 0$ the
+  constant is kept as is.
+\item \emph{Predicate flattening:} an atom $\PR(d^{(n)}(t_1, \ldots,
+  t_n))$ or $\PR(d)$ with $d$ a constant is rewritten to
+  $d_{\mathsf{P}}^{(n)}(t_1, \ldots, t_n)$, a fresh $n$-ary
+  predicate symbol.
+\end{enumerate}
+$\spec{}(\Phi, \gamma) = (\setof{\spec{}(\varphi)}{\varphi \in
+\Phi}, \spec{}(\gamma))$.  The rewriting is \emph{total} on
+$(\Phi, \gamma)$ if in the result the symbols $\hastype$, $\PR$ and
+$\app$ do not occur at all.
+\end{definition}
+
+(S3) and (S4) are the classical optimisations of Meng and
+Paulson~\cite{MengPaulson2008}, already performed by CoqHammer
+\cite[\S5.5]{CzajkaKaliszyk2018}; (S1) is the symbol-discrimination
+step of monomorphisation in the sense of
+\cite[\S5.6]{Blanchette2016} and \textsf{Dis}
+of~\cite{BobotPaskevich2011}; (S2) is the guard-specialisation this
+paper is after.  All four are instances of one soundness principle:
+
+\begin{theorem}[Soundness of specialisation]
+\label{thm:spec-sound}
+Let $(\Phi, \gamma)$ be $\MM$-sound via the expansion $\FM$ of
+$\FMstar$ (\cref{def:si}).  Then $\spec{}(\Phi, \gamma)$ is
+$\MM$-sound.
+\end{theorem}
+
+\begin{proof}
+Expand $\FM$ to $\FM'$ by interpreting the fresh symbols by the
+value functions of the patterns they replace:
+\begin{align*}
+  \hat{c}_{\langle\tup{\tau}\rangle} &\mapsto
+    \ap(\cdots \ap(\sem{c}, \sem{\tau_1}) \cdots, \sem{\tau_j}), \\
+  \guard{\tau} &\mapsto \setof{a \in \Dom}{a \in \sem{\tau}}, \\
+  d^{(n)} &\mapsto (a_1, \ldots, a_n) \mapsto
+    \ap(\cdots \ap(d^{\FM}, a_1)\cdots, a_n), \\
+  d^{(n)}_{\mathsf{P}} &\mapsto
+    \setof{(a_1, \ldots, a_n)}{\emptyset \in
+      \ap(\cdots \ap(d^{\FM}, a_1)\cdots, a_n)} .
+\end{align*}
+By construction, each rewrite step replaces a term (resp.\ atom) by
+one with the same value (resp.\ truth value) in $\FM'$ under every
+valuation: for (S1) and (S3) this is the definition of the fresh
+symbol's interpretation; for (S2), $\hastype^{\FM}(a, \sem{\tau})$
+iff $a \in \sem{\tau}$ iff $\guard{\tau}^{\FM'}(a)$, using that
+$\trCn{\tau}$ evaluates to $\sem{\tau}$ (\cref{lem:compositionality},
+extended to (S1)-images by the first line); for (S4), $\PR^{\FM}(b)$
+iff $\emptyset \in b$.  By induction on formulas, $\FM' \folmodels
+\varphi \leftrightarrow \spec{}(\varphi)$ pointwise for every
+$\varphi \in \Phi \cup \{\gamma\}$.  Hence $\FM' \folmodels
+\spec{}(\Phi)$, and $\FM' \folmodels \spec{}(\gamma)$ implies $\FM
+\folmodels \gamma$, which implies validity of the pending goal.
+\end{proof}
+
+Soundness costs nothing; the substantive question is whether
+specialisation \emph{loses} proofs, given that no bridging axioms
+tie $\guard{\tau}$ to $\hastype$.  On the first-order core it does
+not:
+
+\begin{lemma}[Totality on the first-order core]
+\label{lem:spec-total}
+Suppose every premise of the (drop-policy monomorphised) problem is
+monomorphic, and every quantified variable in the premises and goal
+has as its type a closed data type that is not a product, with no
+quantification over propositions.  Before specialising,
+\emph{prune} the axiom store: remove the universe atom (D4) (needed
+only to discharge $\hastype(\cdot, \lift{\STypeI})$ guards, which
+do not occur in monomorphic problems) and the application-typing
+axioms ($\Ax$-app), whose bodies contain variable-headed
+applications $z \app x$; these axioms exist to let a
+\emph{quantified} function variable be applied, and product-typed
+quantified variables are excluded here, while for constant-headed
+terms their derivational content is subsumed by the
+$\mathrm{Flat}$ axioms.  Pruning removes premises, so it trivially
+preserves $\MM$-soundness.  Take $\mathcal{T}$ to be all closed
+second arguments of surviving $\hastype$-atoms (including
+membership atoms at product types, whose encodings are closed) and
+$\mathcal{H}$ all (head, arity) pairs of constant-headed
+application occurrences.  Then $\spec{}$ is total on the pruned
+translated problem.
+\end{lemma}
+
+\begin{proof}
+We check that no occurrence of $\hastype$, $\PR$, $\app$ survives.
+$\hastype$-atoms: guards of quantified variables have closed
+non-product data types, whose encodings are closed terms in
+$\mathcal{T}$, so (S2) applies; the surviving typing atoms and the
+$\mathrm{Flat}$ hypotheses and conclusions have closed non-product
+type encodings (monomorphic declarations after instantiating the
+implicit premises, \cref{def:mono-op}), so (S2) applies.  $\app$:
+after pruning, every application occurrence has a constant head ---
+variable heads arise only from variables of product or $\SProp$
+type, excluded in the premises and goal, and from the ($\Ax$-app)
+axioms, which are pruned --- so (S1)/(S3) apply exhaustively.
+$\PR$: after (S3), every $\PR$-argument is a constant-headed
+flattened term, so (S4) applies.
+\end{proof}
+
+\begin{theorem}[Faithfulness of total specialisation]
+\label{thm:spec-faithful}
+If $\spec{}$ is total on $(\Phi, \gamma)$ and $\Phi$ contains no
+$\approx$-equations between type-level terms (guaranteed for
+translated problems by \cref{lem:no-type-eq}), then
+\[
+  \Phi \folproves \gamma
+  \qquad\Longleftrightarrow\qquad
+  \spec{}(\Phi) \folproves \spec{}(\gamma) .
+\]
+\end{theorem}
+
+\begin{proof}
+By completeness it suffices to transfer models in both directions.
+
+($\Leftarrow$ direction of provability, i.e.\ model transfer from
+$\Phi$-side to $\spec{}$-side)  Let $\FM \folmodels \Phi \cup
+\{\neg\gamma\}$.  Interpret the fresh symbols over the same domain
+by the value functions of their patterns, exactly as in the proof of
+\cref{thm:spec-sound} but with $\FM$ in place of $\FMstar$'s
+expansion.  The same pointwise equivalence gives a model of
+$\spec{}(\Phi) \cup \{\neg\spec{}(\gamma)\}$.
+
+($\Rightarrow$ direction, model transfer from $\spec{}$-side)  Let
+$\FM' \folmodels \spec{}(\Phi) \cup \{\neg\spec{}(\gamma)\}$ with
+domain $\Dom'$.  By totality, the symbols $\hastype$, $\PR$, $\app$,
+the raw constants with nonzero occurring arity, and the type-encoding
+constants do not occur in the specialised problem, so we may
+interpret them freely; $0$-ary raw constants that survive
+specialisation unchanged keep their $\FM'$-interpretation.  Build
+$\FM$ with domain
+\[
+  \Dom \;\coloneqq\; \Dom' \;\uplus\;
+  \setof{\mathbf{t}_\tau}{\tau \in \mathcal{T}^{\downarrow}}
+  \;\uplus\;
+  \setof{\mathbf{p}_{d, \tup{a}}}{(d,n) \in \mathcal{H},\
+    \tup{a} \in (\Dom')^{<n}}
+\]
+where $\mathcal{T}^{\downarrow}$ is the subterm closure of
+$\mathcal{T}$ (finitely many fresh points $\mathbf{t}_\tau$, one per
+closed type-level term, pairwise distinct and distinct from
+$\Dom'$), and the $\mathbf{p}$-points represent partial
+applications.  Interpret: each type-encoding constant and each
+application step among type encodings so that the value of
+$\trCn{\tau}$ is $\mathbf{t}_\tau$ (possible since the
+$\mathbf{t}$-points are free and the syntax is finite: interpret
+$\hat{I}$ as $\mathbf{t}_I$, $\ap(\mathbf{t}_{I\,\tup{\sigma}^{<}},
+\mathbf{t}_\sigma) = \mathbf{t}_{I\,\tup{\sigma}^{<}\sigma}$, etc.,
+with an arbitrary default elsewhere); $\ap$ on a raw constant head
+$d$ and arguments $\tup{a} \in \Dom'$ climbs the
+$\mathbf{p}$-points and, at the $n$-th argument for $(d, n) \in
+\mathcal{H}$, returns $(d^{(n)})^{\FM'}(\tup{a})$ if $d^{(n)}$
+occurs in the specialised problem, and otherwise a fresh terminal
+$\mathbf{p}$-point; fused heads
+$\hat{c}_{\langle\tup{\tau}\rangle}$ are reached as the value of
+$\hat{c}$ applied to $\mathbf{t}_{\tau_1}, \ldots$, again via
+dedicated $\mathbf{p}$-points;
+\begin{align*}
+  \hastype^{\FM}(a, b) \;&:\iff\;
+    b = \mathbf{t}_\tau \text{ for some } \tau \in \mathcal{T}
+    \text{ and } a \in \guard{\tau}^{\FM'},\\
+  \PR^{\FM}(a) \;&:\iff\;
+    a = \text{terminal point of } (d, \tup{a}) \text{ and }
+    (d^{(n)}_{\mathsf{P}})^{\FM'}(\tup{a}),
+\end{align*}
+with $\PR$ false elsewhere and $\guard{\tau}^{\FM'} \subseteq
+\Dom'$ read as a subset of $\Dom$.
+
+We claim $\FM \folmodels \varphi \iff \FM' \folmodels
+\spec{}(\varphi)$ for every $\varphi \in \Phi \cup \{\gamma\}$ and,
+more generally, for every subformula under valuations $\nu$ sending
+each free variable into $\Dom'$.  The proof is by induction on
+$\varphi$, with an auxiliary term-level statement: for every term
+$t$ occurring in $\varphi$ that is (i) an argument of $\approx$, of
+a specialised guard atom, or of a flattened symbol, the
+$\FM$-value of $t$ under $\nu$ equals the $\FM'$-value of
+$\spec{}(t)$ under $\nu$.  For the term statement, note that such
+$t$ is a fully applied constant-headed chain or a variable (by
+totality), and the interpretation of $\ap$ was constructed to make
+the chain land on exactly $(d^{(n)})^{\FM'}(\tup{a})$; variables are
+shared.  Atoms: $\approx$-atoms compare $\Dom'$-values equal in both
+structures --- here the absence of type-level equations matters:
+both sides are data-level chains landing in $\Dom'$, never
+$\mathbf{t}$- or $\mathbf{p}$-points; guard atoms $\hastype(t,
+\trCn{\tau})$ hold in $\FM$ iff $\guard{\tau}^{\FM'}$ holds of the
+(shared) value of $t$, which is the truth condition of the
+specialised atom; $\PR$-atoms likewise via the terminal-point
+clause.  Quantifiers: every quantifier of $\varphi$ is guarded
+(inspection of \cref{def:translation}: (F2), (F5), the guarded
+closures of all axiom schemes) by a guard whose $\FM$-extension is
+$\guard{\tau}^{\FM'} \subseteq \Dom'$; hence the effective range of
+every quantifier in $\FM$ is inside $\Dom'$, the valuations stay in
+$\Dom'$, and the induction hypothesis applies.  (Universally
+quantified formulas hold vacuously at the fresh points, which fail
+every guard; existentials find their witnesses in $\Dom'$ on both
+sides.)
+
+Thus $\FM \folmodels \Phi \cup \{\neg\gamma\}$, completing the
+transfer.
+\end{proof}
+
+\begin{remark}[Outside the first-order core]
+\label{rem:spec-partial}
+When higher-order quantification remains (e.g.\ a monomorphic
+premise $\forall f{:}\mathsf{nat} \to \mathsf{nat}.\,\ldots$),
+occurrences $f \app x$ with variable head survive specialisation,
+$\app$ stays in the signature, and \cref{thm:spec-faithful} does
+not apply --- specialisation remains sound
+(\cref{thm:spec-sound}) but may lose proofs that exploited the
+identity of $\hastype(\cdot, \lift{\mathsf{nat} \to \mathsf{nat}})$
+with the guard of some other occurrence.  The bridge axioms of the
+implementation buy back exactly these proofs at the cost of
+reintroducing the generic apparatus; under the shallow-translation
+constraint we accept the loss and note that on hammer benchmarks
+the essentially first-order goals dominate
+\cite{CzajkaKaliszyk2018}.
+\end{remark}
+
+\begin{remark}[Open guard shapes]
+\label{rem:spec-shapes}
+(S2) requires the guard's type argument to be closed.  A guard
+$\hastype(y, \trCn{\mathsf{list}\,(Q\,x)})$ with a free data
+variable $x$ (arising under a binder) can be specialised too, by a
+\emph{shape} predicate: rewrite to
+$\guard{\mathsf{list}\,(Q\,\cdot)}(x, y)$, a fresh binary predicate
+indexed by the type pattern with its free variables abstracted.
+\Cref{thm:spec-sound} extends verbatim --- interpret the shape
+predicate by the value function $(a, b) \mapsto (b \in
+\sem{\mathsf{list}\,(Q\,x)}_{[x \mapsto a]})$ --- so shape
+specialisation is sound; we do not claim faithfulness for it.  This
+settles, affirmatively for soundness, the question raised in the
+CoqHammer development notes of whether guards over open types may
+be compressed into parameterised predicates.
+\end{remark}

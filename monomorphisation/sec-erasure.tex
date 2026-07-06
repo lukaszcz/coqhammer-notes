@@ -1,0 +1,641 @@
+\section{Monotonicity-based guard erasure}
+\label{sec:erasure}
+
+Guards are the tax the untyped encoding pays for soundness.  This
+section determines exactly when the tax can be waived: for which
+types $\tau$ the guard atoms $\guard{\tau}(\cdot)$ may be deleted
+from a fully monomorphised, fully specialised problem without
+compromising the soundness invariant.  The answer --- $\tau$ must be
+\emph{witnessed inhabited} and \emph{monotonic}, with monotonicity
+established either by the absence of naked variables or by a
+provable-infinity criterion that the translation's own injectivity
+and discrimination axioms supply for recursive inductive types ---
+transplants the monotonicity framework of Claessen, Lillieström and
+Smallbone~\cite{Claessen2011} and Blanchette, B\"ohme, Popescu and
+Smallbone~\cite{Blanchette2016} from many-sorted first-order logic
+to the guarded unsorted problems generated from $\CICm$.  The
+transplant is not routine: in the guarded world all types share one
+domain, an individual may inhabit several types, and the empty type
+is expressible.  Both phenomena show up as necessary side conditions
+(\cref{prop:nec-inhab,prop:nec-mono}).
+
+Throughout this section, formulas are in negation normal form
+(classically without loss of generality), and $(\Phi, \gamma)$ is a
+totally specialised problem (\cref{def:spec,lem:spec-total}); we
+write $\mathcal{G} = \setof{\guard{\tau}}{\tau \in \mathcal{T}}$ for
+its finite family of guard predicates and $R \coloneqq \Phi \cup
+\{\mathrm{nnf}(\neg\gamma)\}$ for the refutation set.
+
+\subsection{Erasure, and what must be proved}
+
+\begin{definition}[Erasure]
+\label{def:erasure}
+For $\Sigma_0 \subseteq \mathcal{T}$, the erasure
+$\erase{\Sigma_0}(\varphi)$ replaces every atom $\guard{\tau}(t)$
+with $\tau \in \Sigma_0$ by $\top$ (in NNF: positive occurrences by
+$\top$, negative occurrences $\neg\guard{\tau}(t)$ by $\bot$),
+followed by the evident Boolean simplifications.  In particular
+guarded quantifiers lose their guards: $\forall x.\,
+(\neg\guard{\tau}(x) \vee \varphi) \mapsto \forall x.\, \varphi$ and
+$\exists x.\, (\guard{\tau}(x) \wedge \varphi) \mapsto \exists x.\,
+\varphi$, and typing-axiom conclusions $\guard{\tau}(f(\tup{x}))$
+become trivial.  $\erase{\Sigma_0}$ is applied to every element of
+$R$.
+\end{definition}
+
+\begin{lemma}[Erasure at total guards]
+\label{lem:erasure-total}
+If $\FM$ is a structure in which $\guard{\tau}^{\FM}$ is the whole
+domain for every $\tau \in \Sigma_0$, then $\FM \folmodels \varphi$
+iff $\FM \folmodels \erase{\Sigma_0}(\varphi)$, for every formula
+$\varphi$.
+\end{lemma}
+
+\begin{proof}
+Substituting $\top$ for atoms that are true under every valuation
+does not change the truth value of any formula; by induction on
+$\varphi$.
+\end{proof}
+
+\begin{proposition}[Erasure never loses proofs]
+\label{prop:erasure-complete}
+If $\Phi \folproves \gamma$ then $\erase{\Sigma_0}(\Phi) \folproves
+\erase{\Sigma_0}(\gamma)$, for any $\Sigma_0$.
+\end{proposition}
+
+\begin{proof}
+Contrapositively, let $\FM \folmodels \erase{\Sigma_0}(R)$.  Let
+$\FM'$ agree with $\FM$ except that $\guard{\tau}^{\FM'}$ is the
+whole domain for each $\tau \in \Sigma_0$.  The erased formulas do
+not mention the reinterpreted predicates, so $\FM' \folmodels
+\erase{\Sigma_0}(R)$, and by \cref{lem:erasure-total} $\FM'
+\folmodels R$.
+\end{proof}
+
+So erasure is dangerous in one direction only: it may \emph{prove
+more}.  The soundness obligation is:
+
+\begin{definition}[Inflatability]
+\label{def:inflatable}
+$R$ is \emph{$\Sigma_0$-inflatable} if, whenever $R$ is
+satisfiable, $R$ has a model in which $\guard{\tau}$ is total (the
+whole domain) for every $\tau \in \Sigma_0$.
+\end{definition}
+
+\begin{theorem}[Erasure soundness from inflatability]
+\label{thm:erasure-from-inflatable}
+Let $(\Phi, \gamma)$ be $\MM$-sound and suppose $R = \Phi \cup
+\{\mathrm{nnf}(\neg\gamma)\}$ is $\Sigma_0$-inflatable.  If
+$\erase{\Sigma_0}(\Phi) \folproves \erase{\Sigma_0}(\gamma)$, then
+the pending goal is valid in $\MM$.
+\end{theorem}
+
+\begin{proof}
+Suppose the goal is not valid.  By $\MM$-soundness there is an
+expansion $\FM$ of $\FMstar$ with $\FM \folmodels \Phi$, and by the
+contrapositive of \cref{def:si}(ii), $\FM \not\folmodels \gamma$;
+hence $R$ is satisfiable.  By inflatability, $R$ has a model with
+all $\Sigma_0$-guards total, which by \cref{lem:erasure-total} is a
+model of $\erase{\Sigma_0}(R) = \erase{\Sigma_0}(\Phi) \cup
+\{\mathrm{nnf}(\neg\erase{\Sigma_0}(\gamma))\}$ --- contradicting
+the assumed provability.
+\end{proof}
+
+The rest of the section establishes checkable sufficient conditions
+for inflatability, by passing through many-sorted logic.
+
+\subsection{Sorted cores and relativisation}
+
+\begin{definition}[Sorted core]
+\label{def:sorted-core}
+A totally specialised problem $R$ over guard family $\mathcal{G}$
+(indexed by $\mathcal{T}$, now regarded as a set of \emph{sorts}) is
+a \emph{sorted core} if it splits as $R = R_{\mathrm{log}} \uplus
+R_{\mathrm{ty}}$ such that:
+\begin{enumerate}[label=(SC\arabic*),leftmargin=3.2em]
+\item every quantifier in $R_{\mathrm{log}}$ and in the guarded
+  prefixes of $R_{\mathrm{ty}}$ is guarded: $\forall x.\,
+  (\neg\guard{\tau}(x) \vee \cdots)$ or $\exists x.\,
+  (\guard{\tau}(x) \wedge \cdots)$; the sort of the bound variable
+  is the guard's index;
+\item there is a \emph{sort assignment}: each function symbol
+  $f$ carries a signature $(\tup{\sigma}; \varsigma)$ over
+  $\mathcal{T}$, each predicate symbol other than the guards a
+  signature $(\tup{\sigma})$, such that every occurrence of every
+  symbol in $R$ is sort-correct (arguments of the declared sorts,
+  computed from variable sorts upward), and every $\approx$-literal
+  compares terms of equal sort;
+\item $R_{\mathrm{ty}}$ consists of, for each function symbol $f$
+  with signature $(\tup{\sigma}; \varsigma)$, the \emph{typing
+  axiom} $\forall \tup{x}.\, \bigl(\bigvee_i
+  \neg\guard{\sigma_i}(x_i)\bigr) \vee
+  \guard{\varsigma}(f(\tup{x}))$ (for $0$-ary $f$: the ground
+  \emph{typing fact} $\guard{\varsigma}(f)$); and guard atoms occur
+  in $R_{\mathrm{log}}$ only in the guard positions of (SC1);
+\item every sort $\tau \in \mathcal{T}$ is \emph{witnessed}: there
+  is a ground term $w_\tau$ that is sort-correct of sort $\tau$.
+\end{enumerate}
+The \emph{sorted companion} $R^{\mathrm{ms}}$ is the many-sorted
+problem over sorts $\mathcal{T}$ (with the signatures of (SC2))
+whose formulas are those of $R_{\mathrm{log}}$ with each guarded
+quantifier replaced by the corresponding sorted quantifier
+($\forall x{:}\tau$, $\exists x{:}\tau$) and guard literals deleted;
+$R_{\mathrm{ty}}$ has no counterpart (it is absorbed into the sorted
+signature discipline).  Many-sorted semantics is standard: nonempty
+domains $(D_\tau)_{\tau \in \mathcal{T}}$, sort-respecting
+interpretations, equality per sort.
+\end{definition}
+
+\begin{lemma}[Pipeline problems are sorted cores]
+\label{lem:pipeline-sorted}
+The totally specialised translation of a drop-policy monomorphised
+first-order-core problem (\cref{lem:spec-total}), restricted to
+premises whose quantified types are witnessed, is a sorted core.
+\end{lemma}
+
+\begin{proof}
+(SC1): all quantifiers of the translation are guarded ((F2), (F5),
+and the guarded closures of every axiom scheme in
+\cref{def:translation,def:transl-problem}), and (S2) turns each
+guard into a $\guard{\tau}$-atom.  (SC2): sorts are read off the
+$\CICm$ types: each flattened symbol $d^{(n)}$ or fused constant
+descends from a constant or lifted constant with a closed $\CICm$
+type, which after monomorphisation is a closed iterated product
+over non-product data types; its signature is the list of argument
+types and result type.  Sort-correctness of occurrences follows
+from well-typedness of the $\CICm$ terms being translated
+(\cref{lem:compositionality} respects types by \ref{M:typing}),
+and $\approx$-literals compare translations of $\CICm$ terms of one
+type ((F4), levelled equalities; \cref{lem:no-type-eq} excludes
+type-level equations).  (SC3): the specialised $\mathrm{Flat}$
+axioms and typing atoms have exactly the displayed shapes.  (SC4)
+is the restriction in the statement.
+\end{proof}
+
+\begin{lemma}[Witness truth]
+\label{lem:witness}
+In every model $\FM$ of a sorted core $R$, and for every $\tau \in
+\mathcal{T}$: $\guard{\tau}^{\FM} \neq \emptyset$; indeed the value
+of any ground sort-correct term of sort $\tau$ lies in
+$\guard{\tau}^{\FM}$.
+\end{lemma}
+
+\begin{proof}
+By induction on the ground term, using the typing facts for
+constants and the typing axioms for compound terms (their guard
+premises hold by the induction hypothesis).
+\end{proof}
+
+\begin{theorem}[Relativisation]
+\label{thm:relativisation}
+A sorted core $R$ is satisfiable iff its sorted companion
+$R^{\mathrm{ms}}$ is satisfiable.  Moreover, from a model of $R$
+one obtains a model of $R^{\mathrm{ms}}$ with domains $D_\tau =
+\guard{\tau}^{\FM}$, and conversely from a model of
+$R^{\mathrm{ms}}$ a model of $R$ whose guard extensions are
+(disjoint copies of) the sorted domains.
+\end{theorem}
+
+\begin{proof}
+($\Rightarrow$)  Let $\FM \folmodels R$ with domain $\Dom$.  Set
+$D_\tau \coloneqq \guard{\tau}^{\FM}$, nonempty by
+\cref{lem:witness}.  For $f$ with signature $(\tup{\sigma};
+\varsigma)$ define $f^{\mathrm{ms}}$ as the restriction of
+$f^{\FM}$ to $\prod_i D_{\sigma_i}$; the typing axiom of $f$ (true
+in $\FM$) guarantees values in $D_\varsigma$, so this is a legal
+sorted interpretation.  Restrict predicates likewise.  We claim: for
+every subformula $\varphi$ of a formula of $R_{\mathrm{log}}$ and
+every sorted valuation $\xi$ (which is also an $\FM$-valuation),
+$\FM, \xi \folmodels \varphi$ iff $\mathcal{N}, \xi \folmodels
+\varphi^{\mathrm{ms}}$, where $\mathcal{N}$ is the sorted structure
+just defined.  Induction on $\varphi$: atoms and their negations are
+interpreted by restrictions, and all argument values lie in the
+right domains by (SC2) and an inner induction on terms; the
+connective cases are trivial; a guarded $\forall x.\,
+(\neg\guard{\tau}(x) \vee \psi)$ holds in $\FM$ iff $\psi$ holds for
+all $x$-values in $\guard{\tau}^{\FM} = D_\tau$, which by the
+induction hypothesis is the truth condition of $\forall x{:}\tau.\,
+\psi^{\mathrm{ms}}$; dually for $\exists$.  Hence $\mathcal{N}
+\folmodels R^{\mathrm{ms}}$.
+
+($\Leftarrow$)  Let $\mathcal{N} \folmodels R^{\mathrm{ms}}$ with
+domains $(D_\tau)$.  Let $\Dom \coloneqq \biguplus_\tau D_\tau$
+(tagged disjoint union; write $\iota_\tau : D_\tau \to \Dom$ for
+the injections).  Interpret $\guard{\tau}^{\FM} \coloneqq
+\iota_\tau(D_\tau)$; for $f$ with signature $(\tup{\sigma};
+\varsigma)$ let $f^{\FM}(\tup{u}) \coloneqq
+\iota_\varsigma(f^{\mathcal{N}}(\tup{d}))$ when $u_i =
+\iota_{\sigma_i}(d_i)$ for all $i$, and an arbitrary fixed element
+of $\Dom$ otherwise; predicates: true on sort-matching tuples
+exactly when true in $\mathcal{N}$, false otherwise.  The typing
+axioms hold by construction (guard-passing arguments are
+sort-matching).  For $R_{\mathrm{log}}$, the same induction as
+above, run in reverse, shows each formula true in $\FM$: guarded
+quantifiers range over $\iota_\tau(D_\tau)$, which is a bijective
+copy of $D_\tau$; sort-correct terms under sort-conforming
+valuations never take the default branch; $\approx$-literals
+compare values within one $\iota_\tau$-image, where $\iota_\tau$ is
+injective.
+\end{proof}
+
+We also record the standard corollary used below.
+
+\begin{corollary}[Countable models, many-sorted]
+\label{cor:ls}
+If a sorted problem $T$ over a countable signature and finitely
+many sorts (all interpreted nonempty) is satisfiable, it has a
+model with all domains countable.
+\end{corollary}
+
+\begin{proof}
+Encode $T$ as a guarded unsorted problem by reversing the
+construction of \cref{thm:relativisation} (guard each quantifier,
+add typing axioms and one witness constant per sort --- this is the
+classical relativisation, and the two directions proved above did
+not use any property of $R$ beyond the sorted-core shape, so they
+apply).  The unsorted problem is satisfiable, hence by the
+L\"owenheim--Skolem theorem for countable signatures
+\cite{ChangKeisler1990} it has a countable model; transferring back
+through
+\cref{thm:relativisation}($\Rightarrow$) yields a sorted model
+whose domains are subsets of a countable set, and they are nonempty
+by \cref{lem:witness}.
+\end{proof}
+
+\subsection{Monotonicity}
+
+\begin{definition}[Monotonic sort {\cite[Def.~5.1]{Blanchette2016}}]
+\label{def:monotonic}
+Let $T$ be a many-sorted problem and $S$ a set of its sorts.  $S$
+is \emph{monotonic} in $T$ if for every model $\mathcal{N}$ of $T$
+there is a model $\mathcal{N}'$ of $T$ such that $D'_\tau$ is
+infinite for every $\tau \in S$ and $D'_\rho = D_\rho$ for $\rho
+\notin S$.
+\end{definition}
+
+\begin{definition}[Naked variables {\cite[Def.~5.6]{Blanchette2016}}]
+\label{def:naked}
+For NNF formulas: $\mathrm{NV}(p(\tup{t})) =
+\mathrm{NV}(\neg p(\tup{t})) = \mathrm{NV}(t_1 \not\approx t_2) =
+\emptyset$; $\mathrm{NV}(t_1 \approx t_2) = \{t_1, t_2\} \cap
+\mathcal{V}$ (the variables among the two sides);
+$\mathrm{NV}(\varphi \wedge \psi) = \mathrm{NV}(\varphi \vee \psi)
+= \mathrm{NV}(\varphi) \cup \mathrm{NV}(\psi)$;
+$\mathrm{NV}(\forall x{:}\tau.\, \varphi) = \mathrm{NV}(\varphi)$;
+$\mathrm{NV}(\exists x{:}\tau.\, \varphi) = \mathrm{NV}(\varphi)
+\setminus \{x\}$.  For a problem, $\mathrm{NV}(T) =
+\bigcup_{\varphi \in T} \mathrm{NV}(\varphi)$.  A sort $\tau$ is
+\emph{NV-safe} in $T$ if no variable of sort $\tau$ belongs to
+$\mathrm{NV}(T)$.
+\end{definition}
+
+\begin{lemma}[Cloning; adapted from {\cite[Thm.~5.9]{Blanchette2016}} and {\cite[\S2.3]{Claessen2011}}]
+\label{lem:cloning}
+Let $\tau$ be NV-safe in the sorted problem $T$ and let
+$\mathcal{N} \folmodels T$.  For any infinite cardinal $\kappa \geq
+|D_\tau|$ there is $\mathcal{N}' \folmodels T$ with $|D'_\tau| =
+\kappa$ and $D'_\rho = D_\rho$ for all $\rho \neq \tau$.
+\end{lemma}
+
+\begin{proof}
+Let $E$ be a set of fresh elements with $|D_\tau \uplus E| =
+\kappa$ and put $D'_\tau \coloneqq D_\tau \uplus E$, $D'_\rho
+\coloneqq D_\rho$ otherwise.  Fix $e_0 \in D_\tau$ (nonempty) and
+define the retraction $r : D'_\tau \to D_\tau$ by $r(e) = e_0$ for
+$e \in E$ and $r(d) = d$ for $d \in D_\tau$; extend $r$ to other
+sorts as the identity.  Interpret every function and predicate
+symbol by precomposition with $r$:
+$f^{\mathcal{N}'}(\tup{d}) \coloneqq f^{\mathcal{N}}(r(\tup{d}))$,
+$p^{\mathcal{N}'}(\tup{d}) :\iff p^{\mathcal{N}}(r(\tup{d}))$.
+For a valuation $\xi'$ over $\mathcal{N}'$ let $\xi \coloneqq r
+\circ \xi'$.
+
+\emph{Fact 1.}  For every term $t$ that is not a variable of sort
+$\tau$: $\mathrm{val}_{\mathcal{N}',\xi'}(t) =
+\mathrm{val}_{\mathcal{N},\xi}(t)$; and for a variable $x$ of sort
+$\tau$: $r(\mathrm{val}_{\mathcal{N}',\xi'}(x)) =
+\mathrm{val}_{\mathcal{N},\xi}(x)$.  (Induction on $t$; function
+values are computed through $r$, so they land in the original
+domains and agree.)
+
+\emph{Fact 2.}  For every NNF formula $\varphi$ and every $\xi'$
+such that $\xi'(x) \in D_\tau$ (no clone) for each free $x \in
+\mathrm{NV}(\varphi)$ of sort $\tau$:\ if $\mathcal{N}, \xi
+\folmodels \varphi$ then $\mathcal{N}', \xi' \folmodels \varphi$.
+Induction on $\varphi$:
+\begin{itemize}
+\item Non-equality literals: all argument values retract correctly
+  (Fact~1 and $r \circ \xi' = \xi$), and the interpretations factor
+  through $r$, so the truth values agree exactly.
+\item $t_1 \approx t_2$ (positive): each side is either a non-variable
+  or a variable of another sort (then Fact~1 gives equality of
+  values with the $\mathcal{N}$-side) or a naked variable of sort
+  $\tau$ --- which by the valuation condition is mapped to a
+  non-clone, so again its value coincides with its
+  $\mathcal{N}$-value.  Hence the equation transfers.
+\item $t_1 \not\approx t_2$: let $v'_i$ be the
+  $\mathcal{N}'$-values and $v_i$ the $\mathcal{N}$-values; by
+  Fact~1, $r(v'_i) = v_i$ (for non-variables and other-sort
+  variables even $v'_i = v_i$).  From $v_1 \neq v_2$ and $r(v'_1)
+  = v_1 \neq v_2 = r(v'_2)$ we get $v'_1 \neq v'_2$ since $r$ is a
+  function.
+\item $\wedge, \vee$: immediate.
+\item $\forall x{:}\sigma.\, \psi$: for arbitrary $d \in
+  D'_\sigma$, the retracted valuation is $\xi[x \mapsto r(d)]$ with
+  $r(d) \in D_\sigma$, so $\mathcal{N}, \xi[x \mapsto r(d)]
+  \folmodels \psi$; the valuation condition for $\psi$ under
+  $\xi'[x \mapsto d]$ holds: if $x \in \mathrm{NV}(\psi)$ had sort
+  $\tau$ then $x \in \mathrm{NV}(\forall x.\psi) =
+  \mathrm{NV}(\psi)$ would make $\tau$ NV-unsafe in $T$,
+  contradiction --- so either $x$'s sort is not $\tau$ or $x \notin
+  \mathrm{NV}(\psi)$, and other free naked variables keep their
+  values.  Apply the induction hypothesis.
+\item $\exists x{:}\sigma.\, \psi$: take the $\mathcal{N}$-witness
+  $d \in D_\sigma \subseteq D'_\sigma$; then $\xi'[x \mapsto d]$
+  maps $x$ to a non-clone, so the valuation condition holds for
+  $\psi$ even if $x \in \mathrm{NV}(\psi)$, and $r(d) = d$ keeps
+  the retracted valuation aligned.  Apply the induction hypothesis.
+\end{itemize}
+Since sentences have no free variables, Fact~2 gives $\mathcal{N}'
+\folmodels T$.
+\end{proof}
+
+\begin{lemma}[Forced infinity is monotonic]
+\label{lem:forced-infinite}
+If every model of $T$ interprets $\tau$ by an infinite domain, then
+$\{\tau\}$ is monotonic in $T$ (take $\mathcal{N}' = \mathcal{N}$).
+\qed
+\end{lemma}
+
+\begin{lemma}[Inductive infinity]
+\label{lem:ind-infinity}
+Let $R$ be a sorted core arising from the pipeline
+(\cref{lem:pipeline-sorted}) and let $\tau$ be the sort of a
+monomorphic instance $I\,\tup{\sigma}$ of a data inductive type.
+Suppose $R$ contains, for some constructor $c_j$ of $I$ with a
+recursive argument position $l_0$:
+\begin{enumerate}[label=(\roman*)]
+\item the specialised instance at $\tup{\sigma}$ of $c_j$'s
+  injectivity axiom;
+\item witnesses (SC4) for the sorts of all non-recursive argument
+  positions of $c_j$ at $\tup{\sigma}$, and for $\tau$ itself a
+  witness $w_\tau$ whose head constructor is some $c_i$ with $i
+  \neq j$, together with the specialised instance at $\tup{\sigma}$
+  of the discrimination axiom for the pair $(c_i, c_j)$.
+\end{enumerate}
+Then $D_\tau$ is infinite in every model of the sorted companion
+$R^{\mathrm{ms}}$.
+\end{lemma}
+
+\begin{proof}
+Fix a model; let $\tup{w}$ be the values of the non-recursive
+witnesses and define $h : D_\tau \to D_\tau$ by $h(a) \coloneqq
+c_j^{\mathrm{ms}}(\tup{w}, a)$ ($a$ in position $l_0$).  By the
+injectivity axiom (instantiated at the fixed $\tup{w}$), $h$ is
+injective.  By the discrimination axiom, the value of $w_\tau$
+(a $c_i$-headed ground term) is not in the image of
+$c_j^{\mathrm{ms}}$, in particular not in the image of $h$.  A set
+admitting an injective, non-surjective self-map is
+Dedekind-infinite.
+\end{proof}
+
+Whether the hypotheses of \cref{lem:ind-infinity} hold is a simple
+syntactic check on the environment and the instance set: $I$ has a
+constructor with a recursive argument whose non-recursive argument
+types (at $\tup{\sigma}$) have closed inhabitants --- e.g.\
+$\mathsf{nat}$; $\mathsf{list}\,\sigma$ for witnessed $\sigma$;
+trees --- while $\mathsf{unit}$, $\mathsf{bool}$, enumerations, and
+$\mathsf{list}$ of an empty type all fail it, as they must.  (If
+every closed inhabitant of $\tau$ had head $c_j$, an innermost such
+inhabitant would need a smaller closed inhabitant at the recursive
+position, so a witnessed type with a recursive constructor always
+has a second, non-recursive constructor to discriminate against;
+condition (ii) is thus no real restriction beyond witnessing.)
+Note that the criterion is \emph{internal}: it demands that the
+injectivity and discrimination axioms be \emph{present in the
+problem} --- which the translation guarantees for inductive types
+occurring in it --- and therefore avoids the soundness gap of
+infinity-by-introspection reported for Sledgehammer, where a type
+known infinite in the background theory but not in the problem
+makes the encoding unsound relative to the problem alone
+\cite[\S7.4]{Blanchette2016}.
+
+\subsection{The erasure theorem}
+
+\begin{definition}[Erasable types]
+\label{def:erasable}
+Let $R$ be a sorted core.  A sort $\tau$ is \emph{erasable} if it
+is witnessed (SC4) and either (a) NV-safe in $R^{\mathrm{ms}}$
+(\cref{def:naked}), or (b) forced infinite in every model of
+$R^{\mathrm{ms}}$ by \cref{lem:ind-infinity} (or any other
+argument).  Write $\Sigma_0$ for any chosen set of erasable sorts.
+\end{definition}
+
+\begin{theorem}[Guard-erasure soundness]
+\label{thm:erasure-main}
+Let $R = \Phi \cup \{\mathrm{nnf}(\neg\gamma)\}$ be a sorted core
+and $\Sigma_0$ a set of erasable sorts.  Then $R$ is
+$\Sigma_0$-inflatable.  Consequently
+(\cref{thm:erasure-from-inflatable}), if $(\Phi, \gamma)$ is
+$\MM$-sound and $\erase{\Sigma_0}(\Phi) \folproves
+\erase{\Sigma_0}(\gamma)$, the goal is valid in $\MM$; and by
+\cref{prop:erasure-complete} no first-order proof is lost.
+\end{theorem}
+
+\begin{proof}
+Assume $R$ satisfiable; we construct a model of $R$ with all
+$\Sigma_0$-guards total.
+
+\emph{Step 1 (sorted, countable).}  By
+\cref{thm:relativisation}($\Rightarrow$), $R^{\mathrm{ms}}$ is
+satisfiable; by \cref{cor:ls} it has a model $\mathcal{N}_1$ with
+all domains countable (nonempty).
+
+\emph{Step 2 (inflate the erasable sorts).}  Enumerate $\Sigma_0 =
+\{\tau_1, \ldots, \tau_m\}$ (finite).  Define $\mathcal{N}_2$ by
+treating each $\tau_i$ in turn: if $\tau_i$ is forced infinite, its
+domain is already countably infinite and we do nothing; otherwise
+$\tau_i$ is NV-safe, and we apply \cref{lem:cloning} with $\kappa =
+\aleph_0$, which changes only $D_{\tau_i}$.  NV-safety is a
+property of the problem $R^{\mathrm{ms}}$, not of the model, so
+successive applications remain justified; forced-infinite sorts
+keep their (unchanged, infinite) domains.  After the $m$ steps,
+every $\tau \in \Sigma_0$ has $|D_\tau| = \aleph_0$ and all other
+domains are unchanged, countable and nonempty.
+
+\emph{Step 3 (merge).}  Let $U$ be a fixed countably infinite set.
+Choose bijections $b_\tau : D_\tau \to U$ for $\tau \in \Sigma_0$
+and injections $j_\rho : D_\rho \hookrightarrow U$ for $\rho \in
+\mathcal{T} \setminus \Sigma_0$ (possible: the domains are
+countable).  Write $\mathrm{emb}_\sigma$ for $b_\sigma$ or
+$j_\sigma$ as appropriate, and $\mathrm{proj}_\sigma$ for the
+(partial) inverse, total for $\sigma \in \Sigma_0$.  Define the
+unsorted structure $\FM$ with domain $U$:
+\begin{itemize}
+\item $\guard{\rho}^{\FM} \coloneqq j_\rho(D_\rho)$ for $\rho
+  \notin \Sigma_0$; \ $\guard{\tau}^{\FM} \coloneqq U$ for $\tau
+  \in \Sigma_0$;
+\item for $f$ with signature $(\tup{\sigma}; \varsigma)$:
+  $f^{\FM}(\tup{u}) \coloneqq
+  \mathrm{emb}_\varsigma\bigl(f^{\mathcal{N}_2}(
+  \mathrm{proj}_{\sigma_1}(u_1), \ldots)\bigr)$ when every
+  $\mathrm{proj}_{\sigma_i}(u_i)$ is defined, and
+  $\mathrm{emb}_\varsigma(d^0_\varsigma)$ (a fixed default
+  $d^0_\varsigma \in D_\varsigma$) otherwise;
+\item for a predicate $p$ with signature $(\tup{\sigma})$:
+  $p^{\FM}(\tup{u})$ iff every $\mathrm{proj}_{\sigma_i}(u_i)$ is
+  defined and $p^{\mathcal{N}_2}$ holds of the projections.
+\end{itemize}
+Note $\mathrm{proj}_\sigma \circ \mathrm{emb}_\sigma =
+\mathrm{id}$ for every sort, and $\mathrm{proj}_\tau$ is total and
+bijective for $\tau \in \Sigma_0$ --- this totality is exactly what
+Step~2 bought.
+
+\emph{Claim: $\FM \folmodels R$, with all $\Sigma_0$-guards total.}
+Totality of the $\Sigma_0$-guards holds by definition.  For the
+formulas, we prove: for every formula $\varphi \in
+R_{\mathrm{log}}$, every subformula $\psi$ of $\varphi$, and every
+sort-conforming pair of valuations ($\xi$ over $\mathcal{N}_2$,
+$\nu$ over $\FM$) with $\nu(x) =
+\mathrm{emb}_{\mathrm{sort}(x)}(\xi(x))$ for the free variables:
+\[
+  \mathcal{N}_2, \xi \folmodels \psi^{\mathrm{ms}}
+  \quad\Longleftrightarrow\quad
+  \FM, \nu \folmodels \psi .
+\]
+Terms first: by induction, the $\FM$-value of a sort-$\varsigma$
+term $t$ under $\nu$ is $\mathrm{emb}_\varsigma$ of its
+$\mathcal{N}_2$-value under $\xi$ (variables by conformity;
+applications because $\mathrm{proj} \circ \mathrm{emb} =
+\mathrm{id}$ keeps every projection defined, so the default branch
+is never taken).  Atoms: $p(\tup{t})$ transfers by the same
+identity; $t_1 \approx t_2$ at sort $\varsigma$ transfers because
+$\mathrm{emb}_\varsigma$ is injective.  Connectives: trivial.
+Quantifier at a sort $\rho \notin \Sigma_0$ (guard kept): the
+$\FM$-side quantifier is guarded by $\guard{\rho}^{\FM} =
+j_\rho(D_\rho)$, a bijective copy of the $\mathcal{N}_2$-range ---
+both sides range over matching values and the induction hypothesis
+applies.  Quantifier at a sort $\tau \in \Sigma_0$ (guard
+\emph{present} in $R$; recall we are proving $\FM \folmodels R$,
+not its erasure): the guard is total, so the $\FM$-side ranges over
+all of $U = b_\tau(D_\tau)$ --- again a bijective copy of the
+sorted range, and the induction hypothesis applies.  This proves
+every formula of $R_{\mathrm{log}}$ true in $\FM$ (its
+$^{\mathrm{ms}}$-image being true in $\mathcal{N}_2$).
+
+$R_{\mathrm{ty}}$: for a typing axiom of $f : (\tup{\sigma};
+\varsigma)$, let $\tup{u}$ pass the (remaining) guards.  For
+$\sigma_i \in \Sigma_0$ the projection is total; for $\sigma_i
+\notin \Sigma_0$ the guard $\guard{\sigma_i}(u_i)$ asserts $u_i \in
+j_{\sigma_i}(D_{\sigma_i})$, so the projection is defined.  Hence
+$f^{\FM}(\tup{u})$ is $\mathrm{emb}_\varsigma$ of a value in
+$D_\varsigma$, and the conclusion $\guard{\varsigma}(f(\tup{u}))$
+holds ($= U$ if $\varsigma \in \Sigma_0$, $=
+j_\varsigma(D_\varsigma) \ni$ the value otherwise).  Typing facts
+and witness terms: likewise.
+
+So $\FM \folmodels R$ with total $\Sigma_0$-guards: $R$ is
+$\Sigma_0$-inflatable.
+\end{proof}
+
+\subsection{Necessity of the side conditions}
+
+\begin{proposition}[Witnessing is necessary]
+\label{prop:nec-inhab}
+There is an $\MM$-sound sorted-core problem $(\Phi, \gamma)$ with
+$\gamma$'s pending goal \emph{invalid} in $\MM$, and a
+\emph{non-witnessed} but NV-safe type $\tau$, such that
+$\erase{\{\tau\}}(\Phi) \folproves \erase{\{\tau\}}(\gamma)$.
+\end{proposition}
+
+\begin{proof}
+Let $\mathsf{empty}$ be the data inductive type with no
+constructors, and take the single premise $\varphi = \Pi
+x{:}\mathsf{empty}.\ \mathsf{O} \ceq_{\mathsf{nat}}
+\mathsf{S}\,\mathsf{O}$ --- a \emph{valid} proposition
+($\sem{\mathsf{empty}} = \emptyset$ by \ref{M:ind}, so the product
+is vacuously $\holds$; it is also provable by
+$\mathsf{empty}$-elimination in CIC).  Its specialised translation
+is $\forall x.\ \neg\guard{\mathsf{empty}}(x) \vee
+(\hat{\mathsf{O}} \approx \hat{\mathsf{S}}(\hat{\mathsf{O}}))$.
+The type $\mathsf{empty}$ is NV-safe ($x$ occurs in no equation;
+the inversion axiom for a constructorless type is $\forall x.\
+\neg\guard{\mathsf{empty}}(x) \vee \bot$, equation-free), but not
+witnessed.  Take the goal $\gamma$ translating $\varphi_G =
+(\mathsf{O} \ceq \mathsf{S}\,\mathsf{O})$, invalid in $\MM$ by
+\ref{M:ind}(c).  Erasing the $\mathsf{empty}$-guard turns the
+premise into $\forall x.\ \hat{\mathsf{O}} \approx
+\hat{\mathsf{S}}(\hat{\mathsf{O}})$, from which
+$\erase{}(\gamma) = \gamma$ follows immediately.
+\end{proof}
+
+\begin{proposition}[Monotonicity is necessary]
+\label{prop:nec-mono}
+There is an $\MM$-sound sorted-core problem with an invalid pending
+goal and a \emph{witnessed} but non-monotonic type $\tau$ such that
+erasing the $\tau$-guards proves the goal.
+\end{proposition}
+
+\begin{proof}
+Take $\tau = \mathsf{unit}$ (single constructor $\mathsf{tt}$) and
+as premise its own inversion axiom, emitted by the translation
+itself: $\forall x.\ \neg\guard{\mathsf{unit}}(x) \vee x \approx
+\hat{\mathsf{tt}}$.  It is valid ($\sem{\mathsf{unit}} =
+\{\sem{\mathsf{tt}}\}$).  The sort is witnessed
+($\hat{\mathsf{tt}}$) but the variable $x$ occurs naked in a
+positive equation, and indeed $\mathsf{unit}$ is genuinely
+non-monotonic: the axiom bounds the guard extension by one element.
+Erase the guard: $\forall x.\ x \approx \hat{\mathsf{tt}}$.
+Instantiating $x$ by $\hat{\mathsf{O}}$ and by
+$\hat{\mathsf{S}}(\hat{\mathsf{O}})$ yields $\hat{\mathsf{O}}
+\approx \hat{\mathsf{S}}(\hat{\mathsf{O}})$: the invalid goal of
+\cref{prop:nec-inhab} again follows.
+\end{proof}
+
+\begin{remark}[The case-scrutinee counterexample, revisited]
+\label{rem:jar-counterexample}
+\cite[\S5.6]{CzajkaKaliszyk2018} observes that the guards on the
+free variables of a case scrutinee can never be omitted, exhibiting
+a one-constructor type $c$ with $\mathsf{I}^0(c : \mathsf{Set}
+\coloneqq c_0 : c)$ where omitting the guard produces the axiom
+$\forall x.\ x = c_0 \wedge F\,x = c_0$ and thence an inconsistency.
+Through the lens of this section the diagnosis is exact:
+the conjunct $\forall x.\ x \approx c_0$ is the inversion content
+of a \emph{singleton} --- witnessed, maximally non-monotonic ---
+type, i.e.\ precisely the situation of \cref{prop:nec-mono}.  The
+guards that \emph{may} be dropped are those of
+\cref{def:erasable}; the case-scrutinee guards at singleton and
+enumeration types are the paradigmatic non-examples, and
+\cref{thm:erasure-main} never licenses them.  Conversely, the
+folklore practice of omitting guards at types like $\mathsf{nat}$
+or $\mathsf{list}\,\mathsf{nat}$ is licensed, for the first time
+with a proof, by \cref{lem:ind-infinity} together with
+\cref{thm:erasure-main}.
+\end{remark}
+
+\begin{remark}[Scope, and comparison with the featherweight encodings]
+\label{rem:erasure-scope}
+(i) Our erasure is \emph{per-type}, like the lightweight encodings
+$\widetilde{\mathsf{g}}?$ of \cite{Claessen2011,Blanchette2016};
+the featherweight $\widetilde{\mathsf{g}}??$ additionally drops
+guards of non-naked \emph{variables} at non-monotonic types.  The
+analogous per-variable refinement is meaningful in our setting, but
+its correctness proof requires interpreting a kept guard as
+\emph{false} on merged junk (the device of
+\cite[Thm.~5.20]{Blanchette2016}) inside our single-domain merge,
+where the same junk element is shared by all erased sorts; we leave
+this refinement to future work.  (ii) The freedom to choose
+$\Sigma_0$ as \emph{any} subset of the erasable sorts (cf.\
+\cite[Rem.~5.21]{Blanchette2016}) is built into
+\cref{thm:erasure-main}.  (iii) The theorem is proved for the
+drop-policy monomorphic pipeline.  With kept generic premises the
+problem is not a sorted core --- binary $\hastype$-atoms with
+variable type arguments remain --- and erasure of the specialised
+part is not covered; the appropriate tool there would be a
+polymorphic monotonicity calculus in the style of
+\cite[\S6]{Blanchette2016}, which we also leave open.
+(iv) Erasure interacts with \cref{rem:funext}: after erasure at an
+\emph{erasable} type, the collapse phenomena that make guard
+omission unsound in the implemented translation cannot occur, since
+erasable types admit models where the guard is total.
+\end{remark}

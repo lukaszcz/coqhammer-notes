@@ -1,0 +1,90 @@
+% Macros for the monomorphisation paper.
+
+% ----- Theorem environments -----
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{assumption}[theorem]{Assumption}
+\newtheorem{convention}[theorem]{Convention}
+\newtheorem{notation}[theorem]{Notation}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% ----- Semantic brackets (stmaryrd not assumed) -----
+\newcommand{\llb}{[\![}
+\newcommand{\rrb}{]\!]}
+\newcommand{\sem}[1]{\llb #1 \rrb}
+\newcommand{\semr}[2]{\llb #1 \rrb_{#2}}
+
+% ----- Sorts and calculus -----
+\newcommand{\CICm}{\ensuremath{\mathrm{CIC}^{-}}}
+\newcommand{\SProp}{\ensuremath{\mathsf{Prop}}}
+\newcommand{\STypeI}{\ensuremath{\mathsf{Type}_1}}
+\newcommand{\STypeII}{\ensuremath{\mathsf{Type}_2}}
+\newcommand{\Sorts}{\ensuremath{\mathcal{S}}}
+\newcommand{\conv}{\simeq}
+\newcommand{\tored}{\rightarrow_{\beta\iota\delta}}
+\newcommand{\toredstar}{\rightarrow_{\beta\iota\delta}^{*}}
+\newcommand{\Env}{\ensuremath{E}}
+\newcommand{\ceq}{\doteq}                       % primitive propositional equality
+\newcommand{\cexists}[2]{\exists #1{:}#2.\,}    % primitive existential
+\newcommand{\FV}{\mathrm{FV}}
+\newcommand{\dom}{\mathrm{dom}}
+\newcommand{\csort}[1]{\mathrm{sort}(#1)}
+
+% ----- Inductive types -----
+\newcommand{\Ind}{\mathsf{Ind}}
+\newcommand{\case}[3]{\mathsf{case}_{#1}(#2;\,#3)}
+\newcommand{\ctrs}{\mathcal{C}}
+
+% ----- Model -----
+\newcommand{\MM}{\ensuremath{\mathcal{M}}}
+\newcommand{\Uone}{\ensuremath{\mathcal{U}_1}}
+\newcommand{\Utwo}{\ensuremath{\mathcal{U}_2}}
+\newcommand{\Om}{\ensuremath{\Omega}}
+\newcommand{\holds}{\ensuremath{\{\emptyset\}}}   % the true proposition value
+
+% ----- FOL -----
+\newcommand{\FOL}{\ensuremath{\mathrm{FOL}}}
+\newcommand{\FM}{\ensuremath{\mathfrak{M}}}
+\newcommand{\FMstar}{\ensuremath{\mathfrak{M}^{*}}}
+\newcommand{\Dom}{\ensuremath{\mathcal{D}}}
+\newcommand{\hastype}{\ensuremath{\mathsf{T}}}
+\newcommand{\PR}{\ensuremath{\mathsf{Pr}}}
+\newcommand{\app}{\mathbin{\raisebox{0.4pt}{\text{\footnotesize\(@\)}}}}
+\newcommand{\ap}{\mathrm{ap}}
+\newcommand{\folmodels}{\models}
+\newcommand{\folproves}{\vdash_{\mathrm{c}}}     % classical FOL provability
+\newcommand{\guard}[1]{\ensuremath{\mathsf{P}_{#1}}}
+\newcommand{\lift}[1]{\ensuremath{\ulcorner #1 \urcorner}}
+\newcommand{\erase}[1]{\ensuremath{\mathcal{E}_{#1}}}
+\newcommand{\spec}[1]{\ensuremath{\mathcal{S}_{#1}}}
+
+% ----- Translation -----
+\newcommand{\trF}[2]{\ensuremath{\mathsf{F}_{#1}(#2)}}
+\newcommand{\trC}[2]{\ensuremath{\mathsf{C}_{#1}(#2)}}
+\newcommand{\trG}[3]{\ensuremath{\mathsf{G}_{#1}(#2,#3)}}
+\newcommand{\trFn}[1]{\ensuremath{\mathsf{F}(#1)}}
+\newcommand{\trCn}[1]{\ensuremath{\mathsf{C}(#1)}}
+\newcommand{\Ax}{\ensuremath{\Delta}}
+
+% ----- Monomorphisation -----
+\newcommand{\inst}[2]{\ensuremath{#1 \cdot #2}}
+\newcommand{\Insts}{\ensuremath{\mathrm{Inst}}}
+\newcommand{\TArgs}{\ensuremath{\mathrm{TA}}}
+\newcommand{\Mono}{\ensuremath{\mathrm{Mono}}}
+
+% ----- Inference rules without mathpartir -----
+\newcommand{\rul}[2]{\dfrac{\;#1\;}{\;#2\;}}
+\newcommand{\rulname}[1]{\textsc{\footnotesize (#1)}\;}
+
+% ----- Misc -----
+\newcommand{\eg}{e.g.}
+\newcommand{\ie}{i.e.}
+\newcommand{\setof}[2]{\{\,#1 \mid #2\,\}}
+\newcommand{\tup}[1]{\vec{#1}}

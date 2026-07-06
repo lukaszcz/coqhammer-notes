@@ -1,0 +1,78 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue!60!black,citecolor=green!40!black,urlcolor=blue!60!black]{hyperref}
+\usepackage[capitalize,noabbrev]{cleveref}
+
+\input{macros}
+
+\title{Program Extraction and Specification Extraction:\\
+  A Sound Shallow Translation of Dependent Type Theory\\
+  into First-Order Logic}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+  Hammer-style automation for proof assistants based on the Calculus of
+  Inductive Constructions (CIC) translates goals and premises into untyped
+  first-order logic (FOL) and discharges the resulting problems with
+  automated theorem provers.  We give a precise formulation of a translation
+  architecture that factors this translation through the intermediate
+  representation of Letouzey's program extraction: the translation of a
+  definition $c \defeq t : \tau$ consists of (i)~\emph{program extraction} ---
+  the erasure $\erase{t}$ of the body into an untyped functional language,
+  compiled to \emph{per-constructor pattern equations} in FOL, and
+  (ii)~\emph{specification extraction} --- a realizability reading of the
+  type $\tau$ as a first-order formula about the FOL constant~$\Ihat{c}$.
+  Both components are \emph{shallow}: propositions and specifications are
+  mapped directly to first-order connectives and quantifiers computed at
+  translation time, refinement-type payloads are expanded inline at every
+  occurrence, and no inhabitation predicate mediates the logical structure.
+  We define a monomorphic first-order fragment $\CICm$ of CIC with inductive
+  datatypes, refinement types, inductive predicates, singleton eliminations
+  and structural fixpoints, and prove the translation sound: from any
+  well-formed definitional environment we construct a first-order model of
+  all emitted axioms --- over the open term model of the erasure calculus,
+  with explicit ill-typed ``junk'' elements --- in which the translation of
+  the goal reflects a proof-irrelevant, classical truth semantics of the
+  source.  Consequently the translation of a consistent environment is
+  consistent, and no refutable goal becomes provable.  As a by-product we
+  obtain a rigorous account of a known design question for such translations:
+  the classical single \emph{guarded disjunctive} axiom for a pattern match
+  is false at junk elements --- its type guard is mandatory --- whereas the
+  per-constructor equations produced by extraction hold at \emph{all}
+  elements of the model, so the guards on matched terms can be dropped, and
+  the two forms are interderivable relative to the structural axioms of the
+  datatype.
+\end{abstract}
+
+\tableofcontents
+
+\input{sections/intro}
+\input{sections/calculus}
+\input{sections/lambdabox}
+\input{sections/translation}
+\input{sections/semantics}
+\input{sections/soundness}
+\input{sections/casesplit}
+\input{sections/shallow}
+\input{sections/related}
+\input{sections/limitations}
+
+\bibliographystyle{alpha}
+\bibliography{references}
+
+\appendix
+\input{sections/appendix}
+
+\end{document}

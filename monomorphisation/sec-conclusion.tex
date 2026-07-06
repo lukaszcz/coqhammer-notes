@@ -1,0 +1,40 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+We gave a precise formulation, over a stratified fragment $\CICm$
+of the Calculus of Inductive Constructions, of the three
+optimisations that separate the current CoqHammer translation from
+the state of the art of hammers for simple type theory: heuristic
+monomorphisation, bridge-free signature specialisation, and
+monotonicity-based guard erasure.  All three were proved sound with
+respect to a set-theoretic standard model, via a self-contained
+truth lemma for the guarded translation in which the guard
+predicate is membership.  The main technical results are: soundness
+of monomorphisation by semantic instantiation, independent of the
+instance-selection heuristic, with conservativity for the keep
+policy and the uncomputability of complete instance selection;
+faithfulness of total specialisation on the first-order core
+without bridging axioms; and the guard-erasure theorem --- guards
+of witnessed, monotonic types may be erased, with monotonicity
+certified either by naked-variable analysis or by an internal
+infinity criterion that the translation's own injectivity and
+discrimination axioms establish for recursive inductive types.
+Both side conditions were shown necessary, and the known
+counterexample to guard omission in the CoqHammer literature was
+identified as a non-monotonicity phenomenon.
+
+Several directions remain open.  \emph{Theory:} the per-variable
+(featherweight) refinement of erasure in the single-domain setting;
+a polymorphic monotonicity calculus applicable to kept generic
+premises; faithfulness for shape-specialised guards over open
+types; extending $\CICm$ with indexed inductive families,
+cumulativity and fixpoints (we expect the semantic method to scale,
+at the cost of a heavier model section); and a mechanisation, for
+which the Isabelle formalisation of the monomorphic sorted
+metatheory \cite{BlanchettePopescu2013} is a natural starting
+point.  \emph{Practice:} implementing the pipeline in CoqHammer
+behind options, with the ablation evaluation of
+\cref{rem:implementation}; the literature
+\cite{Blanchette2016,Desharnais2022} predicts the largest gains
+from the combination of drop-policy monomorphisation with erasure,
+which is precisely the configuration our theorems license.

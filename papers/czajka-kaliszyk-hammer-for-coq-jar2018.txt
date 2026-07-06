@@ -1,0 +1,1500 @@
+
+===== PAGE 1 =====
+J Autom Reasoning (2018) 61:423–453
+https://doi.org/10.1007/s10817-018-9458-4
+Hammer for Coq: Automation for Dependent Type
+Theory
+Łukasz Czajka 1 · Cezary Kaliszyk1
+Received: 30 March 2017 / Accepted: 20 February 2018 / Published online: 27 February 2018
+© The Author(s) 2018. This article is an open access publication
+Abstract Hammers provide most powerful general purpose automation for proof assistants
+based on HOL and set theory today. Despite the gaining popularity of the more advanced
+versions of type theory, such as those based on the Calculus of Inductive Constructions,
+the construction of hammers for such foundations has been hindered so far by the lack of
+translation and reconstruction components. In this paper, we present an architecture of a
+full hammer for dependent type theory together with its implementation for the Coq proof
+assistant. A key component of the hammer is a proposed translation from the Calculus
+of Inductive Constructions, with certain extensions introduced by Coq, to untyped ﬁrst-
+order logic. The translation is “sufﬁciently” sound and complete to be of practical use for
+automated theorem provers. We also introduce a proof reconstruction mechanism based on
+an eauto-type algorithm combined with limited rewriting, congruence closure and some
+forward reasoning. The algorithm is able to re-prove in the Coq logic most of the theorems
+established by the A TPs. Together with machine-learning based selection of relevant premises
+this constitutes a full hammer system. The performance of the whole procedure is evaluated
+in a bootstrapping scenario emulating the development of the Coq standard library. For each
+theorem in the library only the previous theorems and proofs can be used. We show that
+40.8% of the theorems can be proved in a push-button mode in about 40 s of real time on a
+8-CPU system.
+Keywords Hammer · Coq · Calculus of inductive constructions · Proof automation
+B Cezary Kaliszyk
+cezary.kaliszyk@uibk.ac.at
+Łukasz Czajka
+lukasz.czajka@uibk.ac.at
+1 University of Innsbruck, Innsbruck, Austria
+123
+===== PAGE 2 =====
+424 Ł. Czajka, C. Kaliszyk
+1 Introduction
+Interactive Theorem Proving (ITP) systems [44] become more important in certifying math-
+ematical proofs and properties of software and hardware. A large part of the process of
+proof formalisation consists of providing justiﬁcations for smaller goals. Many of such goals
+would be considered trivial by mathematicians. Still, modern ITPs require users to spend an
+important part of the formalisation effort on such easy goals. The main points that constitute
+this effort are usually library search, minor transformations on the already proved theorems
+(such as reordering assumptions or reasoning modulo associativity-commutativity), as well
+as combining a small number of simple known lemmas.
+ITP automation techniques are able to reduce this effort signiﬁcantly. Automation tech-
+niques are most developed for systems that are based on somewhat simple logics, such as
+those based on ﬁrst-order logic, higher-order logic, or the untyped foundations of ACL2. The
+strongest general purpose proof assistant automation technique is today provided by tools
+called “hammers” [17] which combine learning from previous proofs with translation of the
+problems to the logics of automated systems and reconstruction of the successfully found
+proofs. For many higher-order logic developments a third of the proofs can be proved by a
+hammer in push-button mode [ 15,52].
+Even if the more advanced versions of type theory, as implemented by systems such as
+Agda [13], Coq [ 14], Lean [ 29], and Matita [ 5], are gaining popularity, there have been no
+hammers for such systems. This is because building such a tool requires a usable encoding,
+and a strong enough proof reconstruction.
+A typical use of a hammer is to prove relatively simple goals using available lemmas.
+The problem is to ﬁnd appropriate lemmas in a large collection of all accessible lemmas
+and combine them to prove the goal. An example of a goal solvable by our hammer, but not
+solvable by any standard Coq tactics, is the following.
+forall (A : Type)( l1 l2 : list A)( xy 1y 2y 3 : A),
+In x l1 \/ In x l2 \/ x = y1 \/ In x (y2 :: y3 :: nil)- >
+In x (y1 :: ( l1 ++ ( y2 :: ( l2 ++ ( y3 :: nil)))))
+The statement asserts that if x occurs in one of the lists l1, l2, or it is equal to y1,o ri t
+occurs in the list y2 :: y3 :: nil consisting of the elements y2 and y3, then it occurs
+in the list
+y1 :: ( l1 ++ ( y2 :: ( l2 ++ ( y3 :: nil))))
+where ++ denotes list concatenation and :: denotes the list cons operator. Eprover almost
+instantly ﬁnds a proof of this goal using six lemmas from the module Lists.List in the
+Coq standard library:
+Lemma in_nil : forall (A : Type)( a : A), ˜( In a nil ).
+Lemma in_inv : forall (A : Type)( ab : A)( l : list A),
+In b (a :: l)- > a = b \/ In b l .
+Lemma in_cons : forall (A : Type)( ab : A)( l : list A),
+In b l -> In b (a :: l).
+Lemma in_or_app : forall (A : Type)( lm : list A)( a : A),
+In a l \/ In a m -> In a (l ++ m).
+Lemma app_comm_cons : forall (A : Type)( xy : list A)( a : A),
+a :: ( x ++ y)=( a :: x)+ + y.
+Lemma in_eq : forall (A : Type)( a : A)( l : list A), In a (a :: l).
+The found A TP proof may be automatically reconstructed inside Coq.
+123
+===== PAGE 3 =====
+Hammer for Coq: Automation for Dependent Type Theory 425
+The advantage of a hammer is that it is a general system not depending on any domain-
+speciﬁc knowledge. The hammer plugin may use all currently accessible lemmas, including
+those proven earlier in a given formalization, not only the lemmas from the standard library
+or other predeﬁned libraries.
+Contributions. In this paper we present a comprehensive hammer for the Calculus of Inductive
+Constructions together with an implementation for the Coq proof assistant. In particular:
+– We introduce an encoding of the Calculus of Inductive Constructions, including the
+additional logical constructions introduced by the Coq system, in untyped ﬁrst-order
+logic with equality.
+– We implement the translation and evaluate it experimentally on the standard library of
+the Coq proof assistant showing that the encoding is sufﬁcient for a hammer system for
+Coq: the success rates are comparable to those demonstrated by hammer systems for
+Isabelle/HOL and Mizar, while the dependencies used in the A TP proofs are most often
+sufﬁcient to prove the original theorems.
+– We present a proof reconstruction mechanism based on an eauto-type procedure com-
+bined with some forward reasoning, congruence closure and heuristic rewriting. Using
+this proof search procedure we are able to re-prove 44.5% of the problems in the Coq
+standard library, using the dependencies extracted from the A TP output.
+– The three components are integrated in a plugin that offers a Coq automation tactic
+hammer. We show case studies how the tactic can help simplify certain existing Coq
+proofs and prove some lemmas not provable by standard tactics available in Coq.
+Preliminary versions of the translation and reconstruction components for a hammer for Coq
+have been presented by us at HaTT 2016 [24]. Here, we improve both, as well as introduce the
+other required components creating a ﬁrst whole hammer for a system based on the Calculus
+of Inductive Constructions.
+The rest of this paper is structured as follows. In Sect. 2 we discuss existing hammers
+for other foundations, as well as existing automation techniques for variants of type theory
+including the Calculus of Constructions. In Sect. 3 we introduce CIC
+0, an approximation of
+the Calculus of Inductive Constructions which will serve as the intermediate representation
+for our translation. Section 4 discusses the adaptation of premise selection to CIC
+0.T h e
+two main contribution follow: the translation to untyped ﬁrst-order logic (Sect. 5)a n da
+mechanism for reconstructing in Coq the proofs found by the untyped ﬁrst-order A TPs 6.
+The construction of the whole hammer and its evaluation is given in Sect.7. Finally in Sect. 8
+a number of case studies of the whole hammer is presented.
+2 Related Work
+A recent overview [ 17] discusses the three most developed hammer systems, large-theory
+premise selection, and the history of bridges between ITP and A TP systems. Here we brieﬂy
+survey the architectures of the three existing hammers and their success rates on the various
+considered corpora, as well as discuss other related automation techniques for systems based
+on the Calculus of (Inductive) Constructions.
+2.1 Existing Hammers
+Hammers are proof assistant tools that employ external automated theorem provers (A TPs) in
+order to automatically ﬁnd proofs of user given conjectures. Most developed hammers exist
+123
+===== PAGE 4 =====
+426 Ł. Czajka, C. Kaliszyk
+for proof assistants based on higher-order logic (Sledgehammer [ 63] for Isabelle/HOL [ 74],
+HOLyHammer [52] for HOL Light [ 40] and HOL4 [ 67]) or dependently typed set theory
+(MizAR [ 55] for Mizar [ 10,73]). Less complete tools have been evaluated for ACL2 [ 46].
+There are three main components of such hammer systems: premise selection, proof trans-
+lation, and reconstruction.
+Premise Selection is a module that given a user goal and a large fact library, predicts a
+smaller set of facts likely useful to prove that goal. It uses the statements and the proofs of
+the facts for this purpose. Heuristics that use recursive similarity include SInE [ 45]a n dt h e
+Meng-Paulson relevance ﬁlter [ 62], while the machine-learning based algorithms include
+sparse naive Bayes [ 70]a n d k-nearest neighbours (k-NN) [ 51]. More powerful machine
+learning algorithms perform signiﬁcantly better on small benchmarks [ 1], but are today too
+slow to be of practical use in ITPs [ 34,58].
+Translation (encoding) of the user given conjecture together with the selected lemmas to
+the logics and input formats of automated theorem provers (A TPs) is the focus of the second
+module. The target is usually ﬁrst-order logic (FOL) in the TPTP format [68], as the majority
+of the most efﬁcient A TPs today support this foundation and format. Translations have been
+developed separately for the different logics of the ITPs. An overview of the HOL translation
+used in Sledgehammer is given in [ 18]. An overview of the dependently-typed set theory of
+MizAR is given in [ 72]. The automated systems are in turn used to either ﬁnd an A TP proof
+or just further narrow down the subset of lemmas to precisely those that are necessary in the
+proof (unsatisﬁable core).
+Finally, information obtained by the successful A TP runs can be used to re-prove the
+facts in the richer logic of the proof assistants. This is typically done in one of the following
+three ways. First, by a translation of the found A TP proof to the corresponding ITP proof
+script [9,64], where in some cases the script may be even simpliﬁed to a single automated
+tactic parametrised by the used premises. Second, by replaying the inference inside the proof
+assistant [20,50,64]. Third, by implementing veriﬁed A TPs [3], usually with the help of code
+reﬂection.
+The general-purpose automation provided by the most advanced hammers is able to solve
+40–50% of the top-level goals in various developments [ 17], as well as more than 70% of
+the user-visible subgoals [ 15].
+2.2 Related Automation Techniques
+The encodings of the logics of proof assistants based on the Calculus of Constructions and its
+extensions in ﬁrst-order logic have so far covered only very limited fragments of the source
+logic [2,16,69]. Why3 [35] provides a translation from its own logic [ 33] (which is a subset
+of the Coq logic, including features like rank-1 polymorphism, algebraic data types, recursive
+functions and inductive predicates) to the format of various ﬁrst-order provers (in fact Why3
+has been initially used as a translation back-end for HOLyHammer).
+Certain other components of a hammer have already been explored for Coq. For premise
+selection, we have evaluated the quality of machine learning advice [49] using custom imple-
+mentations of Naive Bayes relevance ﬁlter, k-Nearest Neighbours, and syntactic similarity
+based on the Meng-Paulson algorithm [62]. Coq Learning Tools[59] provides a user interface
+extension that suggests to the user lemmas that are most likely useful in the current proof
+using the above algorithms as well as LDA. The suggestions of tactics which are likely to
+work for a given goal has been attempted in ML4PG [ 48], where the Coq Proof General [ 6]
+user interface has been linked with the machine learning framework Weka [ 41]. SEPIA [39]
+tries to infer automata based on existing proofs that are able to propose likely tactic sequences.
+123
+===== PAGE 5 =====
+Hammer for Coq: Automation for Dependent Type Theory 427
+The already available HOL automation has been able to reconstruct the majority of the
+automatically found proofs using either internal proof search [43] or source-level reconstruc-
+tion. The internal proof search mechanisms provided in Coq, such as the firstorder
+tactic [ 26], have been insufﬁcient for this purpose so far: we will show this and discuss
+the proof search procedures of firstorder and tauto in Sect. 6.T h e jp tactic which
+integrates the intuitionistic ﬁrst-order automated theorem prover JProver [ 66] into Coq does
+not achieve sufﬁcient reconstruction rates either [24]. Matita’s ordered paramodulation [7]i s
+able to reconstruct many goals with up to two or three premises, and the congruence-closure
+based internal automation techniques in Lean [ 30] are also promising.
+The SMTCoq [3] project has developed an approach to use external SA T and SMT solvers
+and verify their proof witnesses. Small checkers are implemented using reﬂection for parts
+of the SA T and SMT proof reconstruction, such as one for CNF computation and one for
+congruence closure. The procedure is able to handle Coq goals in the subset of the logic that
+corresponds to the logics of the input systems.
+3 Type Theory Preliminaries
+In this section we present our approximation CIC 0 of the Calculus of Inductive Construc-
+tions, i.e., of the logic of Coq. The system CIC 0 will be used as an intermediate step in the
+translation, as well as the level at which premise selection is performed. Note that CIC 0 is
+interesting as an intermediate step in the translation, but is not a sound type theory by itself
+(this will be discussed in Sect. 5.6). We assume the reader to be familiar with the Calculus of
+Constructions [22] and to have a working understanding of the type system of Coq [ 11,25].
+This section is intended to ﬁx notation and to precisely deﬁne the syntax of the formalism
+we translate to ﬁrst-order logic. The system CIC
+0 is intended as a precise description of the
+syntax of our intermediate representation. It is a substantial fragment of the logic of Coq
+as presented in [ 25, Chapter 4], as well as of other systems based on the Calculus of Con-
+structions. The features of Coq not represented in the formalism of CIC
+0 are: modules and
+functors, coinductive types, primitive record projections, and universe constraints on Type.
+The formalism of CIC 0 could be used as an export target for other proof assistants based
+on the Calculus of Inductive Constructions, e.g. for Matita or Lean. However, in CIC 0, like
+in Coq, Matita and Lean, there is an explicit distinction between the universe of propo-
+sitions Prop and the universe of sets Set or types Type. The efﬁciency of our translation
+depends on this distinction: propositions are translated directly to ﬁrst-order formulas, while
+sets or types are represented by ﬁrst-order terms. For proof assistants based on dependent type
+theories which do not make this distinction, e.g. Agda [ 13] and Idris [ 19], one would need
+a method to heuristically infer which types are to be regarded as propositions, in addition to
+possibly some adjustments to the formalism of CIC
+0.
+The language of CIC0 consists of terms and three forms of declarations. First, we present
+the possible forms of terms of CIC 0 together with a brief intuitive explanation of their
+meaning. The terms of CIC 0 are essentially simpliﬁed terms of Coq. Below by t, s, u, τ , σ ,
+ρ, κ, α, β, etc., we denote terms of CIC 0,b y c, c′, f , F, etc., we denote constants of CIC 0,
+and by x, y, z, etc., we denote variables. We use ⃗t for a sequence of terms t1 ... tn of an
+unspeciﬁed length n, and analogously for a sequence of variables ⃗x. For instance, s⃗y stands
+for sy1 ... yn ,w h e r en is not important or implicit in the context. Analogously, we useλ⃗x :⃗τ. t
+for λx1 : τ1.λx2 : τ2....λ xn : τn.t, with n implicit or unspeciﬁed.
+A term of CIC0 has one of the following forms.
+123
+===== PAGE 6 =====
+428 Ł. Czajka, C. Kaliszyk
+– c. A constant.
+– x.Av a r i a b l e .
+– ts . An application.
+– λx : t.s. A lambda-abstraction.
+– Π x : t.s. A dependent product. If x does not occur free in s then we abbreviate Π x : t.s
+by t → s.
+– case(t, c, n,λ ⃗a :⃗α.λx : c ⃗p⃗a.τ, λ⃗x1 :⃗τ1.s1,...,λ ⃗xk :⃗τk.sk). A case expression. Here
+t is the term matched on, c is a constant such that
+In(c : γ:=c1 : γ1,..., ck : γk)
+is an inductive declaration in the global environment (see the deﬁnition of inductive
+declarations below for an explanation), the type of t has the form c ⃗p⃗u, the integer n
+denotes the number of parameters (which is the length of ⃗p), the type τ[⃗u/⃗a, t/x] is the
+return type, i.e., the type of the whole case expression, ⃗a ∩ FV( ⃗p) =∅ ,a n d si[⃗v/ ⃗xi] is
+the value of the case expression if the value of t is ci ⃗p⃗v.
+– fix( fi , f1 : t1:=s1,..., fn : tn:=sn). A mutually recursive ﬁxpoint deﬁnition. The
+value of this is the function fi (where 1 ≤ i ≤ n)d e ﬁ n e db ysi .T h ev a r i a b l e sf1,..., fn
+may occur in s1,..., sn . All functions are required to be terminating.
+– let(x : t:=s, u). A let-expression locally binding x of type t to s in u.
+– cast(t,τ) . A type cast: t is forced to have type τ .
+We assume that the following special constants are among the constants of CIC 0:P r o p ,S e t ,
+Type,⊤ , ⊥, ∀, ∃, ∧, ∨, ↔, ¬, =. We usually write∀x : t.s and ∃x : t.s instead of ∀t(λx : t.s)
+and ∃t(λx : t.s), respectively. For ∧, ∨ and ↔ we typically use inﬁx notation. We usually
+write t = s instead of= τ st , omitting the typeτ . The purpose of having thelogical primitives
+⊤,⊥,∀,∃,∧,∨,↔,¬,= in CIC0 is to be able to directly represent the Coq deﬁnitions of
+logical connectives. These primitives are used during the translation. We directly export
+the Coq deﬁnitions and inductive types which represent the logical connectives (the ones
+declared in the Init.Logic module), as well as equality, to the logical primitives of CIC
+0.
+In particular, Init.Logic.all is exported to ∀.
+In CIC 0 the universe constraints on Type present in the Coq logic are lost. This is not
+dangerous in practice, because the A TPs are not strong enough to exploit the resulting incon-
+sistency. Proofs of paradoxes present in Coq’s standard library are explicitly ﬁltered-out by
+our plugin.
+A declaration of CIC
+0 has one of the following forms.
+–A deﬁnition c = t : τ . This is a deﬁnition of a constant c stating that c is (deﬁnitionally)
+equal to t and it has type τ .
+–A typing declaration c : τ . This is a declaration of a constant c stating that it has type τ .
+–A n inductive declaration I k(c : τ:=c1 : τ1,..., cn : τn) of c of type τ with k parameters
+and n constructors c1,..., cn having types τ1,...,τ n respectively. We requireτ ⇓ Π ⃗y :
+⃗σ.Π ⃗y′:⃗σ′.s with s ∈{ Prop, Set, Type} and τi ⇓ Π ⃗y :⃗σ. ⃗xi :⃗αi .c⃗y ⃗ui for i = 1,..., n,
+where the length of ⃗y is k and a ⇓ b means that a evaluates to b. Usually, we omit the
+subscript k when irrelevant or clear from the context.
+For instance, a polymorphic type of lists deﬁned as an inductive type in Type with a
+single parameter of type Type may be represented by
+I
+1(List : Type → Type:=
+nil : (Π A : Type.List A),
+cons : (Π A : Type.A → List A → List A)).
+123
+===== PAGE 7 =====
+Hammer for Coq: Automation for Dependent Type Theory 429
+Mutually inductive types may also be represented, because we do not require the names
+of inductive declarations to occur in any speciﬁc order. For instance, the inductive pred-
+icates even and odd may be represented by two inductive declarations
+I
+0(even : nat → Prop:=
+even 0 : even 0,
+even S : Πn : nat.odd n → even(Sn)).
+I0(odd : nat → Prop:=
+odd S : Πn : nat.even n → odd(Sn)).
+An environment of CIC0 is a set of declarations. We assume an implicit global environmentE.
+The environment E is assumed to contain appropriate typing declarations for the logical
+primitives. A CIC 0 context is a list of declarations of the form x : t with t at e r mo fC I C0
+and x the declared CIC0 variable. We assume the variables declared in a context are pairwise
+disjoint. We denote environments byE, E′, etc., and contexts byΓ , Γ ′, etc. We writeΓ, x : τ
+to denote the context Γ with x : τ appended. We denote the empty context by ⟨⟩. A type
+judgement of CIC 0 has the form Γ ⊢ t : τ where Γ is a context and t,τ are terms. If
+Γ ⊢ t : τ and Γ ⊢ τ : σ then we write Γ ⊢ t : τ : σ .A Γ -proposition is a term t such that
+Γ ⊢ t : Prop. A Γ -proof is a term t such that Γ ⊢ t : τ : Prop for some term τ .
+The set FV(t) of free variables of a term t is deﬁned in the usual way. To save on notation
+we sometimes treat FV (t) as a list. For a context Γ which includes declarations of all free
+variables of t, the free variable context FC (Γ ; t) of t is deﬁned inductively:
+–F C (⟨⟩;t) =⟨ ⟩,
+–F C (Γ, x : τ; t) = FC(Γ ;λx : τ.t), x : τ if x ∈ FV(t),
+–F C (Γ, x : τ; t) = FC(Γ ; t) if x /∈ FV(t).
+If Γ includes declarations of all variables from a set of variables V , then we deﬁne FF Γ (V)
+to be the set of those y ∈ V which are notΓ -proofs. Again, to save on notation we sometimes
+treat FFΓ (V) as a list.
+Our translation encodes CIC 0 in untyped ﬁrst-order logic with equality (FOL). We also
+implemented a straightforward information-forgetting export of Coq declarations into the
+syntax of CIC
+0. We describe the translation and the export in the next section.
+In the translation of CIC 0 we need to perform (approximate) type checking to determine
+which terms are propositions (have type Prop), i.e. we need to check whether a given term t
+in a given context Γ has type Prop. For this purpose we implemented a specialised efﬁ-
+cient procedure to do so. In fact, this procedure is slightly incomplete. The point here is to
+approximately identify which types are intended to represent propositions. In proof assistants
+or proof developments where types other than those of sort Prop are intended to represent
+propositions the procedure needs to be changed.
+All CIC
+0 terms we are interested in correspond to typable (and thus strongly normalizing)
+Coq terms, i.e., Coq terms are exported in a simple information-forgetting way to appropri-
+ate CIC
+0 terms. We will assume that for any exported term there exists a type in logic of Coq,
+it is unique, and it is preserved under context extension. This assumption is not completely
+theoretically justiﬁed, but is useful in practice.
+4 Premise Selection
+The ﬁrst component of a hammer preselects a subset of the accessible facts most likely to
+be useful in proving the user given goal. In this section we present the premise selection
+123
+===== PAGE 8 =====
+430 Ł. Czajka, C. Kaliszyk
+algorithm proposed for a hammer for dependently typed theory. We reuse the two most
+successful ﬁlters used in HOLyHammer [ 52] and Sledgehammer [ 15] adapted to the CIC 0
+representation of proof assistant knowledge. We ﬁrst discuss the features and labels useful
+for that representation and further describe the k-NN and naive Bayes classiﬁers, which we
+used in our implementation.
+4.1 Features and Labels
+A simple possible characterization of statements in a proof assistant library is to use the sets
+of symbols that appear in these statements. It is possible to extend this set in many ways [56],
+including various kinds of structure of the statements, types, and normalizing variables (all
+variables will be replaced by a single symbolX). In the case of CIC
+0, the constants are already
+both term constants and type constructors. We omit the basic logical constants, as they will not
+be useful for automated theorem provers which assume ﬁrst-order logic. We further augment
+the set of features by inspecting the parse tree: constants and constant-variable pairs that
+share an edge in the parse tree give rise to a feature of the statement. We will denote such
+features of a theorem T by F(T).
+For each feature f we additionally compute a feature weight w( f ) that estimates the
+importance of the feature. Based on the HOLyHammer experiments with feature weights [54],
+we use TF-IDF [ 47] to compute feature weights. This ensures that rare features are more
+important than common ones.
+Like in usual premise selection, the dependencies of theorems will constitute the labels
+for the learning algorithms. The dependencies for a theorem or deﬁnition T , which we will
+denote D(T), are the constants occuring in the type ofT or in the proof term (or the unfolding)
+of T . Note that these dependencies may not be complete, because in principle an A TP proof
+of T may need some additional information that in Coq is incorporated into type-checking
+but not used to build proof terms, e.g. deﬁnitions of constants, facts which are necessary to
+establish types of certain terms.
+For example, consider the theoremT = Between.between
+le from the Coq standard
+library with the statement:
+forall kl , between k l -> k <= l.
+In the section where this theorem is declared there is the following variable declaration:
+Variable P : nat -> Prop.
+The features and dependencies of T are:
+F(T) ={ "Between.Between.between","Between.Between.between-X",
+"Coq.Init.Datatypes.nat", "Coq.Init.Peano.le",
+"Coq.Init.Peano.le-X"}
+D(T) ={ "Between.Between.between","Between.Between.between
+ind",
+"Coq.Init.Datatypes.nat", "Coq.Init.Peano.le",
+"Coq.Init.Peano.le
+S", "Coq.Init.Peano.le n", "P" }
+The -X features correspond to constants applied to variables. Similarly, in more complex
+examples constant-constant applications (such as the successor of zero) give rise to such
+compound features.
+123
+===== PAGE 9 =====
+Hammer for Coq: Automation for Dependent Type Theory 431
+4.2 k-Nearest Neighbors
+The k nearest neighbors classiﬁer (k-NN) ﬁnds a given number k of accessible facts which are
+most similar to the current goal. The distance for two statementsa, b is deﬁned by the function
+(higher values means more similar, τ1 is a constant which gives more similar statements an
+additional advantage):
+s(a, b) =
+∑
+f ∈F(a)∩F(b)
+w( f )τ1
+The dependencies of the selected facts will be used to estimate the relevance of all acces-
+sible facts. Given the set of the k nearest neighbors N together with their nearness values,
+the relevance of a visible fact a for the goal g is
+⎛
+⎝τ2
+∑
+b∈N|a∈D(b)
+s(b, g)
+|D(b)|
+⎞
+⎠ +
+{
+s(a, g) if a ∈ N
+0 otherwise
+where τ2 is a constant which gives more importance to the dependencies. We have used the
+values τ1 = 6a n dτ2 = 2.7 in our implementation, which were found experimentally in our
+previous work [51].
+There are two modiﬁcations of the standard k-NN algorithm. First, when deciding on
+the labels to predict based on the neighbors, we not only include the labels associated with
+the neighbors based on the training examples (this corresponds to past proofs) but also the
+neighbors themselves. This is because a theorem is in principle provable from itself in zero
+steps, and this information is not included in the training data. Furthermore, theorems that
+have been proved, but have not been used yet, would not be accessible to the algorithm
+without this modiﬁcation.
+Second, we do not use a ﬁxed number k, instead we ﬁx the number of facts with non-
+zero relevance that need to be predicted. We start with k = 1 and if not enough facts have
+been selected, we increase k iteratively. This allows creating A TP problems of proportionate
+complexity.
+4.3 Sparse Naive Bayes
+The sparse naive Bayes classiﬁer estimates the relevance of a fact a for a goal g by the
+probability
+P(a is used in the proof of g)
+Since the goal is only characterized by its features, the probability can be further estimated
+by:
+P(a is used in a proof of s | s has features F(g))
+where s is an arbitrary proved theorem, abstracting from the goal g.
+For efﬁciency reasons the computation of the relevance of a is restricted to the features of
+a and the features that were ever present when a was used as a dependency. More formally,
+the extended features F(a) of a are:
+F(a) = F(a) ∪
+⋃
+a∈D(b)
+F(b)
+123
+===== PAGE 10 =====
+432 Ł. Czajka, C. Kaliszyk
+The probability can be thus estimated by the statements s which have the features F(g) but
+do not have the features F(a) − F(g):
+P
+(
+a is used in a proof of s | F(a) ⊆ F(g) ∧ F(a) misses F(a) − F(g)
+)
+Assuming that the features are independent1 the Bayes’s rule can be applied to transform the
+probability to the following product of probabilities:
+P(a is used in the proof of s)
+·
+∏
+f ∈F(g)∩F(a)
+P
+(
+s has feature f | a is used in the proof of s
+)
+·
+∏
+f ∈F(g)−F(a)
+P
+(
+s has feature f | a is not used in the proof of s
+)
+·
+∏
+f ∈F(a)−F(g)
+P
+(
+s does not have feature f | a is used in the proof of s
+)
+The expressions can be ﬁnally estimated:
+P(a is used in a proof of s) = t(a)
+K
+P
+(
+s has feature f | a is used in the proof of s
+)
+= s(a, f )
+t(a)
+P
+(
+s does not have feature f | a is used in the proof of s
+)
+= 1 − s(a, f )
+t(a)
+using two auxiliary functions that can be computed from the dependencies:
+– s(a, f ) is the number of times a has been a dependency of a fact characterized by the
+feature f ;
+– t(a) is the number of times a has been a dependency;
+as well as the number K of all theorems proved so far.
+In our actual implementation we further introduce minor modiﬁcations to avoid any of the
+probabilities become zero and we estimate the logarithms of probabilities to avoid multiplying
+small numbers which might cause numerical instability. The classiﬁer can ﬁnally estimate
+the relevance of all visible facts and return the requested number of them that are most likely
+to lead to a successful proof of the conjecture.
+5T r a n s l a t i o n
+In this section we describe a translation of Coq goals through CIC 0 to untyped ﬁrst-order
+logic with equality. The translation presented here is a signiﬁcantly improved version of our
+translation presented at HaTT [ 24]. It has been made more complete, many optimisations
+have been introduced, and several mistakes have been eliminated.
+The translation is neither sound nor complete. In particular, it assumes proof irrelevance (in
+the sense of erasing proof terms), it omits universe constraints on Type, and some information
+is lost in the export to CIC
+0. However, it is sound and complete “enough” to be practically
+1 There are many dependencies among the features, however considering such dependenceis makes premise
+selection very slow and gives little improvement both when it comes to machine learning metrics and in
+practical hammer use [ 4].
+123
+===== PAGE 11 =====
+Hammer for Coq: Automation for Dependent Type Theory 433
+usable by a hammer (just like the hammers for other systems, it works very well for essentially
+ﬁrst-order logic goals and becomes much less effective with other features of the logics [17]).
+The limitations of the translation and further issues of the current approach are explained
+in more detail in Sects. 5.6 and 9. Some similar issues were handled in the context of code
+extraction in [60].
+The translation proceeds in three phases. First, we export Coq goals to CIC
+0.N e x tw e
+translate CIC0 to ﬁrst-order logic with equality. In the ﬁrst-order language we assume a unary
+predicate P, a binary predicateT and a binary function symbol @. Usually, we writets instead
+of @(t, s). Intuitively, an atom of the formP(t) asserts the provability oft,a n dT(t,τ) asserts
+that t has type τ . In the third phase we perform some optimisations on the generated FOL
+problem, e.g. replacing some terms of the form P(cts ) with c(t, s).
+AF O L axiom is a pair of a FOL formula and a constant (label). We translate CIC 0 to a
+set of FOL axioms. The labels are used to indicate which axioms are translations of which
+lemmas. When we do not mention the label of an axiom, then the label is not important.
+5.1 Export of Coq data
+The Coq declarations are exported in a straightforward way, translating Coq terms to corre-
+sponding terms of CIC
+0, possibly forgetting some information like e.g. universe constraints
+on Type. We implemented a Coq kernel plugin which exports the Coq kernel data structures.
+We brieﬂy comment on several aspects of the export.
+– Deﬁnitions are exported as CIC
+0 deﬁnitions.
+– Axioms are exported as CIC 0 typing declarations.
+– Free variables (e.g. current hypotheses or variables from a currently open section) are
+exported as CIC0 constants with appropriate typing declarations.
+– Inductive types are exported as CIC 0 inductive declarations. Induction principles and
+recursor deﬁnitions are exported as separate CIC 0 deﬁnitions.
+– Coinductive types are treated in the same way as inductive types, except that no induction
+principles or recursor deﬁnitions are exported for them.
+– Mutual inductive types are exported separately for each constituent inductive type. See
+Sect. 3.
+– The Coq construct cofix is exported to fix in CIC0 with a special ﬂag that affects the
+evaluation algorithm. We omitted this ﬂag from the description of CIC 0 for the sake of
+simplicity.
+– Modules and functors are not exported. Objects inside a module are exported with the
+name of the module preﬁxed to the name of the object.
+– Universe constraints on Type are not exported. Proofs of paradoxes present in the standard
+library, e.g., Hurken’s paradox, are explicitly ﬁltered out and not exported.
+– The following objects from the Init.Logic module are represented directly by the
+corresponding logical primitives of CIC 0: True, False, all, ex, and, or, iff, eq.
+No other objects from the Init.Logic module are exported.
+– Records are translated to inductive types already by Coq. Primitive record projections
+are not supported by our plugin.
+– Existential metavariables are not exported. Currently it is not possible to use the hammer
+plugin when the proof state contains some uninstantiated existential metavariables.
+The limitations of the translation, including these stemming from the incompleteness of the
+export as well as of the current architecture will be discussed in Sects. 5.6 and 9.
+123
+===== PAGE 12 =====
+434 Ł. Czajka, C. Kaliszyk
+5.2 Translating Terms
+The terms of CIC 0 are translated using three mutually recursively deﬁned functions F , G
+and C. The function F encodes propositions as FOL formulas and is used for terms of CIC 0
+having type Prop, i.e., for propositions of CIC 0. The function G encodes types as guards and
+is used for terms of CIC 0 which have type Type but not Prop. The function C encodes CIC0
+terms as FOL terms. During the translation we add some fresh constants together with axioms
+(in FOL) specifying their meaning. Hence, strictly speaking, the codomain of each of the
+functions
+F , G and C is the Cartesian product of the set of FOL formulas (or terms)—the
+desired encoding—and the powerset of the set of FOL formulas—the set of axioms added
+during the translation. However, it is more readable to describe the functions assuming a
+global mutable collection of FOL axioms.
+Our translation assumes proof irrelevance. We use a fresh constant prf to represent
+an arbitrary proof object (of any inhabited proposition). For the sake of efﬁciency, CIC
+0
+propositions are translated directly to FOL formulas using the F function. The CIC 0 types
+which are not propositions are translated to guards which essentially specify what it means
+for an object to have the given type. The formula
+G(t,α) intuitively means “ t has type α”.
+For instance, for a (closed) type τ = Π x : α.β we have
+G( f,τ) =∀ x.G(x,α) → G( fx ,β)
+So G( f,τ) says that an object f has type τ = Π x : α.β if for any object x of type α,t h e
+application fx has type β (in which x may occur free).
+Below we give deﬁnitions of the functions F , G and C. These functions are in fact parame-
+t e r i s e db yaC I C0 context Γ , which we write as a subscript. In the description of the functions
+we implicitly assume that variable names are chosen appropriately so that no unexpected vari-
+able capture occurs. Also we assume an implicit global environment E. This environment
+is used for type checking. The typing declarations for CIC
+0 logical primitives, as described
+in the previous section, are assumed to be present in E. During the translation also some
+new declarations are added to the environment. We assume all CIC 0 constants are also FOL
+constants, and analogously for variables. We use the notation t1 ≈Γ t2 for t1 ↔ t2 if
+Γ ⊢ t1 : Prop, or for t1 = t2 if Γ ⊬ t1 : Prop.
+The function F encoding propositions as FOL formulas:
+–I f Γ ⊢ t : Prop then FΓ (Π x : t.s) = FΓ (t) → FΓ, x:t(s).
+–I f Γ ⊬ t : Prop then FΓ (Π x : t.s) =∀ x.GΓ (x, t) → FΓ, x:t(s).
+– FΓ (∀x : t.s) =∀ x.GΓ (x, t) → FΓ, x:t(s).
+– FΓ (∃x : t.s) =∃ x.GΓ (x, t) ∧ FΓ, x:t(s).
+– FΓ (t ◦ s) = FΓ (t) ◦ FΓ (s) where ◦∈{ ∧ ,∨,↔}.
+– FΓ (¬t) =¬ FΓ (t).
+– FΓ (t = s) = (CΓ (t) = CΓ (s)).
+– Otherwise, if none of the above apply, FΓ (t) = P(CΓ (t)).
+The function G encoding types as guards:
+–I f w = Π x : t.s and Γ ⊢ t : Prop then
+GΓ (u,w) = FΓ (t) → GΓ, x:t(u, s).
+–I f w = Π x : t.s and Γ ⊬ t : Prop then GΓ (u,w) =∀ x.GΓ (x, t) → GΓ, x:t(ux , s).
+–I f w is not a product then GΓ (u,w) = T(u, CΓ (w)).
+The function C encoding terms as FOL terms:
+123
+===== PAGE 13 =====
+Hammer for Coq: Automation for Dependent Type Theory 435
+– CΓ (c) = c for a constant c,
+– CΓ (x) = x for a variable x if x is not a Γ -proof,
+– CΓ (x) = prf for a variable x if x is a Γ -proof,
+– CΓ (ts) is equal to:
+– prf if CΓ (t) = prf,
+– CΓ (t) if CΓ (t) ̸= prf but CΓ (s) = prf,
+– CΓ (t)CΓ (s) otherwise.
+– CΓ (Π x : t.s) = R⃗y for a fresh constant F where ⃗y = FFΓ (FC(Γ ;Π x : t.s)) and
+–i f Γ ⊢ (Π x : t.s) : Prop then ∀⃗y.P(F ⃗y) ↔ FΓ (Π x : t.s) is a new axiom,
+–i f Γ ⊬ (Π x : t.s) : Prop then ∀⃗yz.T(z, F ⃗y) ↔ GΓ (z,Π x : t.s) is a new axiom.
+– CΓ (λ⃗x :⃗τ. t) = F ⃗y0 for a fresh constant F where
+– t does not start with a lambda-abstraction any more,
+– Γ, ⃗x :⃗τ ⊢ t : α,
+– ⃗y :⃗ρ = FC(Γ ;λ⃗x :⃗τ. t),
+– ⃗y0 = FFΓ (⃗y) and ⃗x0 = FFΓ, ⃗x:⃗τ (⃗x),
+– the typing declaration F : Π ⃗y :⃗ρ.Π ⃗x :⃗τ.α is added to the global environment E
+(before the recursive call to FΓ below),
+– the following is a new axiom:
+∀⃗y0 ⃗x0.FΓ, ⃗x:⃗τ (F ⃗y⃗x ≈Γ, ⃗x:⃗τ t).
+Note that the call to F will remove those variable arguments to F which are Γ, ⃗x :⃗τ -
+proofs. Hence, ultimately F will occur as F ⃗y0 ⃗x0 in the above axiom.
+–I f t is a Γ -proof then
+CΓ (case(t, c, n,λ ⃗a :⃗α.λx : c ⃗p⃗a.τ, λ⃗x1 :⃗τ1.s1,...,λ ⃗xk :⃗τk.sk)) = C
+for a fresh constant C.
+–I f t is not a Γ -proof then
+CΓ (case(t, c, n,λ ⃗a :⃗α.λx : c ⃗p⃗a.τ, λ⃗x1 :⃗τ1.s1,...,λ ⃗xk :⃗τk.sk)) = F ⃗y0
+for a fresh constant F where
+– I(c : γ:=c1 : γ1,..., ck : γk) ∈ E,
+– ⃗y :⃗ρ = FC(Γ ; case(t, c, n,λ ⃗a :⃗α.λx : c ⃗p⃗a.τ, λ⃗x1 :⃗τ1.s1,...,λ ⃗xk :⃗τk.sk)),
+– ⃗y0 = FFΓ (⃗y),
+– ⃗y1 :⃗ρ1 = FC(Γ ; t),
+– Γ ⊢ t : c ⃗p⃗u for some terms ⃗u,
+– the declaration F : Π ⃗y :⃗ρ.τ [⃗u/⃗a, t/x] is added to the global environment E,
+– the following is a new axiom:
+∀⃗y0.guards ⃗y1:⃗ρ1 (FΓ (( ∃⃗x1 :⃗τ1.t = c1 ⃗p ⃗x1 ∧ F ⃗y ≈Γ, ⃗x1:⃗τ1 s1)
+∨ ...
+∨ (∃⃗xk :⃗τk.t = ck ⃗p ⃗xk ∧ F ⃗y ≈Γ, ⃗xk:⃗τk sk)))
+where for a FOL formula ϕ and a context Γ we deﬁne guards Γ (ϕ) inductively as
+follows:
+• guards⟨⟩(ϕ) = ϕ,
+• guardsΓ, x:τ (ϕ) = guardsΓ (FΓ (τ) → ϕ) if Γ ⊢ τ : Prop,
+123
+===== PAGE 14 =====
+436 Ł. Czajka, C. Kaliszyk
+• guardsΓ, x:τ (ϕ) = guardsΓ (GΓ (x,τ) → ϕ) if Γ ⊬ τ : Prop.
+– CΓ (fix( f j , f1 : τ1:=t1,..., fn : τn:=tn)) = Fj ⃗y0 where
+– ⃗y :⃗α = FC(Γ ; fix( f j , f1 : τ1:=t1,..., fn : τn:=tn)),
+– ⃗y0 = FFΓ (⃗y),
+– F1,..., Fn are fresh constants,
+–f o r i = 1,..., n the typing declarations Fi : Π ⃗y :⃗α.τi are added to the global
+environment E,
+–f o r i = 1,..., n the following are new axioms:
+∀⃗y0.FΓ (Fi ⃗y ≈Γ ti [F1 ⃗y/ f1,..., Fn ⃗y/ fn]).
+– CΓ (let(x : τ:=t, s)) = CΓ (s[F ⃗y0/x]) for a fresh constant F where
+– ⃗y :⃗α = FC(Γ ; tτ) ,
+– ⃗y0 = FFΓ (⃗y),
+– σ = Π ⃗y :⃗α.τ ,
+– the deﬁnition F = (λ⃗y :⃗α.t) : σ is added to the global environment E (before the
+recursive call to CΓ above),
+–i f ⊬ σ : Prop then ∀⃗y0.F ⃗y0 = CΓ (t) is a new axiom.
+– CΓ (cast(prf,τ) ) = prf.
+–I f t ̸= prf then CΓ (cast(t,τ) ) = F ⃗y0 for a fresh constant F where
+– ⃗y :⃗α = FC(Γ ; tτ) ,
+– ⃗y0 = FFΓ (⃗y),
+– σ = Π ⃗y :⃗α.τ ,
+– the deﬁnition F = (λ⃗y :⃗α.t) : σ is added to the global environment E,
+–i f ⊬ σ : Prop then ∀⃗y0.F ⃗y0 = CΓ (t) is a new axiom.
+Example 1 AC I C0 proposition
+t = Π x : N.Π f : α → N → N.Πq : α. fq x = x
+in the context
+Γ = N : Type,α : Prop
+is translated to
+FΓ (t) =∀ x.T(x, N) →∀ f.(P(α) →∀ y.T(y, N) → T( fy , N)) → P(α) → fx = x.
+In practice, checking the conditions Γ ⊢ t : Prop is performed by our specialised approx-
+imate proposition-checking algorithm. Checking whether a term t is a Γ -proof occurs in two
+cases.
+1. t is the term matched on in acase-expression case(t, c,... ) . Then there is an inductive
+declaration In(c : γ:= ... ) in the global environment. We check if the normal form of γ
+has target Prop.
+2. t = x is a variable. Then we check if the type assigned to x by the context Γ is a
+proposition.
+We writeϕ(σ) to denote that a FOL formula ϕ has σ as a subformula. Then ϕ(σ ′) denotes
+the formula ϕ with σ replaced by σ′. We use an analogous notation when σ is a FOL term
+instead of a formula.
+123
+===== PAGE 15 =====
+Hammer for Coq: Automation for Dependent Type Theory 437
+Note that each new axiom deﬁning a constant F intended to replace (“lift-out”) a λ-
+abstraction, a case expression or a ﬁxpoint deﬁnition has the form
+∀⃗x.ϕ( F ⃗x = t)
+or
+∀⃗x.ϕ( P(F ⃗x) ↔ ψ).
+We will call each such axiom thelifting axiom for F. For lambda abstractions, this is equivalent
+to lambda-liﬁng, which is a common technique used by hammers for HOL and Mizar. In
+CIC
+0 however other kinds of terms do bind variables (for examplecase and fix) and lifting
+axioms need to be created for such terms as well.
+5.3 Translating Declarations
+Declarations of CIC0 are encoded as FOL axioms. As before, a global CIC 0 environment E
+is assumed. During the translation of a declaration the functionsF , G and C from the previous
+subsection are used. These functions may themselves add some FOL axioms, which are then
+also included in the result of the translation of the declaration. We proceed to describe the
+translation for each of the three forms of CIC
+0 declarations. Whenever we write F , G, C
+without subscript, the empty context ⟨⟩is assumed as the subscript.
+A deﬁnition c = t : τ is translated as follows.
+–I f ⊢ τ : Prop then add F(τ) as a new axiom with label c.
+–I f ⊬ τ : Prop then
+–a d d G(c,τ) as a new axiom,
+–i f τ = Prop then add c ↔ F(t) as a new axiom with label c,
+–i f τ = Set or τ = Type then add ∀ f.cf ↔ G( f, t) as a new axiom with label c,
+–i f τ/∈{ Prop, Set, Type} then add c = C(t) as a new axiom with label c.
+A typing declaration c : τ is translated as follows.
+–I f ⊢ τ : Prop then add F(τ) as a new axiom with label c.
+–I f ⊬ τ : Prop then add G(c,τ) as a new axiom with label c.
+An inductive declaration I(c : τ:=c1 : τ1,..., cn : τn) is translated as follows, where
+τ ⇓ Π ⃗p : ⃗β.Π ⃗y :⃗γ. s and s ∈{ Prop, Set, Type} and ⃗β are the types of the parameters of
+the inductive type and τi ⇓ Π ⃗p : ⃗β.Π ⃗xi :⃗αi .c ⃗p⃗ti and the length of ⃗y and each ⃗ti is m.
+– Translate the typing declaration c : τ .
+– Translate each typing declaration ci : τi for i = 1,..., n.
+–I f s ̸= Prop then for each i = 1,..., n add the following injectivity axiom:
+F(∀⃗xi :⃗αi .∀⃗xi′:⃗αi′.ci ⃗xi = ci ⃗xi ′→ xi,1 = x′
+i,1 ∧ ... ∧ xi,ki = x′
+i,ki )
+where ⃗αi′=⃗αi [⃗xi′/ ⃗xi].
+–I f s ̸= Prop then for each i, j = 1,..., n with i ̸= j add the following discrimination
+axiom:
+F(∀⃗xi :⃗αi .∀⃗x j :⃗α j .ci ⃗xi ̸= c j ⃗x j ).
+–I f s ̸= Prop then add the following inversion axiom:
+F(∀⃗p : ⃗β.∀⃗y :⃗γ.∀z : c ⃗p⃗y .( ∃⃗x1 :⃗α1.z = c1 ⃗p ⃗x1 ∧ y1 = t1,1 ∧ ... ∧ ym = t1,m)
+∨ ...
+∨ (∃⃗xn :⃗αn.z = cn ⃗p ⃗xn ∧ y1 = tn,1 ∧ ... ∧ ym = tn,m)).
+123
+===== PAGE 16 =====
+438 Ł. Czajka, C. Kaliszyk
+–I f s = Prop then add the following inversion axiom:
+F(∀⃗p : ⃗β.∀⃗y :⃗γ. c ⃗p⃗y → (( ∃⃗x1 :⃗α1.y1 = t1,1 ∧ ... ∧ ym = t1,m)
+∨ ...
+∨ (∃⃗xn :⃗αn.y1 = tn,1 ∧ ... ∧ ym = tn,m))).
+5.4 Translating Problems
+AC I C0 problem consists of a set of assumptions which are CIC0 declarations, and a conjecture
+which is a CIC0 proposition. A CIC0 problem is translated to a FOL problem by translating the
+assumptions to FOL axioms in the way described in the previous subsection, and translating
+the conjecture t to a FOL conjecture
+F(t). New declarations added to the environment
+during the translation are not translated. For every CIC0 problem the following FOL axioms
+are added to the result of the translation:
+– T(Prop, Type), T(Set, Type), T(Type, Type),
+– ∀y.T(y, Set) → T(y, Type).
+5.5 Optimisations
+We perform the following optimisations on the generated FOL problems, in the given order.
+Below, by an occurrence of a term t (in the FOL problem) we mean an occurrence of t in the
+set of FOL formulas comprising the given FOL problem.
+– We recursively simplify the lifting axioms for the constants encoding λ-abstractions, case
+expressions and ﬁxpoint deﬁnitions. For any lifting axiom A for a constant F,i f A has
+the form
+∀⃗x.ϕ( F ⃗x = G⃗x)
+such that G has a lifting axiom B
+∀⃗x∀⃗y.ψ( G⃗x ⃗y = t)
+and either ϕ(□) = □ or ⃗y is empty, then we replace the axiom A by
+∀⃗x.ϕ(∀⃗y.ψ( F ⃗x ⃗y = t))
+and we remove the axiom B and replace all occurrences of G by F. When in the lifting
+axioms A and B we have logical equivalence ↔ instead of equality =, then we adjust
+the replacement of A appropriately, using ↔ instead of =. We repeat applying this
+optimisation as long as possible.
+– For a constant c, we replace any occurrence of T(s, ct1 ... tn) by cT (t1,..., tn, s)
+where cT is a new function symbol of arity n + 1. We then also add a new axiom:
+∀x1 ... xn y.cT (x1,..., xn, y) ↔ T(y, cx1 ... xn).
+Note that after performing this replacement the predicate T may still occur in the FOL
+problem, e.g., a term T(s, xt1 ... tn) may occur. This optimisation is useful, because it
+simpliﬁes the FOL terms and replaces the T predicate with a specialised predicate for a
+constant. This makes it easier for the A TPs to handle the problem.
+– For each occurrence of a constant c with n > 0 arguments, i.e., each occurrence ct1 ... tn
+where n > 0 is maximal (there are no further arguments), we replace this occurrence
+with cn(t1,..., tn) where cn is a new n-ary function symbol. We then also add a new
+axiom:
+123
+===== PAGE 17 =====
+Hammer for Coq: Automation for Dependent Type Theory 439
+– ∀x1 ... xn.P(cn(x1,..., xn)) ↔ P(cx1 ... xn) if (after replacement of all such
+occurrences) all terms of the form cn(t1,..., tn) occur only as arguments of the
+predicate P, i.e., occur only as in P(cn(t1,..., tn)).
+– ∀x1 ... xn.cn(x1,..., xn) = cx1 ... xn otherwise.
+This optimisation is similar to the optimisation originally described by Meng and Paulson
+in [61, Section 2.7].
+– For any constant c and n > 0, if all terms of the form cn(t1,..., tn) occur only as
+arguments of P, then replace each occurrence of a term of the form P(cn(t1,..., tn)) by
+cn(t1,..., tn).
+5.6 Properties of the Translation
+In this section we brieﬂy comment on the theoretical aspects of the translation. Further limita-
+tions of the whole approach will be mentioned in Sect. 9. The translation is neither sound nor
+complete. The lack of soundness is caused e.g. by the fact that we forget universe constraints
+on Type, the assumption of proof irrelevance, and the combination of omitting type guards for
+lifted-out lambda-abstractions with translating Coq equality to FOL equality. However, our
+experimental evaluation indicates that the translation is both sound and complete “enough”
+to be practically usable. Also, a “core” version of our translation is sound. A soundness proof
+and a more detailed discussion of the theoretical properties of a core version of our translation
+may be found in [ 27].
+Note that e.g. in the axiom added for lifted-out lambda-abstractions
+∀⃗y
+0 ⃗x0.FΓ, ⃗x:⃗τ (F ⃗y⃗x ≈Γ, ⃗x:⃗τ t)
+we do not generate type guards for the free ( ⃗y0) or bound ( ⃗x0) variables of the lambda-
+expression. In practice, omitting these guards slightly improves the success rate of the A TPs
+without signiﬁcantly affecting the reconstruction success rate. We conjecture that, ignoring
+other unsound features of the translation, omitting these guards is sound provided that the
+inductive Coq equality type eq is not translated to FOL equality. Note also that it is not
+sound (and our translation does not do it) to omit guards for the free variables of the term
+m a t c h e do ni nt h ecase construct, even if Coq equality is not translated to FOL equality. For
+example, assume I
+0(c : Set:=c0 : c) is in the global environment. With the guards omitted,
+for the case-expression case(x, c, 0, c, c0) we would add an axiom
+∀x.x = c0 ∧ Fx = c0
+with F a fresh ﬁrst-order constant. This obviously leads to an inconsistency by substituting
+for x two distinct constants c1, c2 such that c1 ̸= c2 is provable.
+In our translation we map Coq equality to FOL equality which is not sound in combina-
+tion with omitting the guards for free variables. In particular, if a CIC 0 problem contains a
+functional extensionality axiom then the generated FOL problem may be inconsistent, and
+in contrast to the inconsistencies that may result from omitting certain universe constraints,
+this inconsistency may be “easy enough” for the A TPs to derive. Our plugin has an option to
+turn on guard generation for free variables. See also [ 27, Section 6].
+123
+===== PAGE 18 =====
+440 Ł. Czajka, C. Kaliszyk
+6 Proof Reconstruction
+In this section we will discuss a number of existing Coq internal automation mechanisms
+that could be useful for proof reconstruction and ﬁnally introduce our combined proof recon-
+struction tactic.
+The tactic firstorder is based on an extension of the contraction-free sequent calcu-
+lus LJT of Dyckhoff [ 32] to ﬁrst-order intuitionistic logic with inductive deﬁnitions [ 26]. A
+decision procedure for intuitionistic propositional logic based on the system LJT is imple-
+mented in the tactic tauto. The tactic firstorder does not take into account many
+features of Coq outside of ﬁrst-order logic. In particular, it does not fully axiomatise equality.
+In general, the tactics based on extensions of LJT do mostly forward reasoning, i.e.,
+they predominantly manipulate the hypotheses in the context to ﬁnally obtain the goal. Our
+approach is based more on an auto-type proof search which does mostly backward Prolog-
+style reasoning—modifying the goal by applying hypotheses from the context. The core of
+our search procedure may be seen as an extension of the Ben-Y elles algorithm [ 21,42]t o
+ﬁrst-order intuitionistic logic with all connectives [ 71,75]. It is closely related to searching
+for η-long normal forms [ 12,31]. Our implementation extends this core idea with various
+heuristics. We augment the proof search procedure with the use of existential metavariables
+like ineauto, a looping check, some limited forward reasoning, the use of thecongruence
+tactic, and heuristic rewriting using equational hypotheses.
+It is important to note that while the external A TPs we employ are classical and the
+translation assumes proof irrelevance, the proof reconstruction phase does not assume any
+additional axioms. We re-prove the theorems in the intuitionistic logic of Coq, effectively
+using the output of the A TPs merely as hints for our hand-crafted proof search procedure.
+Therefore, if the A TP proof is inherently classical then proof reconstruction will fail. Cur-
+rently, the only information from A TP runs we use is a list of lemmas needed by the A TP to
+prove the theorem (these are added to the context) and a list of constant deﬁnitions used in
+the A TP proof (we try unfolding these constants and no others).
+Another thing to note is that we do not use the information contained in the Coq standard
+library during reconstruction. This would not make sense for our evaluation of the recon-
+struction mechanism, since we try to re-prove the theorems from the Coq standard library. In
+particular, we do not use any preexisting hint databases available in Coq, not even the core
+database (for the evaluation we use the auto and eauto tactics with the nocore option,
+but in the ﬁnal version of the reconstruction tactics we also use auto without this option).
+Also, we do not use any domain-speciﬁc decision procedures available as Coq tactics, e.g.,
+field, ring or omega. Including such techniques in HOLyHammer did allow fast solving
+of many simple arithmetic problems [ 53].
+We now describe a simpliﬁcation of our proof search procedure. We will treat the current
+proof state as a collection of judgements of the form Γ ⊢ G and describe the rules as
+manipulating a single such judgement. In a judgement Γ ⊢ G the term G is the goal and Γ
+is the context which is a list of hypothesis declarations of the form H : A. We use an informal
+notation for Coq terms similar to how they are displayed by Coq. For instance, by ∀x : A, B
+we denote a dependent product. We write ∀x, B
+when the type of x is not essential. Note
+that in ∀x, B the variable x may be a proposition, so ∀x, B may actually represent a logical
+implication A → B if A is the omitted type of x which itself has type Prop and x does
+not occur in B. To avoid confusion with = used to denote the equality inductive predicate
+in Coq, we use ≡ as a metalevel symbol to denote identity of Coq terms. We use the notation
+Γ ; H : A to denote Γ with H : A inserted at some ﬁxed position. By Γ, H : A we denote the
+123
+===== PAGE 19 =====
+Hammer for Coq: Automation for Dependent Type Theory 441
+context Γ with H : A appended. We omit the hypothesis name H when irrelevant. By C[t]
+we denote an occurrence of a term t in a term context C.
+The proof search procedure applies the rules from Fig. 1. An application of a rule of the
+form
+Γ1 ⊢ G1 ... Γ n ⊢ Gn
+Γ ⊢ G
+replaces a judgement Γ ⊢ G in the current proof state by the judgements Γ1 ⊢ G1,… ,
+Γn ⊢ Gn . The notation tac[Γ ⊢ G] (resp. tac(A)[Γ ⊢ G]) in a rule premise means
+applying the Coq tactic tac (with argument A) to the judgement Γ ⊢ G and making the
+judgements (subgoals) generated by the tactic be the premises of the rule. In a rule of the
+form e.g.
+Γ ; A
+′⊢ G
+Γ ; A ⊢ G
+the position in Γ at which A is inserted is implicitly assumed to be the same as the position
+at which A′is inserted.
+In Fig. 1 the variables ?ei ,? e denote fresh existential metavariables of appropriate types.
+These metavariables need to be instantiated later by Coq’s uniﬁcation algorithm. In the rules
+(orsplit) and (exsimpl) the types of x
+1,..., xn are assumed not to be propositions. In the
+rule (exinst) the types of x1,..., xk are not propositions and either k = n or the type of xk+1
+is a proposition. In the rule (orinst) the xi1 ,..., xim are all those among x1,..., xn for which
+Ti1 ,..., Tim are not propositions; and the indexk ranges over all k ∈{ 1,..., n}\{ i1,..., im}
+(so that each Tk is a proposition)—all judgements for any such k are premises of the
+rule, not just a single one. Moreover, in these rules for any term T by T′ we denote
+T[?ei1 /xi1 ,..., ?eim /xim ],a n d Tj1 ,..., Tjm:k are those among T1,..., Tk which are propo-
+sitions. In the (apply) and (invert) rules P is an atomic proposition, i.e., a proposition which
+is not a dependent product, an existential, a disjunction or a conjunction. In the (destruct)
+rule T is not a proposition.
+The tactic yapply in rule (apply) works like eapply except that instead of simply
+unifying the goal with the target of the hypothesis, it tries uniﬁcation modulo some simple
+equational reasoning. The idea of the yapply tactic is broadly similar to the smart matching
+of Matita [ 8], but our implementation is more heuristic and not based on superposition.
+The tactic yrewrite in rule (rewrite) uses Coq’s tacticerewrite to try to rewrite the
+hypothesis in the goal. If it fails to rewrite it directed from left to right, then it tries the other
+direction.
+The rules in Fig. 1 are divided into groups. The rules in each group are either applied with
+backtracking (marked by (b) in the ﬁgure), i.e., if applying one of the rules in the group to a
+judgement Γ ⊢ G does not ultimately succeed in ﬁnishing the proof then another of the rules
+in the group is tried onΓ ⊢ G; or they are applied eagerly without backtracking (marked by (e)
+in the ﬁgure). There are also restrictions on when the rules in a given group may be applied.
+The rules in the group “Leaf tactics” must close a proof tree branch, i.e., they are applied only
+when they generate zero premises. The rules in the group “Final splitting” are applied only
+before the “leaf tactics”. The rules in the groups “Splitting”, “Hypothesis simpliﬁcation” and
+“Introduction” are applied whenever possible. The rules in the group “Proof search” constitute
+the main part of the proof search procedure. They are applied only when none of the rules in
+the groups “Splitting”, “Hypothesis simpliﬁcation” and “Introduction” can be applied. The
+rules in the group “Initial proof search” may only be applied after an application of (intro)
+followed by some applications of the rules in the “Splitting” and “Hypothesis simpliﬁcation”
+123
+===== PAGE 20 =====
+442 Ł. Czajka, C. Kaliszyk
+Fig. 1 Simpliﬁed proof search rules
+123
+===== PAGE 21 =====
+Hammer for Coq: Automation for Dependent Type Theory 443
+groups. They are applied only if none of the rules in the groups “Splitting”, “Hypothesis
+simpliﬁcation” and “Introduction” can be applied.
+The above description is only a readable approximation of what is actually implemented.
+Some further heuristics are used and more complex restrictions are put on what rules may be
+applied when. In particular, some loop checking (checking whether a judgement repeats) is
+implemented, the number of times a hypothesis may be used for rewriting is limited, and we
+also use heuristic rewriting in hypotheses and heuristic instantiation of universal hypotheses.
+Some heuristics we use are inspired by the crush tactic of Adam Chlipala [ 23].
+As mentioned before, our proof search procedure could be seen as an extension of a search
+for η-long normal forms for ﬁrst-order intuitionistic logic using a Ben-Y elles-type algo-
+rithm [71,75]. As such it would be complete for the fragment of type theory “corresponding
+to” ﬁrst-order logic, barring two simpliﬁcations we introduced to make it more practical.
+For the sake of efﬁciency, we do not backtrack on instantiations of existential metavariables
+solved by uniﬁcation, and the rules (exinst) and (orinst) are not general enough. These cause
+incompleteness even for the ﬁrst-order fragment, but this incompleteness does not seem to
+matter much in practice. The usual reasons why proof reconstruction fails is that either the
+proof is inherently classical, too deep, or uses too much rewriting which cannot be easily
+handled by our rewriting heuristics. It is left for future work to integrate rewriting into our
+proof search procedure in a more principled way.
+The proof reconstruction phase in the hammer tactic uses a number of tactics derived
+from the procedure described above, with different depth limits, a bit different heuristics and
+rule application restrictions; plus a few other tactics, including Coq’s intuition, simpl,
+subst, and heuristic constant unfolding. V arious reconstruction tactics are tried in order
+with a time limit for each, until one of them succeeds (or none succeed—then the proof
+cannot be reconstructed).
+It is important to note that no time limits are supposed to be present in the ﬁnal proof scripts.
+The CoqHammer plugin shows which of the tactics succeeded, and the user is supposed to
+copy this tactic, replacing the hammer tactic invocation. The ﬁnal reconstruction tactic does
+not rely on any time limits or make any calls to external A TPs. Its results are therefore
+completely reproducible on different machines, in contrast to the main hammer tactic itself.
+7 Integrated Hammer and Evaluation
+In this section we present the technique used to select the combination of strategies included
+in the integrated hammer and present an evaluation of the components as well as the ﬁnal
+offered strategy.
+The evaluation in this section will perform a push-button re-proving of Coq problems
+without using their proofs. In order for the evaluation of the system to be fair, we need ensure
+that no information from a proof is used in its re-proving, as well as that the actual strategy
+that is used by the whole system has been developed without the knowledge of the proofs
+being evaluated.
+The system will be evaluated on the problems generated from all theorems in the Coq
+standard library of Coq version 8.5 (a version of the plugin works with Coq 8.6 and 8.7
+as well). The problems were generated from the source code of the library, counting as
+theorems all deﬁnitions (introduced with any of Lemma, Theorem, Corollary, Fact,
+Instance, etc.) that were followed by the Proof keyword. The source code of the library
+was then modiﬁed to insert a hook to our hammer plugin after each Proof keyword. The
+123
+===== PAGE 22 =====
+444 Ł. Czajka, C. Kaliszyk
+plugin tries to re-prove the theorem using the Coq theorems accessible at the point when
+the statement of the theorem is introduced, using the three phases of premise selection, A TP
+invocation and proof reconstruction as described above.
+This simulates how a hammer would be used in the development of the Coq standard
+library. In particular, when trying to re-prove a given theorem we use only the objects acces-
+sible in the Coq kernel at the moment the theorem statement is encountered by Coq. Of
+course, neither the re-proved theorem itself nor any theorems or deﬁnitions that depend on
+it are used. The number of problems obtained by automatically analysing the Coq standard
+library source code in the way described above is 9276. This differs signiﬁcantly from the
+number of problems reported in [ 24]. There the theorems in the Coq standard library were
+extracted from objects of type Prop in the Coq kernel. Because of how the Coq module system
+works, there may be many Coq kernel objects corresponding to one deﬁnition in a source ﬁle
+(this is the case e.g. when using the Include command).
+Furthermore, the problems are divided in a training set consisting of about 10% of the
+problems in the standard library and a validation set containing the remaining 90% of the
+problems. The training set is used to ﬁnd a set of complementary strategies. Just like for the
+hammers for higher-order logic based systems and for Mizar a single best combination of
+the premise-selection algorithm, number of selected premises, and A TP run for a longer time
+is much weaker than running a few such combinations even for a shorter time. Contrary to
+existing hammer constructions [52,55], we decided to include the reconstruction mechanism
+among the considered strategy parameters since generally reconstruction rates are lower and
+it could happen that proofs originating from a particular prover and number of premises
+would be too hard to reconstruct.
+In our evaluation we used the following A TPs: E Prover version 1.9 [ 65], V ampire ver-
+sion 4.0 [ 57]a n dZ 3v e r s i o n4 . 0[28]. The evaluation was performed on a 48-core server
+with 2.2GHz AMD Opteron CPUs and 320GB RAM. Each problem was always assigned
+one CPU core. The two considered premise selection algorithms were asked for an ordering
+of premises, and all powers of two between 16 and 1024 were considered. Finally we consid-
+ered both firstorder and hrecon reconstruction. Having evaluated all combinations of
+premise selection algorithms we ordered them in a greedy sequence: each following strategy
+is the one that adds most to the current selection of strategies. The ﬁrst 14 strategies in the
+greedy sequence are presented in Table 1. The column “Solved” indicates the number of
+problems that were successfully solved by the given A TP with the given premise selection
+method and a given number of premises, and they could be reconstructed by the proof recon-
+struction procedure described in Sect. 6. The A TPs were run with a time limit of 30 s. The
+maximum time limit for a single reconstruction tactic was 10 s, depending on the tactic, as
+described in Sect. 6. No time limit was placed on the premise selection phase, however for
+goals with largest number of available premises the time does not exceed 0.5 s for either of
+the considered algorithms. The ﬁrst strategy that includes firstorder appears only on
+twelfth position in the greedy sequence and is therefore not used as part of the hammer. We
+show cumulative success rates to display the progress in the greedy sequence.
+The results of the hammer strategies including the premise selection are very good in
+comparison with the results on the dependencies. Evaluating the translation with hrecon
+reconstruction is presented in Table 2. The results are signiﬁcantly worse, mainly for two
+reasons. First, some dependencies are missing due to our way of recording them which does
+not take into account the delta-conversion. Secondly, the dependencies in proof terms often
+were added by automated tactics and are difﬁcult to use for the A TPs. It is sometimes easier
+for the A TPs to actually prove the theorem from other lemmas in the library than from the
+original dependencies.
+123
+===== PAGE 23 =====
+Hammer for Coq: Automation for Dependent Type Theory 445
+Table 1 Success rates of the strategies on the training set in the greedy sequence order
+Prover Selection Premises Reconstruction Solved (%) Solved
+V ampire k-NN 1024 Hrecon 30.778 285
+Z3 k-NN 128 Hrecon 37.473 347
+E-Prover k-NN 1024 Hrecon 39.741 368
+V ampire k-NN 64 Hrecon 40.929 379
+Z3 n. Bayes 32 Hrecon 41.469 384
+Z3 n. Bayes 512 Hrecon 42.009 389
+Z3 n. Bayes 128 Hrecon 42.549 394
+E-Prover n. Bayes 256 Hrecon 43.089 399
+Z3 n. Bayes 16 Hrecon 43.521 403
+E-Prover n. Bayes 1024 Hrecon 43.952 407
+V ampire n. Bayes 256 Hrecon 44.276 410
+Z3 k-NN 64 Hrecon 44.492 412
+V ampire k-NN 512 Hrecon 44.708 414
+E-Prover k-NN 512 Firstorder 44.924 416
+total 46.112 427
+Table 2 Prover results on the
+dependencies Prover Solved (%) Solved
+V ampire 24.749 2292
+Z3 23.961 2219
+E-Prover 23.162 2145
+Total 26.747 2477
+Table 3 The success rate of of the combination of strategies on the validation set
+Prover Selection Premises Reconstruction Solved (%) Solved
+V ampire k-NN 1024 Hrecon 28.816 2673
+E-Prover k-NN 1024 Hrecon 25.593 2374
+V ampire k-NN 64 Hrecon 25.367 2353
+Z3 n. Bayes 128 Hrecon 24.299 2254
+Z3 k-NN 128 Hrecon 24.127 2238
+Z3 n. Bayes 512 Hrecon 23.243 2156
+Z3 n. Bayes 32 Hrecon 19.028 1765
+E-Prover n. Bayes 256 Hrecon 17.497 1623
+Total 40.815 3786
+Given the common hardware conﬁguration of computers today, we consider as the inte-
+grated system a combination of eight complementary strategies. The ﬁnal results of the
+hammer including reconstruction on the validation set are presented in Table 3.
+123
+===== PAGE 24 =====
+446 Ł. Czajka, C. Kaliszyk
+8 Case Studies
+The intended use of a hammer is to prove relatively simple goals using available lemmas.
+The main problem a hammer system tries to solve is that of ﬁnding appropriate lemmas in
+a large collection and combining them to prove the goal. The advantage of a hammer over
+specialised domain-speciﬁc tactics is that it is a general system not depending on any domain
+knowledge. The hammer plugin may use all currently accessible lemmas, which includes
+lemmas proven earlier in a given formalization, not only the lemmas from the standard
+library or other predeﬁned libraries.
+It sometimes happens that the A TPs ﬁnd proofs with fewer dependencies than the proofs
+in the standard library. One example is the Coq lemma isometric
+rotation:
+Lemma isometric_rotation : forall x1 y1 x2 y2 theta : R,
+dist_euc x1 y1 x2 y2 =
+dist_euc (xr x1 y1 theta )( yr x1 y1 theta )
+(xr x2 y2 theta )( yr x2 y2 theta ).
+Its current proof in the Coq standard library uses 6 auxiliary facts and is performed using
+the following 7 line script:
+unfold dist_euc; intros; apply Rsqr_inj;
+[ apply sqrt_positivity; apply Rplus_le_le_0_compat
+| apply sqrt_positivity; apply Rplus_le_le_0_compat
+| repeat rewrite Rsqr_sqrt;
+[ apply isometric_rotation_0
+| apply Rplus_le_le_0_compat
+| apply Rplus_le_le_0_compat ]] ; apply Rle_0_sqr
+Multiple A TPs found a shorter proof which uses only two of the dependencies: the deﬁni-
+tion of euclidean distance and the lemma isometric rotation 0. This suggests that
+the proof using the injectivity of square root is a detour, and indeed it is possible to write a
+much simpler valid Coq proof of the lemma using just the two facts used by the A TPs:
+unfold dist_euc; intros;
+rewrite (isometric_rotation_0 ____ theta); reflexivity.
+The proof may also be reconstructed from the found dependencies inside Coq. This is also
+the case for all other examples presented in this section.
+Also for some theorems the A TPs found proofs which use premises not present in the
+dependencies extracted from the proof of the theorems in the standard library. An example
+is the lemma le
+double from Reals.ArithProp:
+forall mn :nat,2* m < =2* n -> m <= n.
+The proof of this lemma in the standard library uses 6 auxiliary lemmas and is performed
+by the following proof script (two lemmas not visible in the script were added by the tactic
+prove
+sup0):
+intros; apply INR_le.
+assert (H1 := le_INR __ H).
+do 2 rewrite mult_INR in H1.
+apply Rmult_le_reg_l with (INR 2).
+replace (INR 2) with 2; [ prove_sup0 | reflexivity ].
+assumption.
+123
+===== PAGE 25 =====
+Hammer for Coq: Automation for Dependent Type Theory 447
+A TPs found a proof ofle double using only 3 lemmas:Arith.PeanoNat.Nat.le 0
+l, Arith.Mult.mult S le reg l and Init.Peano.le n. None of these lem-
+mas appear among the original dependencies.
+Another example of hammer usage is a proof of the following fact:
+forall mnk : nat, m * n + k = k + n * m.
+This cannot be proven using the omega tactic because of the presence of multiplication. The
+tactic invocations eauto with arith or firstorder with arith do not work
+either. The hammer tool ﬁnds a proof using two lemmas from Arith.PeanoNat.Nat:
+add comm and mul comm.
+A similar example is the goal
+forall n : nat,3*3ˆ n =3ˆ( n + 1).
+This goal cannot be solved using standard Coq tactics, including the tactic omega.
+Z3 with 128 preselected premises found a proof using the following lemmas from
+Arith.PeanoNat.Nat: add
+succ r, le 0 l, pow succ r, add 0 r. The proof
+may be reconstructed using hexhaustive 0 or hyelles 5 tactic invocations.
+The next example of a goal solvable by the hammer involves operations on lists.
+forall {A}( x : A) l1 l2 (P : A -> Prop),
+In x (l1 ++ l2)- >( forall y, In y l1 -> Py )- >
+(forall y, In y l2 -> Py )- >
+Px .
+This goal cannot be solved (in reasonable time) using either eauto with datatypes
+or firstorder with datatypes . The hammer solves this goal using just one lemma:
+Lists.List.in app iff.
+A similar example is
+forall {A}( y1 y2 y3 : A) ll ’z , In z l \/ I nzl ’ ->
+In z (y1 :: y2 :: l ++ y3 :: l’).
+This goal cannot be solved using standard Coq tactics. Eprover with 512 preselected
+premises found a proof using two lemmas fromLists.List: in cons and in or app.
+The hammer is currently not capable of reasoning by induction, except in some very
+simple cases. Here is an example of a goal where induction is needed.
+forall (A : Type)( P : A -> Prop)( a : A)( ll ’ : list A),
+List.Forall P l /\ List.Forall P l’ /\ Pa ->
+List.Forall P (l ++ a :: l’).
+This goal can be solved neither by standard Coq tactics nor by the hammer. However, it
+sufﬁces to issue the ltac command induction l and the hammer can solve the resulting
+two subgoals, none of which could be solved by standard Coq tactics. The subgoal for
+induction base is:
+A : Type
+P : A -> Prop
+a : A
+============================
+forall l’ : list A, Forall P nil /\ Forall P l’ /\ Pa ->
+Forall P (nil ++ a :: l’)
+123
+===== PAGE 26 =====
+448 Ł. Czajka, C. Kaliszyk
+The hammer solves this goal using the lemma Forall cons from Lists.List and the
+deﬁnition of ++ (Datatypes.app). The subgoal for the induction step is:
+A : Type
+P : A -> Prop
+a, a0 : A
+l : list A
+IHl : forall l’ : list A, Forall P l /\ Forall P l’ /\ Pa ->
+Forall P (l ++ a :: l’)
+============================
+forall l’ : list A, Forall P (a0 :: l)/ \ Forall P l’ /\ Pa ->
+Forall P ((a0 :: l)+ + a :: l’)
+The hammer solves this goal using the lemma Forall cons, the inductive hypothesis
+(IHl) and the deﬁnition of ++. Note that to reconstruct the A TP proof for this goal it is
+crucial that our reconstruction tactics can do inversion on inductive predicates in the context.
+9 Limitations
+In this section we brieﬂy discuss the limitations of the current implementation of the CoqHam-
+mer tool. We also compare the hammer with the automation tactics already available in Coq.
+The intended use of a hammer is to prove relatively simple goals using accessible lemmas.
+Currently, the hammer works best with lemmas from the Coq standard library. Testing with
+other libraries has been as yet very limited and the hammer tool may need some adjustments
+to achieve comparable success rates.
+The hammer works best when the goal and the needed lemmas are “close to” ﬁrst-order
+logic, as some more sophisticated features of the Coq logic are not translated adequately. In
+particular, when dependent types are heavily used in a development then the effectiveness of
+the hammer tool is limited. Speciﬁcally, case analysis over inhabitants of small propositional
+inductive types is not translated properly, and the fact that in Coq all inhabitants of Prop are
+also inhabitants of Type is not accounted for.
+A small propositional inductive type is an inductive type in Prop having just one construc-
+tor and whose arguments are all non-informative (e.g. propositional). In Coq it is possible to
+perform case analysis over an inhabitant of a small propositional inductive type. This is fre-
+quently done when dealing with data structures where dependent types are heavily exploited
+to capture the data structure invariants. Currently, all such pattern matches are translated to a
+fresh constant about which nothing is assumed. Therefore, the A TPs will fail to ﬁnd a proof,
+except for trivial tautologies.
+In Coq all propositions (inhabitants of Prop) are also types (inhabitants of Type). Therefore,
+type formers expecting types as arguments may sometimes be fed with propositions. For
+instance, one can use the pair type former as if it was a conjunction. Our translation heavily
+relies on the possibility of detecting whether a subterm is a proposition or not, in order to
+translate it to a FOL formula or a FOL term. The currently followed approach to proposition
+detection is relatively simplistic. For example, the pair type former should be translated
+to four different deﬁnitions, one taking in input two propositions, etc. Currently, only one
+deﬁnition is generated (the one with both arguments being of type Type).
+In the context of code extraction the above two problems and some similar issues were
+handled in Pierre Letouzey’s Ph.D. thesis [ 60]. In [ 60] Coq terms are translated into an
+intermediate language where propositions are either removed from the terms or turned into
+unit types when used as types. It may be worthwhile to investigate if our translation could
+123
+===== PAGE 27 =====
+Hammer for Coq: Automation for Dependent Type Theory 449
+be factorized reusing the intermediate representation from [ 60]. If successful, this would be
+a better approach.
+We leave it for future work to increase effectiveness of the hammer on a broader fragment
+of dependent type theory. In this regard our hammer is similar to hammers for proof assistants
+based on classical higher-order logic, which are less successful when the goal or the lemmas
+make heavy use of higher-order features.
+The success of the hammer tactic is not guaranteed to be reproducible, because it relies
+on external A TPs and uses time limits during proof reconstruction. Indeed, small changes
+in the statement of the goal or a change of hardware may change the behaviour of the
+hammer. However, once a proof has been found and successfully reconstructed the user
+should replace the hammer tactic with an appropriate reconstruction tactic shown by the
+hammer in the response window. This reconstruction tactic does not depend on any time
+limits or external A TPs, so its success is independent of the current machine.
+In comparison to the hammer, domain-speciﬁc decision procedures, e.g., theomega tactic,
+are generally faster and more consistently reliable for the goals they can solve. On the other
+hand, the proof terms generated by thehammer tactic are typically smaller and contain fewer
+dependencies which are more human-readable.
+An advantage of Coq proof-search tactics like auto, eauto or firstorder is that
+they can be conﬁgured by the user by means of hint databases. However, they are in general
+much weaker than the hammer. The idea of a hammer is to be a strong general-purpose tactic
+not requiring much conﬁguration by the user.
+10 Conclusions and Future Work
+We have developed a ﬁrst whole hammer system for intuitionistic type theory. This involved
+proposing an approximation of the Calculus of Inductive Constructions, adapting premise
+selection to this foundation, developing a translation mechanism to untyped-ﬁrst order logic,
+and proposing reconstruction mechanisms for the proofs found by the A TPs. We have imple-
+mented the hammer as a plugin for the Coq proof assistant and evaluated it on all the proofs
+in its standard library. The source code of the plugin for Coq versions 8.5, 8.6 and 8.7, as
+well as all the experiments are available at: http://cl-informatik.uibk.ac.at/cek/coqhammer/
+The hammer is able to re-prove completely automatically 40.8% of the standard library
+proofs on a 8-CPU system in about 40 s. This success rate is already comparable to that
+offered by the ﬁrst generations of hammer systems for HOL and Mizar and can already offer
+a huge saving of human work.
+To our knowledge this is the ﬁrst translation which is usable by hammers. Strictly speaking,
+our translation is neither sound nor complete. However, our experiments suggest that the
+encoding is “sound enough” to be usable and that it is particularly good for goals close to
+ﬁrst-order logic. Moreover, a “core” version of the translation is in fact sound [ 27].
+There are many ways how the proposed work can be extended. First, the reconstruction
+mechanism currently is able to re-prove only 85.2% (4215 out of 4841) of the proofs founds
+by the A TPs, which is lower than that in other systems. The premise selection algorithms are
+not as precise as those involving machine learning algorithms tailored for particular logics. In
+particular, for similar size parts of the libraries almost the same premise selection algorithms
+used in HOLyHammer [ 52] or Isabelle/MaSh on parts of the Isabelle/HOL library [ 15],
+require on average 200–300 best premises to cover the dependencies, whereas in the Coq
+standard library on average 499–530 best premises are required.
+123
+===== PAGE 28 =====
+450 Ł. Czajka, C. Kaliszyk
+The core of the hammer—the translation to FOL—could be improved to make use of
+more knowledge available in the prover in order to offer a higher success rate. It could also
+be modiﬁed to make it more effective on developments heavily using dependent types, and
+to more properly handle the advanced features of the Coq logic, possibly basing on some
+of the ideas in [ 60]. Finally, the dependencies extracted from the Coq proof terms do miss
+information used implicitly by the kernel, and are therefore not as precise as those offered in
+HOL-based systems.
+In our work we have focused on the Coq standard library. Evaluations on a proof assistant
+standard library were common in many hammer comparisons, however this is rarely the level
+at which users are actually working, and looking at more advanced Coq libraries could give
+interesting insights for all components of a hammer. Since we focused on the standard library
+during development, it is likely that the effectiveness of the hammer is lower on libraries not
+similar to the standard library.
+In particular, the Mathematical Components Library based on SSReﬂect [ 37] would be
+a particularly interesting example, as it heavily relies on uniﬁcation hints to guide Coq
+automation. It has been used for example in the proofs of the four color theorem [ 38]a n dt h e
+odd order theorem [36]. On a few manually evaluated examples, the success rate is currently
+quite low. It remains to be seen, whether a hammer can provide useful automation also for
+such developments, and how the currently provided translation could be optimized, to account
+for the more common use of dependent types. Lastly, we would like to extend the work to
+other systems based on variants of CIC and other interesting foundations, including Matita,
+Agda, and Idris.
+Acknowledgements Open access funding provided by Austrian Science Fund (FWF). We thank the organisers
+of the First Coq Coding Sprint, especially Yves Bertot, for the help with implementing Coq export plugins.
+We wish to thank Thibault Gauthier for the ﬁrst version of the Coq exported data, as as well as Claudio
+Sacerdoti-Coen for improvements to the exported data and fruitful discussions on Coq proof reconstruction.
+This work has been supported by the Austrian Science Fund (FWF) Grant P26201 and European Research
+Council (ERC) Grant No. 714034 SMART.
+Open Access This article is distributed under the terms of the Creative Commons Attribution 4.0 Interna-
+tional License (http://creativecommons.org/licenses/by/4.0/ ), which permits unrestricted use, distribution, and
+reproduction in any medium, provided you give appropriate credit to the original author(s) and the source,
+provide a link to the Creative Commons license, and indicate if changes were made.
+References
+1. Alemi, A.A., Chollet, F., Irving, G., Szegedy, C., Urban, J.: DeepMath—Deep sequence models for
+premise selection. In: Lee, D.D., Sugiyama, M., Luxburg, U.V ., Guyon, I., Garnett, R. (eds.) Advances
+in Neural Information Processing Systems (NIPS 2016), pp. 2235–2243 (2016)
+2. Abel, A., Coquand, T., Norell, U.: Connecting a logical framework to a ﬁrst-order logic prover. In:
+Gramlich, B. (ed.) Frontiers of Combining Systems (FroCoS 2005), V olume 3717 of LNCS, pp. 285–
+301. Springer, New Y ork (2005)
+3. Armand, M., Faure, G., Grégoire, B., Keller, C., Théry, L., Werner, B.: A modular integration of SA T/SMT
+solvers to Coq through proof witnesses. In: Jouannaud, J., Shao, Z. (eds.) Certiﬁed Programs and Proofs
+(CPP 2011), V olume 7086 of LNCS, pp. 135–150. Springer, New Y ork (2011)
+4. Alama, J., Heskes, T., Kühlwein, D., Tsivtsivadze, E., Urban, J.: Premise selection for mathematics by
+corpus analysis and kernel methods. J. Autom. Reason. 52(2), 191–213 (2014)
+5. Asperti, A., Ricciotti, W., Coen, CSacerdoti: Matita tutorial. J. Formaliz. Reason. 7(2), 91–199 (2014)
+6. Aspinall, D.: Proof general: a generic tool for proof development. In: Graf, S., Schwartzbach, M.I. (eds.)
+Tools and Algorithms for Construction and Analysis of Systems, 6th International Conference, TACAS
+2000, volume 1785 of LNCS, pp. 38–42. Springer, New Y ork (2000)
+123
+===== PAGE 29 =====
+Hammer for Coq: Automation for Dependent Type Theory 451
+7. Asperti, A., Tassi, E.: Higher order proof reconstruction from paramodulation-based refutations: the unit
+equality case. In: Kauers, M., Kerber, M., Miner, R., Windsteiger, W. (eds.) Mathematical Knowledge
+Management (MKM 2007), V olume 4573 of LNCS, pp. 146–160. Springer, New Y ork (2007)
+8. Asperti, A., Tassi, E.: Smart matching. In: Intelligent Computer Mathematics, 10th International Confer-
+ence, AISC 2010, 17th Symposium, Calculemus 2010, and 9th International Conference, MKM 2010,
+Paris, France, July 5–10, 2010. Proceedings, pp. 263–277 (2010)
+9. Blanchette, J.C., Böhme, S., Fleury, M., Smolka, S.J., Steckermeier, A.: Semi-intelligible Isar proofs from
+machine-generated proofs. J. Autom. Reason. (2015)
+10. Bancerek, G., Byli´ nski, C., Grabowski, A. Korniłowicz, A., Matuszewski, R., Naumowicz, A., Pa ˛k,
+K., Urban, J.: Mizar: State-of-the-art and beyond. In: Intelligent Computer Mathematics—International
+Conference, CICM 2015, Washington, DC, USA, July 13–17, 2015, Proceedings, pp. 261–279 (2015)
+11. Bertot, Y ., Castéran, P .: Interactive Theorem Proving and Program Development: Coq’Art: The Calculus
+of Inductive Constructions. Springer, New Y ork (2004)
+12. Broda, S., Damas, L.: On long normal inhabitants of a type. J. Log. Comput. 15(3), 353–390 (2005)
+13. Bove, A., Dybjer, P ., Norell, U.: A brief overview of Agda—A functional language with dependent types.
+In: Berghofer, S., Nipkow, T., Urban, C., Wenzel, M. (eds.) Theorem Proving in Higher Order Logics
+(TPHOLs 2009), V olume 5674 of LNCS, pp. 73–78. Springer, New Y ork (2009)
+14. Bertot, Y .: A short presentation of Coq. In: Mohamed, O.A., Muñoz, C.A., Tahar, S. (eds.) Theorem
+Proving in Higher Order Logics (TPHOLs 2008), V olume 5170 of LNCS, pp. 12–16. Springer, New Y ork
+(2008)
+15. Blanchette, J.C., Greenaway, D., Kaliszyk, C., Kühlwein, D., Urban, J.: A learning-based fact selector
+for Isabelle/HOL. J. Autom. Reason. 57(3), 219–244 (2016)
+16. Bezem, M., Hendriks, D., de Nivelle, H.: Automated proof construction in type theory using resolution.
+J. Autom. Reason. 29(3–4), 253–275 (2002)
+17. Blanchette, J.C., Kaliszyk, C., Paulson, L.C., Urban, J.: Hammering towards QED. J. Formaliz. Reason.
+9(1), 101–148 (2016)
+18. Blanchette, J.C.: Automatic Proofs and Refutations for Higher-Order Logic. PhD thesis, Technische
+Universität München (2012). http://www21.in.tum.de/~blanchet/phdthesis.pdf
+19. Brady, E.: Idris, a general-purpose dependently typed programming language: design and implementation.
+J. Funct. Program. 23(5), 552–593 (2013)
+20. Böhme, S., Weber, T.: Fast LCF-style proof reconstruction for Z3. In: Kaufmann, M., Paulson, L. (eds.)
+Interactive Theorem Proving (ITP 2010), V olume 6172 of LNCS, pp. 179–194. Springer, New Y ork (2010)
+21. Ben-Y elles, C.: Type-assignment in the lambda-calculus: syntax and semantics. Ph.D. thesis, Mathematics
+Department, University of Wales, Swansea, UK (1979)
+22. Coquand, T., Huet, G.P .: The calculus of constructions. Inf. Comput. 76(2/3), 95–120 (1988)
+23. Chlipala, A.: Certiﬁed Programming with Dependent Types—A Pragmatic Introduction to the Coq Proof
+Assistant. MIT Press, Cambridge (2013)
+24. Czajka, Ł., Kaliszyk, C.: Goal translation for a hammer for Coq (extended abstract). In: Blanchette, J.C.,
+Kaliszyk, C. (eds.) First International Workshop on Hammers for Type Theories (HaTT 2016), V olume
+210 of EPTCS, pp. 13–20 (2016)
+25. Coq Development Team: The Coq proof assistant reference manual (2016). V ersion 8.6
+26. Corbineau, P .: First-order reasoning in the calculus of inductive constructions. In: Berardi, S., Coppo, M.,
+Damiani, F. (eds.) Types for Proofs and Programs (TYPES 2003), V olume 3085 of LNCS, pp. 162–177.
+Springer, New Y ork (2003)
+27. Czajka, Ł.: A shallow embedding of pure type systems into ﬁrst-order logic. Submitted. (2016). http://
+www.mimuw.edu.pl/~lukaszcz/emb.pdf
+28. de Moura, L.M., Bjørner, N.: Z3: An efﬁcient SMT solver. In: Ramakrishnan, C.R., Rehof, J. (eds.)
+TACAS 2008, V olume 4963 of LNCS, pp. 337–340. Springer, New Y ork (2008)
+29. de Moura, L.M., Kong, S., Avigad, J., van Doorn, F., von Raumer, J.: The Lean theorem prover. In: Felty,
+A.P ., Middeldorp, A. (eds.) International Conference on Automated Deduction (CADE 2015), V olume
+9195 of LNCS, pp. 378–388. Springer, New Y ork (2015)
+30. de Moura, L., Selsam, D.: Congruence closure in intensional type theory. In: Olivetti, N., Tiwari, A. (eds.)
+International Joint Conference on Automated Reasoning, IJCAR 2016, V olume 9706 of LNCS. Springer,
+New Y ork (2016)
+31. Dowek, G.: A complete proof synthesis method for the cube of type systems. J. Log. Comput. 3(3),
+287–315 (1993)
+32. Dyckhoff, R.: Contraction-free sequent calculi for intuitionistic logic. J. Symb. Log. 57(3), 795–807
+(1992)
+33. Filliâtre, J.-C.: One logic to use them all. In: Bonacina, M.P . (ed.) International Conference on Automated
+Deduction (CADE 2013), V olume 7898 of LNCS, pp. 1–20. Springer, New Y ork (2013)
+123
+===== PAGE 30 =====
+452 Ł. Czajka, C. Kaliszyk
+34. Färber, M., Kaliszyk, C.: Random forests for premise selection. In: Lutz, C., Ranise, S. (eds.) Frontiers
+of Combining Systems (FroCoS 2015), V olume 9322 of LNCS, pp. 325–340 (2015)
+35. Filliâtre, J.-C., Paskevich, A.: Why3—Where programs meet provers. In: Felleisen, M., Gardner, P . (eds.)
+European Symposium on Programming (ESOP 2013), V olume 7792 of LNCS, pp. 125–128. Springer,
+New Y ork (2013)
+36. Gonthier, G., Asperti, A., Avigad, J., Bertot, Y ., Cohen, C., Garillot, F., Roux, S.L., Mahboubi, A.,
+O’Connor, R., Biha, S.O., Pasca, I., Rideau, L., Solovyev, A., Tassi, E., Théry, L.: A machine-checked
+proof of the odd order theorem. In: Blazy, S., Paulin-Mohring, C., Pichardie, D. (eds.) Interactive Theorem
+Proving (ITP 2013), V olume 7998 of LNCS, pp. 163–179. Springer, New Y ork (2013)
+37. Gonthier, G., Mahboubi, A.: An introduction to small scale reﬂection in Coq. J. Formaliz. Reason. 3(2),
+95–152 (2010)
+38. Gonthier, G.: The four colour theorem: Engineering of a formal proof. In: Kapur, D. (ed.) ASCM, V olume
+5081 of LNCS, pp. 333. Springer, New Y ork (2007)
+39. Gransden, T., Walkinshaw, N., Raman, R.: SEPIA: search for proofs using inferred automata. In: Felty,
+A.P ., Middeldorp, A. (eds.) International Conference on Automated Deduction (CADE 2015), V olume
+9195 of LNCS, pp. 246–255. Springer, New Y ork (2015)
+40. Harrison, J.: HOL light: an overview. In: Berghofer, S., Nipkow, T., Urban, C., Wenzel, M. (eds.) Theorem
+Proving in Higher Order Logics (TPHOLs 2009), V olume 5674 of LNCS, pp. 60–66. Springer, New Y ork
+(2009)
+41. Hall, M., Frank, E., Holmes, G., Pfahringer, B., Reutemann, P ., Witten, I.H.: The Weka data mining
+software: an update. SIGKDD Explor. Newsl. 11(1), 10–18 (2009)
+42. Hindley, J.R.: Basic Simple Type Theory, V olume 42 of Cambridge Tracts in Theoretical Computer
+Science. Cambridge University Press, Cambridge (1997)
+43. Hurd, J.: First-order proof tactics in higher-order logic theorem provers. In: Archer, M., Vito, B.D., Muñoz,
+C. (eds.) Design and Application of Strategies/Tactics in Higher Order Logics (STRA TA 2003), Number
+NASA/CP-2003-212448 in NASA Technical Reports, pp. 56–68 (2003)
+44. Harrison, J., Urban, J., Wiedijk, F.: History of interactive theorem proving. In: Siekmann, J. (ed.) Handbook
+of the History of Logic vol 9 (Computational Logic), pp. 135–214. Elsevier, Amsterdam (2014)
+45. Hoder, K., V oronkov, A.: Sine qua non for large theory reasoning. In: Bjørner, N., Sofronie-Stokkermans,
+V . (eds.) 23rd International Conference on Automated Deduction (CADE 2011), V olume 6803 of LNCS,
+pp. 299–314. Springer, New Y ork (2011)
+46. Joosten, S., Kaliszyk, C., Urban, J.: Initial experiments with TPTP-style automated theorem provers on
+ACL2 problems. In: V erbeek, F., Schmaltz, J. (eds.) ACL2 Theorem Prover and Its Applications (ACL2
+2014), V olume 152 of EPTCS, pp. 77–85 (2014)
+47. Jones, K.S.: A statistical interpretation of term speciﬁcity and its application in retrieval. J. Doc. 28, 11–21
+(1972)
+48. Komendantskaya, E. Heras, J., Grov, G.: Machine learning in Proof General: Interfacing interfaces. In:
+Kaliszyk, C., Lüth, C. (eds.) User Interfaces for Theorem (UITP 2012), V olume 118 of EPTCS, pp. 15–41
+(2013)
+49. Kaliszyk, C. Mamane, L. Urban, J.: Machine learning of Coq proof guidance: First experiments. In:
+Kutsia, T., V oronkov, A. (eds.) Symbolic Computation in Software Science (SCSS 2014), V olume 30 of
+EPiC, pp. 27–34. EasyChair (2014)
+50. Kaliszyk, C., Urban, J.: PRocH: Proof reconstruction for HOL Light. In: Bonacina, M.P . (ed.) International
+Conference on Automated Deduction (CADE 2013), V olume 7898 of LNCS, pp. 267–274. Springer, New
+Y ork (2013)
+51. Kaliszyk, C., Urban, J.: Stronger automation for Flyspeck by feature weighting and strategy evolution.
+In: Blanchette, J.C., Urban, J. (eds.) Proof Exchange for Theorem Proving (PxTP 2013), V olume 14 of
+EPiC, pp. 87–95. EasyChair (2013)
+52. Kaliszyk, C., Urban, J.: Learning-assisted automated reasoning with Flyspeck. J. Autom. Reason. 53(2),
+173–213 (2014)
+53. Kaliszyk, C., Urban, J.: HOL(y)Hammer: online A TP service for HOL light. Math. Comput. Sci. 9(1),
+5–22 (2015)
+54. Kaliszyk, C., Urban, J.: Learning-assisted theorem proving with millions of lemmas. J. Symb. Comput.
+69, 109–128 (2015)
+55. Kaliszyk, C., Urban, J.: MizAR 40 for Mizar 40. J. Autom. Reason. 55(3), 245–256 (2015)
+56. Kaliszyk, C., Urban, J., Vyskoˇ cil, J.: Efﬁcient semantic features for automated reasoning over large
+theories. In: Y ang, Q., Wooldridge, M. (eds.) International Joint Conference on Artiﬁcial Intelligence
+(IJCAI 2015), pp. 3084–3090. AAAI Press, Palo Alto (2015)
+57. Kovács, L., V oronkov, A.: First-order theorem proving and V ampire. In: Sharygina, N., V eith, H. (eds.)
+Computer-Aided V eriﬁcation (CA V 2013), V olume 8044 of LNCS, pp. 1–35. Springer, New Y ork (2013)
+123
+===== PAGE 31 =====
+Hammer for Coq: Automation for Dependent Type Theory 453
+58. Kühlwein, D., van Laarhoven, T., Tsivtsivadze, E., Urban, J., Heskes, T.: Overview and evaluation of
+premise selection techniques for large theory mathematics. In: Gramlich, B., Miller, D., Sattler, U. (eds.)
+International Joint Conference on Automated Reasoning (IJCAR 2012), volume 7364 of LNCS, pp.
+378–392. Springer, New Y ork (2012)
+59. Laurent, J.: Suggesting relevant lemmas by learning from successful proofs. Technical report, École
+normale supérieure (2016). Internship Report
+60. Letouzey, P .: Programmation fonctionnelle certiﬁée : L’extraction de programmes dans l’assistant Coq.
+(Certiﬁed functional programming : Program extraction within Coq proof assistant). PhD thesis, Univer-
+sity of Paris-Sud, Orsay, France, (2004)
+61. Meng, J., Paulson, L.C.: Translating higher-order clauses to ﬁrst-order clauses. J. Autom. Reason. 40(1),
+35–60 (2008)
+62. Meng, J., Paulson, L.C.: Lightweight relevance ﬁltering for machine-generated resolution problems. J.
+Appl. Log. 7(1), 41–57 (2009)
+63. Paulson, L.C., Blanchette, J.: Three years of experience with Sledgehammer, a practical link between
+automated and interactive theorem provers. In: 8th IWIL (2010)
+64. Paulson, L.C., Susanto, K.W.: Source-level proof reconstruction for interactive theorem proving. In:
+Schneider, K., Brandt, J. (eds.) Theorem Proving in Higher Order Logics (TPHOLs 2007), V olume 4732
+of LNCS, pp. 232–245. Springer, New Y ork (2007)
+65. Schulz, S.: System description: E 1.8. In: McMillan, K.L., Middeldorp, A., V oronkov, A. (eds.) Logic for
+Programming, Artiﬁcial Intelligence (LPAR 2013), V olume 8312 of LNCS, pp. 735–743. Springer, New
+Y ork (2013)
+66. Schmitt, S., Lorigo, L., Kreitz, C., Nogin, A.: Jprover : Integrating connection-based theorem proving
+into interactive proof assistants. In: Goré, R., Leitsch, A., Nipkow, T. (eds.) Automated Reasoning, First
+International Joint Conference, IJCAR 2001, Siena, Italy, June 18-23, 2001, Proceedings, V olume 2083
+of Lecture Notes in Computer Science, pp. 421–426. Springer, New Y ork (2001)
+67. Slind, K., Norrish, M.: A brief overview of HOL4. In: Mohamed, O.A., Muñoz, C., Tahar, S. (eds.)
+TPHOLs 2008, V olume 5170 of LNCS, pp. 28–32. Springer, New Y ork (2008)
+68. Sutcliffe, G.: The TPTP world-infrastructure for automated reasoning. In: Clarke, E., V oronkov, A. (eds.)
+LPAR-16, Number 6355 in LNAI, pp. 1–12. Springer, New Y ork (2010)
+69. Tammet, T., Smith, J.M.: Optimized encodings of fragments of type theory in ﬁrst-order logic. J. Log.
+Comput. 8(6), 713–744 (1998)
+70. Urban, J.: MPTP—motivation, implementation. First Exp. J. Autom. Reason. 33(3–4), 319–339 (2004)
+71. Urzyczyn, P .: Intuitionistic games: determinacy, completeness, and normalization. Stud. Log. 104(5),
+957–1001 (2016)
+72. Urban, J., Sutcliffe, G.: Automated reasoning and presentation support for formalizing mathematics in
+Mizar. In: Autexier, S., Calmet, J., Delahaye, D., Ion, P .D.F., Rideau, L., Rioboo, R., Sexton, A.P . (eds.)
+Intelligent Computer Mathematics (CICM 2010), V olume 6167 of LNCS, pp. 132–146 (2010)
+73. Wiedijk, F.: Mizar’s soft type system. In: Theorem Proving in Higher Order Logics, 20th International
+Conference, TPHOLs 2007, Kaiserslautern, Germany, September 10–13, 2007, Proceedings, pp. 383–399
+(2007)
+74. Wenzel, M., Paulson, L.C., Nipkow, T.: The Isabelle framework. In: Mohamed, O.A., Muñoz, C.A., Tahar,
+S. (eds.) Theorem Proving in Higher Order Logics (TPHOLs 2008), V olume 5170 of LNCS, pp. 33–38.
+Springer, New Y ork (2008)
+75. Zielenkiewicz, M., Schubert, A.: Automata theory approach to predicate intuitionistic logic. In: Logic-
+Based Program Synthesis and Transformation—26th International Symposium, LOPSTR 2016, Revised
+Selected Papers, pp. 345–360 (2016)
+123

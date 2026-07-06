@@ -1,0 +1,3671 @@
+Logical Methods in Computer Science
+Vol. 12(4:13)2016, pp. 1–52
+www.lmcs-online.org
+
+Submitted May 14, 2014
+Published Dec. 31, 2016
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+JASMIN CHRISTIAN BLANCHETTE a , SASCHA BÖHME b , ANDREI POPESCU c ,
+AND NICHOLAS SMALLBONE d
+a
+
+Inria & LORIA, Nancy, France; Max-Planck-Institut für Informatik, Saarbrücken, Germany
+e-mail address: jasmin.blanchette@{inria.fr,mpi-inf.mpg.de}
+
+b
+
+Fakultät für Informatik, Technische Universität München, Germany
+e-mail address: boehmes@in.tum.de
+
+c
+
+Department of Computer Science, School of Science and Technology, Middlesex University, UK
+e-mail address: a.popescu@mdx.ac.uk
+
+d
+
+Dept. of CSE, Chalmers University of Technology, Gothenburg, Sweden
+e-mail address: nicsma@chalmers.se
+
+Abstract. Many automatic theorem provers are restricted to untyped logics, and existing translations from typed logics are bulky or unsound. Recent research proposes
+monotonicity as a means to remove some clutter when translating monomorphic to untyped first-order logic. Here we pursue this approach systematically, analysing formally
+a variety of encodings that further improve on efficiency while retaining soundness and
+completeness. We extend the approach to rank-1 polymorphism and present alternative
+schemes that lighten the translation of polymorphic symbols based on the novel notion of
+“cover”. The new encodings are implemented in Isabelle/HOL as part of the Sledgehammer
+tool. We include informal proofs of soundness and correctness, and have formalised the
+monomorphic part of this work in Isabelle/HOL. Our evaluation finds the new encodings
+vastly superior to previous schemes.
+
+1. Introduction
+Specification languages, proof assistants, and other theorem proving applications are typically based on polymorphism formalisms, but state-of-the-art automatic provers support
+only untyped or monomorphic logics. The existing sound (proof-reflecting) and complete
+(proof-preserving) translation schemes for polymorphic types, whether they revolve around
+functions (tags) or predicates (guards), produce clutter that severely hampers the proof
+search [22], and lighter approaches based on type arguments are unsound [22, 29]. As a
+result, application authors face a difficult choice between soundness and efficiency when
+interfacing with automatic provers.
+The fourth author, together with Claessen and Lillieström [16], designed a pair of sound,
+complete, and efficient translations from monomorphic many-typed to untyped first-order
+logic with equality. The key insight is that monotonic types—types whose domain can be
+2012 ACM CCS: [Theory of computation]: Logic—Automated reasoning.
+
+l
+
+LOGICAL METHODS
+IN COMPUTER SCIENCE
+
+c
+DOI:10.2168/LMCS-12(4:13)2016
+
+CC
+
+J. C. Blanchette, S. Böhme, A. Popescu, and N. Smallbone
+Creative Commons
+
+2
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+extended with new elements while preserving satisfiability—can be merged. The remaining
+types can be made monotonic by introducing suitable protectors.
+Example 1.1 (Monkey Village). Imagine a village of monkeys [16] where each monkey
+owns at least two bananas. The predicate owns : monkey × banana  o (where o denotes
+truth values) associates monkeys with bananas, and the functions b1 , b2 : monkey  banana
+witness the existence of each monkey’s minimum supply of bananas:
+∀M : monkey. owns(M, b1 (M)) ∧ owns(M, b2 (M))
+∀M : monkey. b1 (M) 6≈ b2 (M)
+∀M1 , M2 : monkey, B : banana. owns(M1 , B) ∧ owns(M2 , B) → M1 ≈ M2
+The axioms are clearly satisfiable.
+In the monkey village of Example 1.1, the type banana is monotonic, because any model
+with b bananas can be extended to a model with b′ > b bananas. In contrast, monkey is
+nonmonotonic, because there can live at most ⌊b/2⌋ monkeys in a village with a finite supply
+of b bananas. Syntactically, the monotonicity of banana is inferable from the absence of a
+positive equality B ≈ t or t ≈ B, where B is a variable of type banana and t is arbitrary; such
+a literal would be needed to make the type nonmonotonic.
+The example can be encoded as follows, using the predicate g monkey to guard against
+ill-typed instantiations of M, M1 , and M2 :
+∃M. g monkey (M)
+∀M. g monkey (M) → owns(M, b1 (M)) ∧ owns(M, b2 (M))
+∀M. g monkey (M) → b1 (M) 6≈ b2 (M)
+∀M1 , M2 , B. g monkey (M1) ∧ g monkey (M2 ) ∧ owns(M1 , B) ∧ owns(M2 , B) → M1 ≈ M2
+The first axiom states the existence of a monkey; this is necessary for completeness, since
+model carriers are required to be nonempty. Thanks to monotonicity, it is sound to omit all
+type information regarding bananas. The intuition behind this is that the g monkey predicate
+makes the problem fully monotonic, and for such problems it it possible to synchronise the
+cardinalities of the different types and to merge the types, yielding an equisatisfiable untyped
+(or singly typed) problem. For example, a model M of the typed problem with m monkeys
+and b bananas will give rise to a model M ′ of the untyped problem with b “bananamonkeys,”
+among which m are monkeys according to the interpretation of g monkey ; conversely, from a
+model of the untyped problem with b “bananamonkeys” including m values for which g monkey
+is true (with m > 0 thanks to the first axiom), it is easy to construct a model of the typed
+problem with b bananas and m monkeys.
+Monotonicity is not decidable, but it can often be inferred using suitable calculi. In
+this article, we exploit this idea systematically, analysing a variety of encodings based on
+monotonicity: some are minor adaptations of existing ones, while others are novel encodings
+that further improve on the size of the translated formulae.
+In addition, we generalise the monotonicity approach to a rank-1 polymorphic logic,
+as embodied by the typed first-order form TFF1 of the TPTP (Thousand of Problems for
+Theorem Provers) [7], a de facto standard implemented by a number of reasoning tools. Unfortunately, the presence of a single equality literal X ≈ t or t ≈ X , where X is a polymorphic
+variable of type α, will lead the analysis to classify all types as possibly nonmonotonic and
+force the use of protectors everywhere, as in the traditional encodings. A typical example
+is the list axiom ∀X : α, Xs : list(α). hd(cons(X, Xs)) ≈ X . We solve this issue through a
+novel scheme that reduces the clutter associated with nonmonotonic types, based on the
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+Traditional
+(Polymorphic)
+Full type erasure
+Type arguments
+Type tags
+Type guards
+
+3
+
+Cover-based
+Monotonicity-based
+(Polymorphic) Monomorphic Polymorphic
+
+e (§3.1)
+a (§3.2)
+t (§3.3)
+
+t@ (§4.2)
+
+g (§3.4)
+
+g@ (§4.1)
+
+et?, et?? (§5.4)
+e
+g ?, e
+g ?? (§5.5)
+
+t?, t?? (§6.5)
+g?, g?? (§6.6)
+
+Figure 1: The main encodings
+
+observation that protectors are required only when translating the particular formulae that
+prevent a type from being inferred monotonic. This contribution improves the monomorphic
+case as well: for the monkey village example, our scheme detects that the first two axioms
+are harmless and translates them without the g monkey guards. (In fact, by appealing to a
+more general notion of monotonicity, it is possible to eliminate all type information in the
+monkey village problem in a sound fashion.)
+Encoding types in an untyped logic is an old problem, and several solutions have been
+proposed in the literature. We start by reviewing four main traditional approaches (Section 3), which prepare the ground for the more advanced encodings presented in this article.
+Next, we present improvements of the traditional encodings that aim at reducing the clutter
+associated with polymorphic symbols, based on the novel notion of “cover” (Section 4). Then
+we move our attention to monotonicity-based encodings, which try to minimise the number
+of added tags or guards. We first present known and novel monotonicity-based schemes that
+handle only ground types (Section 5); these are interesting in their own right and serve as
+stepping stones for the full-blown polymorphic encodings (Section 6). Proofs of correctness
+accompany the descriptions of the new encodings. The proofs explicitly relate models of
+unencoded and encoded problems.
+Figure 1 presents a brief overview of the main encodings. The traditional encodings are
+identified by single letters ( e for full type erasure, a for type arguments, t for type tags, g for
+type guards). The nontraditional encodings append a suffix to the letter: @ (= cover-based),
+? (= monotonicity-based, lightweight), or ?? (= monotonicity-based, featherweight). The
+decoration e identifies the monomorphic version of an encoding. Among the nontraditional
+schemes, et? and e
+g ? are due to Claessen et al. [16]; the other encodings are novel.
+A formalisation [8] of the monomorphic part of our results has been developed in the
+proof assistant Isabelle/HOL [24, 25]. The encodings have been implemented in Sledgehammer [3, 22], which provides a bridge between Isabelle/HOL and automatic theorem provers
+(Section 7). They were evaluated with Alt-Ergo, E, SPASS, Vampire, and Z3 on a benchmark suite consisting of proof goals from existing Isabelle formalisations (Section 8). Our
+comparisons include the traditional encodings as well as the provers’ native support for
+monomorphic types where it is available. Related work is considered at the end (Section 9).
+We presented an earlier version of this work at the TACAS 2013 conference [5]. The
+current text extends the conference paper with detailed proofs and a discussion of implementational issues (Section 7). It also corrects the side conditions of two encoding definitions,
+which resulted in an unexpected incompleteness.
+Convention 1.2. Given a name, such as t, that ranges over a certain domain, such as the
+set of terms, its overlined version ¯t ranges over lists (tuples) of items in this domain, and |¯t|
+denotes the length of ¯t. We also write |A| for the cardinal of a set A. A set is countable if
+
+4
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+it is finite or countably infinite. Given an element u, (u)n or un denotes the list consisting
+of n occurrences of u. Given a nonempty set A, we write ε(A) for some arbitrary but fixed
+element of A. We use ε(A) in definitions where the choice of the element does not matter,
+as long as it belongs to A.
+2. Background: Logics
+This article involves three versions of classical first-order logic with equality: polymorphic,
+monomorphic, and untyped. They correspond to the TPTP syntaxes TFF1 [7], TFF0 [32],
+and FOF [30], respectively, excluding interpreted arithmetic.
+2.1. Polymorphic First-Order Logic. The source logic is a rank-1 polymorphic logic as
+specified by TFF1 [7].
+We fix A , a countably infinite set of type variables with typical element α, and V , a
+countably infinite set of term variables with typical element X .
+Definition 2.1 (Syntax). A polymorphic signature is a triple Σ = (K , F , P ), where K is a
+countable set of type constructors k with arities, F is a countable set of function symbols f
+with arities, and P is a countable set of predicate symbols p with arities.
+For type constructors k ∈ K , the arity is a natural number n. This association is
+written k :: n. Types, forming the set Type K , are then defined inductively starting with type
+variables and applying type constructors according to their arities:
+Types:
+σ ::= k(σ̄) where k :: |σ̄|
+| α
+
+constructor type
+type variable
+
+For function symbols f ∈ F , the arity is a triple (ᾱ, σ̄, σ), where ᾱ is a list of distinct
+type variables, σ̄ is a list of types, and σ is a type such that all the variables appearing
+in σ̄ and σ are among the ones in ᾱ. We write this association as f : ∀ᾱ. σ̄  σ or
+f : ∀ᾱ. σ1 × · · · × σn  σ. Finally, for predicate symbols p ∈ P , the arity is a pair (ᾱ, σ̄),
+where ᾱ is a list of distinct type variables and σ̄ is a list of types. We write this association
+as p : ∀ᾱ. σ̄  o or p : ∀ᾱ. σ1 × · · · × σn  o.
+Overloading of different arities for the same symbol is excluded by definition. The
+symbols ∀, ×, , and o (omicron) are not type constructors but syntax. The arity declarations for function and predicate symbols can be seen as instances of the general syntax
+s : ∀ᾱ. σ̄  ς, where s ∈ F ⊎ P and ς is either a type or o. An application of s will
+require |ᾱ| type arguments (written in angle brackets) and |σ̄| term arguments (written in
+parentheses). In examples, we may omit type arguments from ᾱ that are irrelevant or clear
+from the context.
+A typed (term) variable is a pair of a variable and a type, written X σ . We fix Vtyped ,
+the set of type variables. The terms and formulae are defined below.
+Terms:
+t ::= f hσ̄i(¯t )
+| Xσ
+
+function term
+typed variable
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+Formulae:
+ϕ ::= phσ̄i(¯t ) | ¬ phσ̄i(¯t )
+| t1 ≈ t2 | t1 6≈ t2
+| ϕ1 ∧ ϕ2 | ϕ1 ∨ ϕ2
+| ∀X : σ. ϕ | ∃X : σ. ϕ
+| ∀α. ϕ
+
+5
+
+predicate literal
+equality literal
+binary connective
+term quantification
+type quantification
+
+All type quantification is universal. We also impose the following syntactic restriction,
+not captured in the formation rules: type quantifiers may only occur at the top of the
+formula, i.e. not underneath a term quantifier or a connective, and formulae are in negation
+normal form (NNF), which is most suitable for defining and reasoning about translations.
+We sometimes use implication ϕ1 ∧ · · · ∧ ϕm → ψ1 ∨ · · · ∨ ψn as an abbreviation for
+¬ ϕ1 ∨ · · · ∨ ¬ ϕm ∨ ψ1 ∨ · · · ∨ ψn to enhance readability. In examples, we freely nest
+quantifiers and connectives.
+Definition 2.2 (Free and Fresh Variables, Groundness, and Sentences). TVars(σ), TVars(t),
+and FTVars(ϕ) denote the sets of type variables occurring in the type σ, occurring in the
+term t, and occurring freely in the formula ϕ, respectively. Similarly, Vars(t) and FVars(ϕ)
+denote the sets of typed term variables occurring in the term t and occurring freely in
+the formula ϕ, respectively. For example, TVars(X σ ) = TVars(σ), Vars(X σ ) = {X σ },
+FVars(∀X :σ. ϕ) = FVars(∃X :σ. ϕ) = FVars(ϕ)−{X σ }. A type σ is ground if TVars(σ) = ∅.
+We let GType Σ denote the set of ground types. A term t is ground if TVars(t) = ∅ and
+Vars(t) = ∅. A formula ϕ is a sentence if TVars(ϕ) = ∅ and FVars(ϕ) = ∅.
+Convention 2.3. We assume that the set of variables V is partitioned in two infinite
+sets: V ∀ , of universal variables, and V ∃ , of existential variables. The former are the only
+ones allowed to be universally quantified, and the latter are the only ones allowed to be
+∀
+existentially quantified. We let Vtyped
+for the set of typed variable X σ with X ∈ V ∀ ; and
+∃
+. We also assume that each type or term variable is bound only once in a
+similarly for Vtyped
+formula, and that if the typed variable X σ appears in the scope of a quantification ∀X : σ′
+or ∃X : σ′ , then σ = σ′ . The last assumption allows us to omit the superscript σ from X σ
+in examples.
+The typing rules and semantics of the logic are modelled after those of TFF1. Briefly, the
+type arguments completely determine the types of the term arguments and, for functions,
+of the result. Polymorphic symbols are interpreted as families of functions or predicates
+indexed by domains corresponding to ground types. All types are inhabited (nonempty).
+Definition 2.4 (Type Substitution). A type substitution ρ is a function that maps every
+type variable α to a type, written αρ. It is extended from type variables to types and type
+tuples in the standard way: k(¯t )ρ = k(¯t ρ) and (t1 , . . . , tn )ρ = (t1 ρ, . . . , tn ρ).
+Definition 2.5 (Typing Rules). A judgement t : σ expresses that the term t is well typed
+and has type σ. A judgement ϕ : o expresses that the formula ϕ is well typed. The typing
+rules of polymorphic first-order logic are given below:
+Xσ : σ
+
+f : ∀ᾱ. σ̄  σ tj : σj ρ for all j
+f hᾱρi(¯t ) : σρ
+
+6
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+p : ∀ᾱ. σ̄  o tj : σj ρ for all j
+phᾱρi(¯t ) : o
+t1 : σ t2 : σ
+t1 ≈ t2 : o
+ϕ1 : o ϕ2 : o
+ϕ1 ∨ ϕ2 : o
+
+p : ∀ᾱ. σ̄  o tj : σj ρ for all j
+¬ phᾱρi(¯t ) : o
+
+t1 : σ t2 : σ
+t1 6≈ t2 : o
+
+ϕ:o
+∀X : σ. ϕ : o
+
+ϕ1 : o ϕ2 : o
+ϕ1 ∧ ϕ2 : o
+
+ϕ:o
+∃X : σ. ϕ : o
+
+ϕ:o
+∀α. ϕ : o
+
+Definition 2.6 (Problem). A problem is a set of (well-typed) sentences.
+Lemma 2.7. For all terms t, there exists at most one type σ such that t : σ.
+Proof. Immediate by induction on t.
+Convention 2.8. We write t σ to indicate that the term t is well typed and its (unique)
+type is σ. This convention is consistent with the notation X σ for term variables of type σ.
+Definition 2.9 (Semantics). Let Σ = (K , F , P ) be a polymorphic
+signature. A structure
+
+M for Σ is a tuple of families D, (kM )k∈K , ( f M ) f ∈F , (pM ) p∈P , where
+• D is a nonempty collection of nonempty sets called the domains;
+• if k :: n, then kM : Dn → D. Given a type variable valuation θ : A  D, this induces
+M = kM (Jσ̄KM ) and
+an interpretation of types J KM
+θ defined by the equations Jk(σ̄)Kθ
+θ
+M
+JαKθ = θ(α);
+Q
+M
+M
+• if f : ∀α1 , . . . , αm . σ1 × · · · × σn  σ, then f M : D̄∈Dm Jσ1 KM
+θD̄ × · · · × Jσn KθD̄ → JσKθD̄ ,
+where θD̄ is a type variable valuation mapping each αi to Di ;
+Q
+M
+• if p : ∀α1 , . . . , αm . σ1 × · · · × σn  o, then pM ⊆ D̄∈Dm Jσ1 KM
+θD̄ × · · · × Jσn KθD̄ , where θ D̄ is
+as above.
+As expected from the arity of f , the interpretation f M is a function first taking m type
+arguments and then n data (element) arguments. Similarly, the interpretation pM is a
+predicate respecting the arity of p.
+Q Given aMtype variable valuation θ and a compatible term variable valuation ξ : V 
+σ∈Type JσKθ , the interpretation of terms and formulae by the structure M is as follows:
+M
+¯M
+(Jσ̄KM
+J f hσ̄i(¯t )KM
+θ ) (Jt Kθ,ξ )
+θ,ξ = f
+
+JX σ KM
+θ,ξ = ξ(X )(σ)
+
+M
+M
+¯M
+Jphσ̄i(¯t )KM
+θ,ξ = p (Jσ̄Kθ ) (Jt Kθ,ξ )
+
+M
+M
+Jt1 ≈ t2 KM
+θ,ξ = (Jt1 Kθ,ξ = Jt2 Kθ,ξ )
+
+M
+M
+¯M
+J¬ phσ̄i(¯t )KM
+θ,ξ = ¬ p (Jσ̄Kθ ) (Jt Kθ,ξ )
+
+M
+M
+Jt1 6≈ t2 KM
+θ,ξ = (Jt1 Kθ,ξ 6= Jt2 Kθ,ξ )
+
+M
+M
+Jϕ1 ∧ ϕ2 KM
+θ,ξ = Jϕ1 Kθ,ξ ∧ Jϕ2 Kθ,ξ
+
+M
+M
+J∀X : σ. ϕKM
+θ,ξ = ∀a ∈ JσKθ . JϕKθ,ξ[X 7→a]
+
+M
+M
+Jϕ1 ∨ ϕ2 KM
+θ,ξ = Jϕ1 Kθ,ξ ∨ Jϕ2 Kθ,ξ
+
+M
+M
+J∃X : σ. ϕKM
+θ,ξ = ∃a ∈ JσKθ . JϕKθ,ξ[X 7→a]
+
+M
+J∀α. ϕKM
+θ,ξ = ∀D ∈ D. JϕKθ[α7→ D],ξ
+
+We omit irrelevant subscripts to J K, writing JσKM if σ is ground and JϕKM if ϕ is a sentence.
+A structure M is a model of a problem Φ if JϕKM is true for every ϕ ∈ Φ. A problem
+that has a model is satisfiable.
+Example 2.10 (Algebraic Lists). The following axioms induce a minimalistic first-order
+theory of algebraic lists that will serve as our main running example:
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+7
+
+∀α. ∀X : α, Xs : list (α). nil 6≈ cons(X, Xs)
+∀α. ∀Xs : list(α). Xs ≈ nil ∨ (∃Y : α, Ys : list(α). Xs ≈ cons(Y, Ys))
+∀α. ∀X : α, Xs : list (α). hd(cons(X, Xs)) ≈ X ∧ tl(cons(X, Xs)) ≈ Xs
+We conjecture that cons is injective. The conjecture’s negation can be expressed employing
+an unknown but fixed Skolem type b:
+∃X, Y : b, Xs, Ys : list(b). cons(X, Xs) ≈ cons(Y, Ys) ∧ (X 6≈ Y ∨ Xs 6≈ Ys)
+Because the hd and tl equations force injectivity of cons in both arguments, the problem
+consisting of the three axioms and the negated conjecture is unsatisfiable. The conjecture
+is a consequence of the axioms.
+We are interested in encoding polymorphic problems Φ in a manner that preserves and
+reflects their satisfiability. It will be technically convenient to assume that their signatures
+have at least one nullary type constructor, so that the set of ground types is nonempty. It is
+obvious that this assumption is harmless: if it is not satisfied, we simply extend the signature
+with a distinguished nullary type constructor ι :: 0. Since ι does not appear in the formulae of
+Φ and since in models the set of domains is assumed to be nonempty, this signature extension
+does not affect its satisfiability: given a model of Φ in the original signature, we obtain one
+in the extended signature by interpreting ι as an arbitrary domain; given a model in the
+extended signature, we obtain one in the original signature by omitting the interpretation
+of ι.
+Convention 2.11. For all polymorphic signatures Σ = (K , F , P ) that we consider, we
+assume that K contains at least one nullary type constructor.
+The following lemma shows that, in structures, the collection of domains can be regarded
+as a copy of the ground types.
+Lemma 2.12. If a polymorphic Σ-problem Φ has a model, it also has a model M = D,
+
+(kM )k∈K , _, _ such that the following conditions are met :
+(1) each kM is injective, and kM (D̄) 6= k′ M (Ē) whenever k 6= k′ ;
+(2) D = {JτKM | τ ∈ GType Σ };
+(3) the type interpretation function J KM is a bijection between GType and D;
+(4) D is countable;
+(5) D is disjoint from each D ∈ D, and any distinct D1 , D2 ∈ D are disjoint.
+
+Proof. Assume Φ has a model M . To prove (1), we construct a model M ′ from M by
+tagging the domains with types, i.e. by defining D′ = {D × {σ} | D ∈ D′ ∧ σ ∈ GType Σ }
+′
+and maintaining types across the application of type constructors: kM (D1 × {σ1 }, . . . , Dn ×
+{σn }) = kM (D1 , . . . , Dn )× {k(σ1 , . . . , σn )}. The interpretations of the function and predicate
+symbols are adjusted accordingly. It is easy to prove that M and M ′ satisfy the same
+polymorphic formulae; in particular, M ′ is a model of Φ. For (2), we define a model M ′′ =
+′
+′′
+(D′′ , (kM )k∈K , _, _) from M ′ by taking D′′ ⊆ D′ to be the image of J KM : GType Σ → D′
+′
+′
+′′
+′′
+and by taking kM and sM to be the restrictions of kM and sM . Thanks to Convention
+′′
+2.11, D′′ is nonempty, and moreover kM is well defined on D. Again, it is easy to prove that
+M ′′ satisfies all the polymorphic formulae that M ′ satisfies. In particular, M ′′ is a model
+of Φ. Points (3) and (4) follow from (1) and (2). Finally, we prove (5) by replacing the
+domains with disjoint copies of them.
+
+8
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+2.2. Monomorphic First-Order Logic. Monomorphic first-order logic, more commonly
+known as many-sorted first-order logic and corresponding to TPTP TFF0 [32], has signatures Σ = (Type, F , P ), where Type is a countable set of types (or sorts) ranged over by σ, F
+is a countable set of function symbols f : σ̄ → σ with arities, and P is a countable set of pred
+icate symbols p : σ̄ → o with arities. Σ-structures M = (Dσ )σ∈Type , ( f M ) f ∈F , (pM ) p∈P
+interpret the types as sets and the function and predicate symbols as functions
+and prediQ
+cates of the suitable arities. Given a model M and a valuation ξ : V → σ∈Type Dσ , the
+M
+interpretations of terms and formulae, JtKM
+ξ and JϕKξ , are defined as expected.
+Monomorphic first-order logic can be viewed as a special case of polymorphic first-order
+logic, with a polymorphic signature considered monomorphic when all its type constructors
+are nullary and the arities of its function and predicate symbols contain no type variables.
+Example 2.13. A monomorphised version of the algebraic list problem of Example 2.10,
+with α instantiated by b, follows:
+∀X : b, Xs : list_b. nilb 6≈ cons b (X, Xs)
+∀Xs : list_b. Xs ≈ nilb ∨ (∃Y : b, Ys : list_b. Xs ≈ consb (Y, Ys))
+∀X : b, Xs : list_b. hdb (cons b (X, Xs)) ≈ X ∧ tlb (cons b (X, Xs)) ≈ Xs
+∃X, Y : b, Xs, Ys : list_b. cons b (X, Xs) ≈ consb (Y, Ys) ∧ (X 6≈ Y ∨ Xs 6≈ Ys)
+Like the original polymorphic problem, it is unsatisfiable.
+2.3. Untyped First-Order Logic. The final target logic for all our encodings, untyped
+first-order logic, coincides with the TPTP first-order form FOF [30]. This is the logic
+traditionally implemented in automatic theorem provers and finite model finders. An untyped
+signature is a pair Σ = (F , P ), where F and P are countable sets of function and predicate
+symbols with arities, where the arities are natural numbers. The notation sn indicates that
+the symbol s has arity n. The untyped syntax is identical to that of the monomorphic logic,
+except that variable terms do not contain types and quantification is written ∀X . ϕ and
+∃X . ϕ. The structures for Σ = (F , P ) are triples M = D, ( f M ) f ∈F , (pM ) p∈P , where D
+is the domain and f M and p M are n-ary functions and predicates on D, with n being the
+symbol’s arity.
+2.4. Type Encodings. The type encodings discussed in this article are given by functions
+that take problems Φ in a logic L to problems Φ′ in a logic L ′ , where L and L ′ are among
+the three logics introduced above.
+Convention 2.14. Each of the considered encodings will be specified by the following data:
+• a function that maps L -signatures Σ to L ′ -signatures Σ′ ;
+• for all L -signatures Σ and problems Φ over Σ:
+– a (possibly empty) set Ax Φ of sentences over Σ, the axioms, added by the translation;
+– a function hh ii between formulae over Σ and formulae over Σ′ , the formula translation.
+The formula translation is typically based on a term translation hh ii. The encoding hhΦii of
+a problem Φ is given by the union between the axioms and the componentwise translations:
+hhΦii = Ax Φ ∪ {hhϕii | ϕ ∈ Φ}.
+Central to this article are the notions of soundness and completeness of an encoding:
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+9
+
+Definition 2.15 (Correctness). An encoding as above is sound for a class of problems C
+if satisfiability of Φ ∈ C implies satisfiability of hhΦii; it is complete for C if, given Φ ∈ C ,
+satisfiability of hhΦii implies satisfiability of Φ; it is correct for C if it is both sound and
+complete (i.e. Φ and hhΦii are equisatisfiable). In case C is the class of all problems, we omit
+it and simply call the encoding sound, complete, or correct.
+3. Traditional Type Encodings
+There are four main traditional approaches to encoding polymorphic types: full type erasure,
+type arguments, type tags, and type guards [18,22,29,36]. Before introducing them, we first
+establish some conventions that will be useful throughout the article.
+Convention 3.1. We will often need to extend signatures Σ with one or more of the
+following distinguished symbols. Whenever we employ them, we assume they are fresh with
+respect to Σ and have the indicated arities:
+• a nullary type constructor ϑ;
+• a function symbol t : ∀α. α  α;
+• a predicate symbol g : ∀α. α  o.
+Terms of type ϑ will be used to represent the types of Σ, t will be used to tag terms with
+type information, and g will be used to guard formulae with type information.
+Convention 3.2. Since the sets of type and term variables, A and V , are countably infinite,
+we can fix a function from A to V , α 7→ V (α), such that
+(1) it is injective, i.e. V (α1 ) = V (α2 ) implies α1 = α2 ;
+(2) it allows for an infinite supply of term variables that do not correspond to type variables,
+i.e. the set of term variables not having the form V (α) is infinite;
+(3) each V (α) is a universal variable.
+This function can be used to encode types as terms. Thanks to (2), we can safely assume
+that the source problems Φ do not contain variables of the form V (α).
+3.1. Full Type Erasure. The easiest way to translate a typed problem into an untyped
+logic is to erase all its type information, which means omitting all type arguments, type
+quantifiers, and types in term quantifiers. We call this encoding e .
+Definition 3.3 (Full Erasure e ). The full type erasure encoding e translates a polymorphic
+problem over Σ = (K , F , P ) into an untyped problem over Σ′ = (F ′ , P ′ ), where the symbols
+in Σ′ have the same term arities as in Σ (but without type arguments). Thus, if f :
+∀ᾱ. σ1 × . . . × σn  σ and p : ∀ᾱ. σ1 × . . . × σn  o are in F and P , respectively, then f
+and p have arities n in F ′ and P ′ , respectively. The encoding adds no axioms, and the term
+and formula translations hh iie are defined as follows:
+hh f hσ̄i(¯t )iie = f (hh¯t iie )
+hhX σ iie = X
+hhphσ̄i(¯t )iie = p(hh¯t iie )
+hh¬ phσ̄i(¯t )iie = ¬ p(hh¯t iie )
+hh∀α. ϕiie = hhϕiie
+
+hh∀X : σ. ϕiie = ∀X . hhϕiie
+hh∃X : σ. ϕiie = ∃X . hhϕiie
+
+10
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+Here and elsewhere, we omit the trivial cases where the function is simply applied to its
+subterms or subformulae, as in hhϕ1 ∧ ϕ2 iie = hhϕ1 iie ∧ hhϕ2 iie . Recall that, according to
+Section 2.4, the e translation of a problem Φ is simply the componentwise translation of its
+formulae: hhΦiie = {hhϕiie | ϕ ∈ Φ}.
+Example 3.4. Encoded using e , the monkey village axioms of Example 1.1 become
+∀M. owns(M, b1 (M)) ∧ owns(M, b2 (M))
+∀M. b1 (M) 6≈ b2 (M)
+∀M1 , M2 , B. owns(M1 , B) ∧ owns(M2 , B) → M1 ≈ M2
+Like the original axioms, the encoded axioms are satisfiable: the requirement that each
+monkey possesses two bananas of its own can be met by taking an infinite domain (since
+2k = k for any infinite cardinal k).
+However, full type erasure is generally unsound in the presence of equality because
+equality can be used to encode cardinality constraints on domains. For example, the axiom
+∀U : unit. U ≈ unity forces the domain of unit to have only one element. Its erasure,
+∀U . U ≈ unity, effectively restricts all types to one element; a contradiction is derivable
+from any disequality t 6≈ u or any pair of clauses p(¯t ) and ¬ p(ū). An expedient proposed
+by Meng and Paulson [22, §2.8], which they implemented in Sledgehammer, is to filter out
+all axioms of the form ∀X : σ. X ≈ a1 ∨ · · · ∨ X ≈ an , but this makes the translation
+incomplete and generally does not suffice to prevent unsound cardinality reasoning.
+An additional issue with full type erasure is that it confuses distinct monomorphic
+instances of polymorphic symbols. The formula qhai(f hai) ∧ ¬ qhbi(f hbi) is satisfiable, but its
+type erasure q(f) ∧ ¬ q(f) is unsatisfiable. A more intuitive example might be N 6≈ 0 → N > 0,
+which we would expect to hold for the natural number versions of 0 and > but not for integers
+or real numbers.
+Nonetheless, full type erasure is complete, and this property will be useful later.
+Theorem 3.5 (Completeness of e ). Full type erasure is complete.
+
+′
+′
+Proof. From a model M ′ = D, ( f M ) f ∈F ′ , (pM ) p∈P ′ of hhΦiie , we construct a structure
+M = D, (kM )k∈K , ( f M ) f ∈F , (pM ) p∈P for the signature of Φ by taking the same domain for
+all types and interpreting all instances of each polymorphic symbol in the same way as M :
+• D = {D}, and kM maps everything to D;
+′
+• if s ∈ F ⊎ P , then s M (D̄)(d̄) = s M (d̄).
+Q
+′
+′
+Given θ : A → D and ξ : V → σ∈Type Σ JσKM
+θ , we define ξ : V → D by ξ (X ) = ξ(X )(α),
+where α is any type variable. (The choice of α is irrelevant because θ maps all type variables
+to D, the only element of D.) The next facts follow by structural induction on t and ϕ (for
+arbitrary θ and ξ):
+M′
+• JtKM
+θ,ξ = Jhhtiie Kξ′ ;
+′
+
+M
+• JϕKM
+θ,ξ = Jhhϕiie Kξ′ .
+′
+
+In particular, for sentences, we have JϕKM = Jhhϕiie KM ; and since M ′ is a model of hhΦiie , it
+follows that M is a model of Φ.
+By way of composition, the e encoding lies at the heart of all the encodings presented
+in this article. Given n encodings x 1 , . . . , x n , we write hh ii x 1 ;...; x n for the composition hh ii x n ◦
+· · · ◦hh ii x 1 . Typically, n will be 2 or 3 and x n will be e . Moreover, x i will be correct and will
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+11
+
+transform the problem so that it belongs to a fragment for which x i+1 is also correct. This
+will ensure that the whole composition is correct. Finally, because x 2 , . . . , x n will always be
+fixed for a given x 1 , we will call the entire composition hh ii x 1 ;...; x n the “ x 1 encoding”.
+3.2. Type Arguments. A natural way to prevent the (unsoundness-causing) confusion
+arising with full type erasure is to encode types as terms in the untyped logic. Instances of
+polymorphic symbols can be distinguished using explicit type arguments, encoded as terms:
+n-ary type constructors k become n-ary function symbols k, and type variables α become
+term variables A. A polymorphic symbol with m type arguments is passed m additional
+term arguments. The example given in the previous subsection is translated to q(a, f (a)) ∧
+¬ q(b, f (b)), and a fully polymorphic instance f hαi would be encoded as f(A) (with A a term
+variable). We call this encoding a .
+We now proceed with first encoding the types in isolation and then the typed terms.
+Definition 3.6 (Term Encoding of Types). Let K be a finite set of n-ary type constructors.
+The term encoding of a polymorphic type over K is a term over the signature ({ϑ}, K ′ , ∅),
+where K ′ contains a function symbol k : ϑ n  ϑ for each k ∈ K with k :: n. The encoding is
+specified by the following equations:
+hhk(σ̄)ii = k(hhσ̄ii)
+
+hhαii = V (α)
+
+Definition 3.7 (Traditional Arguments a ). We first define the encoding function hh iia ,
+which translates polymorphic problems over Σ = (K , F , P ) to polymorphic problems over
+(K ⊎ {ϑ}, F ⊎ K ′ , P ), where ϑ and K ′ are as in Definition 3.6. It adds no axioms, and its
+term and formula translations are defined as follows:
+hh f hσ̄i(¯t )iia = f hσ̄i(hhσ̄ii, hh¯t iia )
+hhphσ̄i(¯t )iia = phσ̄i(hhσ̄ii, hh¯t iia )
+hh¬ phσ̄i(¯t )iia = ¬ phσ̄i(hhσ̄ii, hh¯t iia )
+
+hh∀α. ϕiia = ∀α. ∀hhαii : ϑ. hhϕiia
+
+(Again, we omit the trivial cases, e.g. hh∀X : σ. ϕiia = ∀X : σ. hhϕiia .) The traditional type
+arguments encoding a is defined as the composition hh iia ; e . It follows from the definition
+that a translates a polymorphic problem over Σ = (K , F , P ) into an untyped problem over
+Σ′ = (F ′ ⊎ K ′ , P ′ ), where the symbols in F ′ , P ′ are the same as those in F , P ; and for each
+symbol s : ∀ᾱ. σ̄  ς ∈ F ⊎ P , the arity of s in Σ′ is |ᾱ| + |σ̄|.
+Example 3.8. The a encoding translates the algebraic list problem of Example 2.10 into
+the following untyped problem:
+∀A, X, Xs. nil(A) 6≈ cons(A, X, Xs)
+∀A, Xs. Xs ≈ nil(A) ∨ (∃Y, Ys. Xs ≈ cons(A, Y, Ys))
+∀A, X, Xs. hd(A, cons(A, X, Xs)) ≈ X ∧ tl(A, cons(A, X, Xs)) ≈ Xs
+∃X, Y, Xs, Ys. cons(b , X, Xs) ≈ cons(b , Y, Ys) ∧ (X 6≈ Y ∨ Xs 6≈ Ys)
+The a encoding coincides with e for monomorphic problems and suffers from the same
+unsoundness with respect to equality and cardinality constraints. Nonetheless, a will form
+the basis of all the sound polymorphic encodings in a slightly generalised version, called a x ,
+for suitable instances of x .
+
+12
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+Definition 3.9 (Type Argument Filter). Given a signature Σ = (K , F , P ), a type argument
+filter x maps any s : ∀α1 , . . . , αm . σ̄  ς to a subset x s = {i1 , . . . , im′ } ⊆ {1, . . . , m} of
+its type argument indices. Given a list z̄ of length m, x s (z̄) denotes the sublist zi1 , . . . , zim′ ,
+where i1 < · · · < im′ . Filters are implicitly extended to {1} for the distinguished symbols
+t, g ∈
+/ F ⊎ P introduced in Convention 3.1.
+Definition 3.10 (Generic Arguments ax ). Given a type argument filter x , we first define the
+encoding hh iia x that translates polymorphic problems over Σ = (K , F , P ) to polymorphic
+problems over (K ⊎ {ϑ}, F ⊎ K ′ , P ), where ϑ and K ′ are as in Definition 3.6. It adds no
+axioms, and its term and formula translations are defined as follows:
+hh f hσ̄i(¯t )iia x = f hσ̄i(hhx f (σ̄)ii, hh¯t iia x )
+hhphσ̄i(¯t )iia x = phσ̄i(hhx p (σ̄)ii, hh¯t iia x )
+hh¬ phσ̄i(¯t )iia x = ¬ phσ̄i(hhx p (σ̄)ii, hh¯t iia x )
+
+hh∀α. ϕiia x = ∀α. ∀hhαii : ϑ. hhϕiia x
+
+The generic type arguments encoding a x is the composition hh iia x ; e . It translates a polymorphic problem over Σ = (K , F , P ) into an untyped problem over Σ′ = (F ′ ⊎ K , P ′ ), where the
+symbols in F ′ , P ′ are the same as those in F , P ; and for each symbol s : ∀ᾱ. σ̄  ς ∈ F ⊎ P ,
+the arity of s in Σ′ is |x s | + |σ̄|.
+The e and a encodings correspond to the special cases of a x where x returns none or all
+of the type arguments, respectively.
+Theorem 3.11 (Completeness of ax ). The type arguments encoding a x is complete.
+Proof. Recall that a x is defined as the composition of hh iia x and hh iie . Since hh iie is complete
+′
+by Theorem 3.5, it suffices to show that hh iia x is complete. Let M ′ = D′ , (kM )k∈K ′ ⊎{ϑ} ,
+
+′
+′
+( f M ) f ∈F ⊎K ′ , (pM ) p∈P be a model of hhΦiia x . We will construct a structure M = D,
+
+(kM )k∈K , ( f M ) f ∈F , (pM ) p∈P for the signature of Φ by taking the same domains as M ′ ,
+interpreting the type constructors other than ϑ in the same way, and interpreting the function
+and predicate symbols s as in M ′ , but supplying, for the extra arguments, a suitable tuple
+′
+from JϑKM that reflects the type arguments.
+To this end, we first apply Lemma 2.12 to obtain that every element of D′ is uniquely
+′
+represented as JτKM with τ ∈ GType Σ′ . We define
+′
+• D = D′ and kM = kM ;
+• if s ∈ F ⊎ P , then
+( ′
+′
+′
+s M (Jτ̄KM )(Jhhx s (τ̄)iiKM , d̄) if x s (τ̄) ∈ GType nΣ
+′
+M
+M
+s (Jτ̄K )(d̄) =
+anything
+otherwise
+where n is the length of x s (τ̄).
+′
+′
+Note how the tuple Jhhx s (τ̄)iiKM reflects the x s -selection from the type arguments Jτ̄KM .
+Q
+Q
+′
+′
+′ M by
+Given θ : A → D and ξ : V → σ∈Type Σ JσKM
+θ , we define ξ : V →
+σ′ ∈Type Σ′ Jσ Kθ
+
+′
+′
+′
+
+ξ (X)(σ ) if σ ∈ Type Σ
+′
+′
+′
+′
+M
+ξ (X)(σ ) = JhhτiiK
+if σ′ = ϑ, X = V (α), and θ(α) = JτKM for τ ∈ GType Σ
+
+
+anything otherwise
+
+The next facts follow by structural induction on t and ϕ (for arbitrary θ and ξ):
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+13
+
+′
+
+x M
+• JtKM
+θ,ξ = Jhhtiia Kθ,ξ′ ;
+′
+M
+• Jhhϕiia x KM
+θ,ξ′ implies JϕKθ,ξ .
+
+(The reason why for formula interpretation we have only implication and not equality is the
+∀α case: when encoding a universally quantified formula ∀α. ϕ, the result ∀α. ∀hhαii: ϑ. hhϕiia x
+introduces quantification over two variables, α and hhαii, whose interpretations need not be
+synchronised. As a result, ∀α. ∀hhαii : ϑ. hhϕiia x could be stronger than ∀α. ϕ.) In particular,
+′
+for a sentence ϕ, Jhhϕiia x KM implies JϕKM , and hence M is a model of Φ because M ′ is a
+model of hhΦiia x .
+3.3. Type Tags. An intuitive approach to encode type information soundly (and completely) is to wrap each term and subterm with its type using type tags. For polymorphic
+type systems, this scheme relies on a distinguished binary function t(hhσii, t) that “annotates”
+each term t with its type σ encoded as a term hhσii. The tags make most type arguments
+superfluous. We call this scheme t , after the tag function of the same name. It is defined
+as a two-stage process: the first stage adds tags t hσi(t) while preserving the polymorphism;
+the second stage encodes t’s type argument as well as any phantom type arguments.
+Definition 3.12 (Phantom Type Argument). Let s : ∀α1 , . . . , αm . σ̄  ς ∈ F ⊎ P . The
+ith type argument is a phantom if αi does not occur in σ̄ or ς. Given a list z̄ ≡ z1 , . . . , zm ,
+phn s (z̄) denotes the sublist zi1 , . . . , zim′ corresponding to the positions in ᾱ of the phantom
+type arguments.
+Definition 3.13 (Traditional Tags t ). We first define the encoding hh iit that translates
+polymorphic problems over Σ = (K , F , P ) to polymorphic problems over (K , F ⊎ {t :
+∀α. α → α}, P ). It adds no axioms, and its term and formula translations are defined as
+follows:
+hh f hσi(¯t )iit = ⌊ f hσi(hh¯t iit )⌋
+hhX σ iit = ⌊hhX σ iit ⌋
+with ⌊t σ ⌋ = t hσi(t)
+The traditional type tags encoding t is the composition hh iit ; a phn ; e . It translates a polymorphic problem over Σ into an untyped problem over Σ′ = (F ′ ⊎ K ′ ⊎ {t2 }, P ′ ), where
+K ′ , F ′ , P ′ are as for a phn (i.e. a x with x = phn).
+Example 3.14. The t encoding translates the algebraic list problem of Example 2.10 into
+the following equisatisfiable untyped problem:
+∀A, X, Xs. t(list(A), nil) 6≈ t(list(A), cons(t(A, X ), t(list(A), Xs)))
+∀A, Xs. t(list(A), Xs) ≈ t(list(A), nil) ∨
+(∃Y, Ys. t(list(A), Xs) ≈ t(list(A), cons(t(A, Y ), t(list(A), Ys))))
+∀A, X, Xs. t(A, hd(t(list(A), cons(t(A, X ), t(list(A), Xs))))) ≈ t(A, X ) ∧
+t(list(A), tl(t(list(A), cons(t(A, X ), t(list(A), Xs))))) ≈ t(list(A), Xs)
+∃X, Y, Xs, Ys. t(list(b ), cons(t(b , X ), t(list(b ), Xs))) ≈
+t(list(b ), cons(t(b , Y ), t(list(b ), Ys))) ∧
+(t(b , X ) 6≈ t(b , Y ) ∨ t(list(b ), Xs) 6≈ t(list(b ), Ys))
+Since there are no phantoms in this example, a phn adds no extra arguments. All type
+information is carried by the t function’s first argument.
+Example 3.15. Consider the following formula, with linorder : ∀α. o and less_eq : ∀α. α × α 
+o:
+
+14
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+∀α. ∀X : α, Y : α. linorderhαi → less_eq(X , Y) ∨ less_eq(Y, X )
+The α variable in linorder’s arity declaration is a phantom. The t encoding preserves it as an
+explicit term argument:
+∀A, X, Y . linorder(A) → less_eq(t(A, X ), t(A, Y)) ∨ less_eq(t(A, Y), t(A, X ))
+As the formula suggests, phantom type arguments can be used to encode predicates on types,
+mimicking type classes [35].
+We postpone the proof of the following theorem to Section 4.2, in the context of our
+improved encodings:
+Theorem 3.16 (Correctness of t ). The traditional type tags encoding t is correct.
+3.4. Type Guards. Type tags heavily burden the terms. An alternative is to introduce
+type guards, which are predicates that restrict the range of variables. They take the form of
+a distinguished predicate g(hhσii, t) that checks whether t has type σ. The terms are smaller
+than with tags, but the formulae contain more disjuncts.
+With the type tags encoding, only phantom type arguments need to be encoded; here,
+we must encode any type arguments that cannot be read off the types of the term arguments.
+Thus, the type argument is encoded for nilhαi (which has no term arguments) but omitted
+for conshαi(X, Xs), hdhαi(Xs), and tlhαi(Xs).
+Definition 3.17 (Inferable Type Argument). Let s : ∀α1 , . . . , αm . σ̄  ς ∈ F ⊎ P . A
+type argument α j is inferable if it occurs in some of the term arguments’ types, i.e. if there
+exists an index i such that α j occurs in σi . Given a list z̄ ≡ z1 , . . . , zm , let infs (z̄) denote the
+sublist zi1 , . . . , zim′ corresponding to the positions in ᾱ of the inferable type arguments, and
+let ninfs (z̄) denote the sublist for noninferable type arguments.
+Observe that a phantom type argument is in particular noninferable, and a noninferable
+nonphantom type argument is one that appears in ς but not in σ̄.
+Definition 3.18 (Traditional Guards g ). We first define the encoding hh iig , which translates
+a polymorphic problem over Σ = (K , F , P ) into an untyped problem over (K , F , P ⊎ {g :
+∀α. α → o}). Its term and formula translations are defined as follows:
+hh∀X : σ. ϕiig = ∀X : σ. ghσi(X ) → hhϕiig
+
+hh∃X : σ. ϕiig = ∃X : σ. ghσi(X ) ∧ hhϕiig
+
+The encoding also adds the following typing axioms:
+
+V
+∀ᾱ. X̄ : σ̄.
+j g hσj i(X j ) → g hσi( f hᾱi(X̄ ))
+
+for f : ∀ᾱ. σ̄  σ ∈ F
+
+∀α. ∃X : α. ghαi(X )
+
+(Following Convention 2.14, the translation of a problem is given by hhΦiig = Ax ∪ {hhϕiig |
+ϕ ∈ Φ}, where Ax are the typing axioms.) The traditional type guards encoding g is defined
+as the composition hh iig ; a ninf ; e . It translates a polymorphic problem over Σ into an untyped
+problem over Σ′ = (F ′ ⊎ K ′ , P ′ ⊎ {g2 }), where K ′ , F ′ , P ′ are as for a ninf .
+The last typing axiom in the above definition witnesses inhabitation of every type. It
+is necessary for completeness, in case some of the types do not appear in the result type of
+any function symbol.
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+15
+
+Example 3.19. The g encoding translates the algebraic list problem of Example 2.10 into
+the following:
+∀A. g(list(A), nil(A))
+∀A, X, Xs. g(A, X ) ∧ g(list(A), Xs) → g(list(A), cons(X, Xs))
+∀A, Xs. g(list(A), Xs) → g(A, hd(Xs))
+∀A, Xs. g(list(A), Xs) → g(list(A), tl(Xs))
+∀A. ∃X . g(A, X )
+∀A, X, Xs. g(A, X ) ∧ g(list(A), Xs) → nil(A) 6≈ cons(X, Xs)
+∀A, Xs. g(list(A), Xs) →
+Xs ≈ nil(A) ∨ (∃Y, Ys. g(A, Y ) ∧ g(list(A), Ys) ∧ Xs ≈ cons(Y, Ys))
+∀A, X, Xs. g(A, X ) ∧ g(list(A), Xs) → hd(cons(X, Xs)) ≈ X ∧ tl(cons(X, Xs)) ≈ Xs
+∃X, Y, Xs, Ys. g(b , X ) ∧ g(b , Y ) ∧ g(list(b ), Xs) ∧ g(list(b ), Ys) ∧
+cons(X, Xs) ≈ cons(Y, Ys) ∧ (X 6≈ Y ∨ Xs 6≈ Ys)
+In this and later examples, we push guards inside past quantifiers and group them in a
+conjunction to enhance readability.
+The typing axioms must in general be guarded. Without the guards, any cons, hd, or tl
+term could be typed with any type, defeating the purpose of the guard predicates.
+Example 3.20. Consider the following formula, where inl : ∀α, β. α  sum(α, β) and inr :
+∀α, β. β  sum(α, β):
+∀α, β. ∀X : α, Y : β. inlhα, βi(X ) 6≈ inrhα, βi(Y )
+The β variable in inl’s arity declaration and the α in inr’s are noninferable. The g encoding
+preserves them as explicit term arguments:
+∀A, B, X, Y. g(A, X ) ∧ g(B, Y ) → inl(B, X ) 6≈ inr(A, Y )
+Theorem 3.21 (Correctness of g ). The traditional type guards encoding g is correct.
+Proof. This will be a consequence of Theorem 4.7 for our parameterised cover-based encoding
+g@, since g is a particular case of g@.
+Remark 3.22. The above encodings, as well as those discussed in the next sections, all lead
+to an untyped problem. An increasing number of automatic provers support monomorphic
+types, and it may seem desirable to exploit such support when it is available. With such
+provers, we can replace the e encoding with a variant that enforces a basic type discipline by
+distinguishing two types, ϑ (for encoded types) and ι (for encoded terms). An incomplete
+(non-proof-preserving) alternative is to perform heuristic monomorphisation (Section 5.6).
+Hybrid schemes that exploit monomorphic types, including interpreted types, are also possible and have been studied by other researchers (Section 9).
+4. Cover-Based Encodings of Polymorphism
+Type tags and guards considerably increase the size of the problems passed to the automatic provers, with a dramatic impact on their performance. A lot of the type information
+generated by the traditional encodings t and g is redundant. For example, t translates
+conshαi(X, Xs) to t(list(A), cons(t(A, X ), t(list(A), Xs))), but intuitively only one of the three
+tags is necessary to specify the right type for the expression if we know the arity of cons. The
+cover-based encodings capitalise on this, by supplying only a minimum of protectors and
+
+16
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+adding typing axioms that effectively compute the type of function symbols from a selection
+of their term arguments’ types—the “cover”.
+Let us first rigorously define this notion of term arguments “covering” type arguments.
+Definition 4.1 (Cover). Let s : ∀ᾱ. σ̄  ς ∈ F ⊎ P . A (type argument ) cover C ⊆
+{1, . . . , |σ̄|} for s is a set of term argument indices such that any inferable type argument
+can be inferred from a term argument whose index belongs to C, i.e. for all j, if α j appears in
+σ̄, it also appears in some σi such that i ∈ C. A cover C of s is minimal if no proper subset
+of C is a cover for s; it is maximal if C = {1, . . . , |σ̄|}. We let Cover s denote an arbitrary
+but fixed cover for s.
+In practice, we would normally take a minimal cover for Cover s to reduce clutter. Accordingly, {1} and {2} are minimal covers for cons : ∀α. α × list(α)  list(α), whereas {1, 2}
+is a maximal cover.
+Convention 4.2. As canonical cover, we arbitrarily choose Cover cons = {1}.
+The cover-based encoding g@ introduced below is a generalisation of the traditional encoding g . The two encodings coincide if Cover s is chosen to be maximal for all symbols s. In
+contrast, the cover-based encoding t@ is not exactly a generalisation of t , although they share
+many ideas. For this reason, we momentarily depart from our general policy of considering
+tags before guards so that we can present the easier case first.
+Intuitively, g@ and t@ ensure that each term argument position that is part of its
+enclosing function or predicate symbol’s cover has a unique type associated with it, from
+which the omitted type arguments can be inferred. Thus, t@ translates conshαi(X, Xs) to
+cons(t(A, X ), Xs) with a type tag around X , effectively protecting the term from an ill-typed
+instantiation of X that would result in the wrong type argument being inferred for cons.
+There is no need to protect the second argument, Xs, since it is not part of the cover.
+We call variables that occur in their enclosing symbol’s cover (and hence that “carry” some
+type arguments) “undercover variables”. It may seem dangerous to allow ill-typed terms to
+instantiate Xs, but this is not an issue because such terms cannot contribute meaningfully
+to a proof. At most, they can act as witnesses for the existence of terms of given types, but
+even in that capacity they are not necessary.
+Definition 4.3 (Undercover Variable). The set of undercover variables UV(ϕ) of a formula ϕ
+is defined by the equations
+UV( f hσ̄i(¯t )) = ⌊¯t ⌋ f ∪ UV(¯t )
+UV(X ) = ∅
+UV(phσ̄i(¯t )) = ⌊¯t ⌋ p ∪ UV(¯t )
+UV(¬ phσ̄i(¯t )) = ⌊¯t ⌋ p ∪ UV(¯t )
+
+UV(t1 ≈ t2 ) = ({t1 , t2 } ∩ Vtyped ) ∪ UV(t1 , t2 )
+UV(t1 6≈ t2 ) = UV(t1 , t2 )
+
+UV(ϕ1 ∧ ϕ2 ) = UV(ϕ1 , ϕ2 )
+
+UV(∀X : σ. ϕ) = UV(ϕ)
+
+UV(ϕ1 ∨ ϕ2 ) = UV(ϕ1 , ϕ2 )
+
+UV(∃X : σ. ϕ) = UV(ϕ) − {X σ }
+
+UV(∀α. ϕ) = UV(ϕ)
+where ⌊¯t ⌋s = {tj | j ∈ Cover s } ∩ Vtyped and UV(¯t ) =
+
+S
+
+j UV(tj ).
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+17
+
+4.1. Cover-Based Type Guards. The cover-based encoding g@ is similar to the traditional encoding g , except that it guards only undercover occurrences of variables.
+Definition 4.4 (Cover Guards g@). The encoding hh iig @ is defined similarly to the encoding
+hh iig (used for the traditional g encoding) except for the ∀ case in its formula translation and
+the typing axioms. Namely, the ∀ case adds guards only for universally quantified variables
+that are undercover:
+(
+hhϕiig @
+if X ∈
+/ UV(ϕ)
+hh∀X : σ. ϕiig@ = ∀X : σ.
+g hσi(X ) → hhϕiig @ otherwise
+Moreover, the typing axioms take the cover into consideration:
+
+V
+for f : ∀ᾱ. σ̄  σ ∈ F
+∀ᾱ. X̄ : σ̄.
+j∈Cover f g hσj i(X j ) → g hσi( f hᾱi(X̄ ))
+∀α. ∃X : α. g hαi(X )
+
+The cover-based type guards encoding g@ is defined as the composition hh iig @; a ninf ; e . It
+translates a polymorphic problem Φ over Σ into an untyped problem hhΦiig @; a ninf ; e over
+Σ′ = (F ′ ⊎ K ′ , P ′ ⊎ {g2 }), where K ′ , F ′ , P ′ are as for a ninf .
+Example 4.5. If we choose the cover for cons as in Convention 4.2, the g@ encoding of the
+algebraic list problem is identical to the g encoding (Example 3.19), except that the guard
+g(list(A), Xs) is omitted in typing axiom and one of the problem axioms:
+∀A, X, Xs. g(A, X ) → g(list(A), cons(X, Xs))
+∀A, X, Xs. g(A, X ) → nil(A) 6≈ cons(X, Xs)
+By leaving Xs unconstrained, the typing axiom for cons gives a type to some “ill-typed”
+terms, such as cons(0 nat , 0 nat ). Intuitively, this is safe because such terms cannot be used
+to prove anything useful that could not be proved with a “well-typed” term. What matters
+is that “well-typed” terms are associated with their correct type and that “ill-typed” terms
+are given at most one type.
+
+Lemma 4.6. Let M = D, (kM )k∈K , ( f M ) f ∈F , (pM ) p∈P be such that the domains in D
+are mutually disjoint and the type constructors kM are injective. Assume ᾱ = (α1 , . . . , αm ),
+β̄ = (β1 , . . . , βn ), σ̄ = (σ1 , . . . , σu ), τ̄ = (τ1 , . . . , τv ), and s : ∀(ᾱ, β̄). (σ̄, τ̄) → ς in F ⊎ P ,
+such that the last n type arguments (corresponding to β̄) are inferable andSthe first u term
+arguments (corresponding to σ̄) constitute a cover for s. Let (d1 , . . . , du ) ∈ ( D∈D D)u . Then
+there exists at most one tuple Ē = (E1 , . . . , En ) ∈ Dn such that each di is in Jσi KM
+θ for some
+θ that maps β̄ to Ē.
+Proof. From the inferability and cover assumptions, we have the condition TVars(β̄) ⊆
+TVars(σ̄, τ̄) = TVars(σ̄) on type variables. Assume another such tuple Ē ′ exists. Let θ′
+be its corresponding substitution, and let j ∈ {1, . . . , n}. By the type variable condition,
+M
+there exists i ∈ {1, . . . , u} such that β j ∈ TVars(σi ); since di ∈ JσiKM
+θ ∩ Jσi Kθ′ and distinct
+M
+domains are disjoint, we have Jσi KM
+θ = Jσi Kθ′ , which, together with β j ∈ TVars(σi ) and the
+injectivity of the type constructors, implies θ(β j ) = θ′ (β j ), hence E j = E ′j ; and since j was
+arbitrary, we obtain Ē = Ē ′ , as desired.
+
+18
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+Theorem 4.7 (Correctness of g@). The cover-based type guards encoding g@ is correct.
+Proof. Let Σ = (K , F , P ) be the signature of a polymorphic problem Φ.
+
+Sound: Let M = D, (kM )k∈K , ( f M ) f ∈F , (pM ) p∈P be a model of Φ. By Lemma 2.12, we
+may assume that D is disjoint from each of its elements, its elements are mutually disjoint,
+and the type constructors kM satisfy distinctness and injectivity. 
+′
+′
+We define a structure M ′ = D′ , ( f M ) f ∈F ′ ⊎K ′ , (pM ) p∈P ′ ⊎{g2 } for the untyped signature Σ′ = (F ′ ⊎ K ′ , P ′ ⊎ {g2 }) as follows. D′ is the union of the domains of M and their
+′
+elements, gM is the set membership relation, and the symbols of M ′ common to those of
+′
+M try to emulate the M interpretation as closely as possible: kM acts like kM on the D
+subset of D′ , and similarly for function and predicate symbols s whose noninferable type
+arguments in M become regular (term) arguments in M ′ . The reason why we can omit the
+inferable type arguments of s is their recoverability from the type of s and the domains of the
+′
+genuine term arguments. Additionally, when applying sM to inputs outside s’s cover that
+do not belong to their proper domains in M , we correct these inputs by replacing them with
+arbitrary inputs from the proper domains. We do this because, in formulae, these inputs
+will not be guarded by the encoding, but we will nevertheless want to infer the encoded
+formula holding in M ′ from the original formula holding in M .
+S
+Formally, we define the components of M ′ as follows. First, D′ = D ⊎ ( D∈D D) and
+′
+gM (a, b) = (a ∈ D ∧ b ∈ a). Assume k :: n is in K , meaning that k is an n-ary function
+symbol in K ′ . Then
+ M
+k (D̄) if D̄ ∈ Dn
+M′
+k (D̄) =
+ε(D)
+otherwise
+Assume ᾱ = (α1 , . . . , αm ), β̄ = (β1 , . . . , βn ), σ̄ = (σ1 , . . . , σu ), τ̄ = (τ1 , . . . , τv ), and s :
+∀ᾱ, β̄. σ̄ × τ̄ → ς is in F ⊎ P , such that the first m type arguments are noninferable,
+the last n type arguments are inferable, and the first u term arguments constitute s’s cover.
+(The general case, with arbitrary permutations of noninferable and cover arguments, can be
+handled similarly, albeit with heavier notation.) Then s is an (m + u + v)-ary symbol in
+F ′ ⊎ P ′ . Let D̄ = (D1 , . . . , Dm ) ∈ D′ m , d̄ = (d1 , . . . , du ) ∈ D′ u and ē = (e1 , . . . , ev ) ∈ D′ v , and
+consider the following condition on domains:
+(D1 , . . . , Dm ) ∈ Dm and there exists Ē = (E1 , . . . , En ) ∈ Dn such that each di is in Jσi KM
+θ ,
+where θ maps (ᾱ, β̄) to (D̄, Ē)
+Assuming the condition holds, by Lemma 4.6 there exists precisely one tuple Ē satisfying it.
+We let ē′ = (e′1 , . . . , e′v ), where
+(
+ei
+if ei ∈ Jτi KM
+′
+θ
+ei =
+M
+ε(Jτi Kθ ) otherwise
+Finally, we define
+
+ M
+ s (D̄, Ē)(d̄, ē′ ) if the domain condition holds
+M′
+s (D̄, d̄, ē) = ε(D)
+if the domain condition fails and s ∈ F
+
+ε(o)
+if the domain condition fails and s ∈ P
+
+We will show that M ′ is a model of hhΦiig @; a ninf ; e . Let ξ ′ : V → D′ be a valuation that
+respects types, in the sense that ξ ′ (V (α)) ∈ D for all α ∈ A . We define θ : A → D by
+Q
+′
+′
+M
+θ(α) = ξ ′ (V (α)) and ξ : V → σ∈Type Σ JσKM
+θ by ξ(X )(σ) = ξ (X ) if ξ (X ) ∈ JσKθ and
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+19
+
+′
+= ε(JσKM
+θ ) otherwise. Facts (1)–(3) below follow by induction on σ, t or ϕ (for arbitrary ξ ),
+′
+and (1′ ) is a consequence of (1) and the definition of gM :
+′
+M
+(1) JhhσiiKM
+ξ′ = JσKθ ;
+′
+
+′
+M
+(1′ ) Jg(hhσii, X )KM
+ξ′ = (ξ (X ) ∈ JσKθ );
+′
+
+M
+σ
+M
+ninf
+(2) if t ∈
+/ Vtyped and ξ(X ) ∈ JσKM
+θ for all X ∈ UV(t), then Jhhtiig @; a ; e Kξ′ = JtKθ,ξ ;
+′
+σ
+M
+M
+ninf
+(3) if ξ ′ (X ) ∈ JσKM
+θ for all X ∈ UV(ϕ), then JϕKθ,ξ implies Jhhϕiig @; a ; e Kξ′ .
+Let us detail a few interesting cases in these proofs:
+Inductive case for (2): Assume t = f hτ̄i(t1 , . . . , tn ), and let i ∈ {1, . . . , n}.
+If ti 6∈ Vtyped , then the induction hypothesis applies to it, yielding
+′
+
+M
+Jhhti iig @; a ninf ; e KM
+ξ′ = Jti Kθ,ξ
+′
+
+′
+M
+If ti = X σ , then Jhhti iig@; a ninf ; e KM
+ξ′ = ξ (X ), Jti Kθ,ξ = ξ(X )(σ), and we have
+two cases:
+′
+• If ξ ′(X ) ∈ JσKM
+θ , then ξ (X )(σ) = ξ(X ).
+• Otherwise, by the assumptions i ∈/ Cover f , and hence the definition of
+′
+f M effectively replaces the argument ξ ′ (X ) by ε(JσKM
+θ ), which also equals
+ξ(X )(σ).
+′
+M
+The above shows Jhhtiig @; a ninf ; e KM
+ξ′ = JtKθ,ξ .
+
+Disequality case for (3): The subcase when one of the terms is a variable and the other is not. Assume ϕ has the form X σ 6≈ t. If ξ ′ (X ) ∈
+M
+′
+M′
+ninf
+JσKM
+θ , then ξ (X )(σ) = ξ(X ), hence Jhhϕiig @; a ; e Kξ′ = JϕKθ,ξ . Otherwise,
+′
+
+′
+
+M
+M
+ninf
+Jhhϕiig @; a ninf ; e KM
+ξ′ since Jhhtiig @; a ; e Kξ′ ∈ JσKθ (and hence is different from
+′
+ξ (X )).
+
+Universal quantifier case for (3): Assume (A) J∀X : σ. ϕKM
+θ,ξ . We
+′
+′
+′
+M
+must show Jhh∀X : σ. ϕiig @; a ninf ; e Kξ′ . Fix d ∈ D and let ξ1 = ξ [X → d].
+′
+
+M
+• Assume X ∈ UV(ϕ). Then we assume Jg(hhσii, X )KM
+ξ′ , i.e. (B) d ∈ JσKθ ,
+′
+
+′
+and need to show Jhhϕiig @; a ninf ; e KM
+ξ′ . From (B), we have ξ(X )(σ) = ξ (X ),
+1
+
+hence ξ1 = ξ[X 7→ d]; with (A), this implies JϕKM
+θ,ξ1 , and hence the desired
+fact follows from the induction hypothesis.
+′
+M
+• Assume X 6∈ UV(ϕ). We must show Jhhϕiig @; a ninf ; e KM
+ξ′ . If d ∈ JσKθ ,
+1
+
+then the argument goes the same as above. So assume d 6∈ JσKM
+θ . Then
+M )]; with (A), this implies
+ξ(X )(σ) = ε(JσKM
+),
+hence
+ξ
+=
+ξ[X
+→
+7
+ε(JσK
+1
+θ
+θ
+JϕKM
+,
+and
+hence
+the
+desired
+fact
+follows
+from
+the induction hypothesis.
+θ,ξ1
+′
+
+From (1′ ) and the definition of f M , it follows that M ′ satisfies the necessary axioms, namely,
+hhϕiia ninf ; e for each typing axiom ϕ. It remains to show that M ′ satisfies hhϕiig @; a ninf ; e for each
+ϕ ∈ Φ. So let ϕ ∈ Φ. Then JϕKM . We pick any ξ ′ that respects types and has the property
+σ
+ninf
+that ξ ′ (X ) ∈ JσKM
+θ for all X ∈ UV(ϕ); by (3) and the fact that ϕ and hhϕiig @; a ; e are
+′
+′
+M
+M
+M
+sentences, it follows that JϕKξ,θ , hence Jhhϕiig @; a ninf ; e Kξ′ , hence Jhhϕiig @; a ninf ; e K .
+Complete: This part is easy. By Theorem 3.11, it suffices to show that hh iig@ is complete.
+′
+′
+′
+Let M ′ = D′ , (kM )k∈K , ( f M ) f ∈F , (pM ) p∈P ⊎{g} be a model of hhΦiig @, for which again we
+
+20
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+may assume that the domains are mutually disjoint. We define M = D, (kM )k∈K , ( f M ) f ∈F ,
+
+(pM ) p∈P by restricting the domains according to the guards and restricting the operations
+′
+correspondingly. Namely, for each D ∈ D′ , let D′ = {d ∈ D | gM (D)(d)}. We take
+• D = {D′ | D ∈ D′ };
+′
+• kM (D̄′ ) = kM (D̄);
+′
+• sM (D̄′ )(d̄) = sM (D̄)(d̄).
+Thanks to the typing axioms, each D′ is nonempty. Since the domains are disjoint, each
+D′ determines its D uniquely; together with the typing axioms, this also ensures that each
+M′
+kM and sM are well defined. Now, JUKM
+θ,ξ = JhhUiig @Kθ,ξ , where U is first a term and then a
+formula, follows by induction on U (for arbitrary θ and ξ). From this, we obtain that M is
+a model of hhΦiig @ by the usual route.
+4.2. Cover-Based Type Tags. The cover-based encoding t@ is similar to the traditional
+encoding t , except that it tags only undercover occurrences of variables and requires typing
+axioms to add or remove tags around function terms.
+Definition 4.8 (Cover Tags t@). The encoding hh iit @ translates polymorphic problems over
+Σ = (K , F , P ) to polymorphic problems over (K , F ⊎ {t : ∀α. α → α}, P ). Its term and
+formula translations are the following:
+hh f hσ̄i(¯t )iit @ = f hσ̄i(⌊hh¯t iit @⌋ f )
+hhphσ̄i(¯t )iit @ = phσ̄i(⌊hh¯t iit @⌋ p )
+hh¬ phσ̄i(¯t )iit @ = ¬ phσ̄i(⌊hh¯t iit @⌋ p )
+
+hht1 ≈ t2 iit @ = ⌊hht1iit @⌋≈ ≈ ⌊hht2 iit @⌋≈
+hh∃X : σ. ϕiit @ = ∃X : σ. thσi(X ) ≈ X ∧ hhϕiit @
+
+The auxiliary function ⌊(t1σ1 , . . . , tnσn )⌋s returns a vector (u1 , . . . , un ) such that
+(
+∀
+thσj i(tj ) if j ∈ Cover s and tj ∈ Vtyped
+uj =
+tj
+otherwise
+taking Cover ≈ = {1, 2}. The encoding adds the following typing axioms:
+∀ᾱ. ∀X̄ : σ̄. thσi( f hᾱi(⌊X̄ ⌋ f )) ≈ f hᾱi(⌊X̄ ⌋ f )
+
+for f : ∀ᾱ. σ̄  σ ∈ F
+
+∀α. ∃X : α. thαi(X ) ≈ X
+The cover-based type tags encoding t is the composition hh iit @; a ninf ; e . It translates a polymorphic problem over Σ into an untyped problem over Σ′ = (F ′ ⊎ K ′ ⊎ {t2 }, P ′ ), where
+K ′ , F ′ , P ′ are as for a ninf .
+Example 4.9. The t@ encoding of Example 2.10 is as follows (again, choosing the cover for
+cons as in Convention 4.2):
+∀A. t(list(A), nil(A)) ≈ nil(A)
+∀A, X, Xs. t(list(A), cons(t(A, X ), Xs)) ≈ cons(t(A, X ), Xs)
+∀A, Xs. t(list(A), hd(t(list(A), Xs))) ≈ hd(t(list(A), Xs))
+∀A, Xs. t(A, tl(t(list(A), Xs))) ≈ tl(t(list(A), Xs))
+∀A, X, Xs. nil(A) 6≈ cons(t(A, X ), Xs)
+∀A, Xs. t(list(A), Xs) ≈ nil(A) ∨
+(∃Y, Ys. t(A, Y ) ≈ Y ∧ t(list(A), Ys) ≈ Ys ∧ t(list(A), Xs) ≈ cons(Y, Ys))
+∀A, X, Xs. hd(cons(t(A, X ), Xs)) ≈ t(A, X ) ∧ tl(cons(t(A, X ), Xs)) ≈ t(list(A), Xs)
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+21
+
+∃X, Y, Xs, Ys. t(b , X ) ≈ X ∧ t(b , Y ) ≈ Y ∧ t(list(b ), Xs) ≈ Xs ∧ t(list(b ), Ys) ≈ Ys ∧
+cons(X, Xs) ≈ cons(Y, Ys) ∧ (X 6≈ Y ∨ Xs 6≈ Ys)
+Theorem 4.10 (Correctness of t@). The cover-based type tags encoding t@ is correct.
+Proof. Let Σ = (K , F , P ) be the signature of a polymorphic problem Φ.
+
+Sound: Let M = D, (kM )k∈K , ( f M ) f ∈F , (pM ) p∈P be a model of Φ. By Lemma 2.12, we
+may assume that D is disjoint from each of its elements, its elements are mutually disjoint,
+and the type constructors kM satisfy distinctness and injectivity. 
+′
+′
+We define a structure M ′ = D′ , ( f M ) f ∈F ′ ⊎K ′ ⊎{t2 } , (pM ) p∈P ′ for Σ′ = (F ′ ⊎ K ′ , P ′ ⊎
+{g2 }) intended to be a model of hhΦiit @; a ninf ; e . The construction of M ′ proceeds very similarly
+′
+′
+to the case of guards from the proof of Theorem 4.7: D′ , kM for k ∈ K ′ , and sM for s ∈ F ′ ⊎
+′
+P ′ are all defined in the same way as in that proof. It remains to define tM : D′ × D′ → D′ :
+
+if a ∈ D and b ∈ a
+b
+M′
+t (a, b) = ε(a) if a ∈ D and b 6∈ a
+
+ε(D) if a 6∈ D
+′
+
+In the proof of Theorem 4.7, gM (a, b) captured the notion that a is a domain of M and
+′
+b an element in it. The same can now be expressed by tM (a, b) = b. Additionally, here
+′
+tM is useful for redirecting any ill-typed element b (one not in the first argument a) to a
+well-typed element ε(a) ∈ a.
+To show that M ′ is a model of hhΦiit @; a ninf ; e , we proceed almost identically to the proof
+of Theorem 4.7. Starting with a valuation ξ ′ : V → D′ that respects types, we define ξ and
+θ in the same way and state facts (1)–(3) as for guards, but adding a condition about the
+“well-typedness” of the existential variables interpretation, since only universal variables (i.e.
+∀
+) are tagged by t@:
+variables in Vtyped
+′
+
+M
+(1) JhhσiiKM
+ξ′ = JσKθ ;
+′
+
+M
+M
+σ
+∃
+ninf
+(2) if t ∈
+/ Vtyped and ξ(X ) ∈ JσKM
+θ for all X ∈ UV(t) ∪ Vtyped , then Jhhtiit @; a ; e Kξ′ = JtKθ,ξ ;
+′
+
+σ
+∃
+M
+M
+ninf
+(3) if ξ ′ (X ) ∈ JσKM
+θ for all X ∈ UV(ϕ) ∪ Vtyped , then JϕKθ,ξ implies Jhhϕiig @; a ; e Kξ′ .
+
+Moreover, (1′ ) from the proof of Theorem 4.7 is replaced with the following two facts:
+′
+′
+′
+M
+(1′ ) (Jt(hhσii, X )KM
+ξ′ = ξ (X )) = (ξ (X ) ∈ JσKθ );
+′
+M
+(1′′ ) Jt(hhσii, X )KM
+ξ′ ∈ JσKθ .
+Again, (1)–(3) follow by induction on the involved type, term, or formula; (1′ ) and (1′′ )
+′
+follow from (1) and the definition of tM (and are in turn used to establish (2) and (3)). The
+fact that M ′ satisfies hhϕiit @; a ninf ; e for each ϕ ∈ Φ follows in the same way as in Theorem 4.7.
+It remains to show that M ′ satisfies the necessary axioms, namely, the hh iia ninf ; e -translations
+′
+of the hh iit @ typing axioms. This follows from (1′ ) and the definition of f M .
+Complete: This part is again similar to the corresponding one for guards. By Theo-
+′
+′
+′
+rem 3.11, it suffices to show hh iit @ complete. Let M ′ = D′ , (kM )k∈K , ( f M ) f ∈F ⊎{t} , (pM ) p∈P
+be a model of hhΦiit @, for which we may assume
+ that the domains are mutually disjoint. We
+define M = D, (kM )k∈K , ( f M ) f ∈F , (pM ) p∈P by restricting the domains not according to
+the guards as in the proof of Theorem 4.7, but according to the property that tags be iden′
+tity: for each D ∈ D′ , let D′ = {d ∈ D | tM (D)(d) = d}; we define D = {D′ | D ∈ D′ }. The
+
+22
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+other components of M are defined as in Theorem 3.11, and the proof is analogous to that
+for guards.
+Unlike in the case of guards, the traditional type tag encoding t is not a particular
+case of the cover-based encoding t@, since only t@ introduces typing axioms, and also t
+further restricts the type arguments to phantom arguments. Nevertheless, we can provide
+a somewhat similar argument for t ’s correctness. Although the encoding is well known, we
+are not aware of any soundness proof in the literature.
+Proof of Theorem 3.16 (Correctness of t ).
+Sound: Let M be as in the proof of Theorem 4.10. We define M ′ similar to there, but
+with the following difference: D′ contains not only the domains in D and their elements,
+but also the set P of “polymorphic values”, i.e. functions that take a domain D ∈ D and
+return an element of D. The reason for the polymorphic values is that, due to the switch
+′
+from noninferable arguments to phantom arguments, the domain of the result for f M with
+f : ∀ᾱ. σ̄ → σ in F will no longer be completely inferable from the arguments, but will
+miss precisely the nonphantom noninfrebale arguments, which correspond to type variables
+belonging to the result type σ but not to the argument types σ̄. Consequently, the result
+′
+of applying f M to “well-typed” arguments will be polymorphic values that wait for the
+result domain D and, if it has the form JσKθ for an appropriate θ, return the result from
+′
+JσKθ according to the interpretation of f M . Then the interpretation of the tag applied to
+polymorphic values will select the desired element by providing the domain. The reason why
+this approach works with t but not with t@ is that in t tags are applied everywhere, thus
+′
+resolving immediately any polymorphic value emerging from an application of f M .
+′
+′
+Formally, we define the components of M ′ as follows. First, kM and pM are as in
+the proofs of Theorems 4.7 and 4.10. (For predicate symbols, the notions
+of phantom and
+S
+noninferable type arguments coincide.) D′ = D ∪ E ∪ P, where E = D∈D D (the elements)
+Q
+′
+and P = D∈D D (the polymorphic values). Moreover, tM : D′ × D′ → D′ is defined as
+follows:
+
+b
+if a ∈ D and b ∈ a
+
+
+
+′
+ε(a)
+if
+a ∈ D, b ∈ E and b 6∈ a
+M
+t (a, b) =
+
+b(a) if a ∈ D and b ∈ P
+
+
+ε(D) otherwise
+Assume ᾱ = (α1 , . . . , αm ), γ̄ = (γ1 , . . . , γr ), β̄ = (β1 , . . . , βn ), σ̄ = (σ1 , . . . , σu ), τ̄ = (τ1 , . . . , τv ),
+and s : ∀(ᾱ, γ̄, β̄). (σ̄, τ̄) → ς is in F ⊎ P , such that the first m type arguments are phantom, the middle r arguments are noninferable nonphantoms, the last n type arguments are
+inferable, and the first u term arguments constitute s’s cover. (Again, the general case
+with arbitrary permutations of the arguments can be handled similarly.) Then s is an
+(m + u + v)-ary symbol in F ′ ⊎ P ′ . Let D̄ = (D1 , . . . , Dm ) ∈ D′ m , d̄ = (d1 , . . . , du ) ∈ D′ u and
+ē = (e1 , . . . , ev ) ∈ D′ v , and consider the following condition on domains:
+(D1 , . . . , Dm ) ∈ Dm and there exists Ē = (E1 , . . . , En ) ∈ Dn such that each di is in Jσi KM
+θ ,
+where θ maps (ᾱ, β̄) to (D̄, Ē)
+Assuming the condition holds, again by Lemma 4.6 (taking ᾱ from there to be (ᾱ, γ̄)) there
+exists precisely one tuple Ē satisfying it, and we define the “correction” vector ē′ from ē as
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+23
+
+in the proof of Theorems 4.7 and 4.10. We now define
+
+πD̄,d̄,ē if the domain condition holds
+M′
+f (D̄, d̄, ē) =
+ε(D) otherwise
+
+where the polymorphic value πD̄,d̄,ē ∈ P is defined as follows:
+ M
+s (D̄, Ḡ, Ē)(d̄, ē′ ) if D has the form JσKM
+θ and θ assigns (ᾱ, γ̄, β̄) to (D̄, Ḡ, Ē)
+πD̄,d̄,ē (D) =
+ε(D)
+otherwise
+
+To show that M ′ is a model of hhΦiit ; a phn ; e , we proceed almost identically to the proof
+of Theorem 4.10. Starting with a valuation ξ ′ : V → D′ that respects types (as in the
+proofs of Theorems 4.7 and 4.10). We define θ : A → D by θ(α) = ξ ′ (V (α)) and ξ : V →
+Q
+M
+M ′ (JσKM , ξ ′ (X )). Facts (1)–(3) below follow by induction on
+θ
+σ∈Type Σ JσKθ by ξ(X )(σ) = t
+σ, t, or ϕ (for arbitrary ξ ′ ):
+′
+M
+(1) JhhσiiKM
+ξ′ = JσKθ ;
+′
+
+M
+(2) Jhhtiit ; a phn ; e KM
+ξ′ = JtKθ,ξ ;
+M′
+phn
+(3) JϕKM
+θ,ξ = Jhhϕiit ; a ; e Kξ′ .
+
+It follows by the usual route that M ′ is a model of each hhϕiit ; a phn ; e with ϕ ∈ Φ, hence of
+hhΦiit ; a phn ; e .
+′
+
+Complete: By Theorem 3.11, it suffices to show hh iit complete. Let M ′ = D′ , (kM )k∈K ,
+
+′
+′
+( f M ) f ∈F ⊎{t} , (pM ) p∈P be a model of hhΦiit , for which we may assume that the domains are
+
+mutually disjoint. We must construct a model M = D, (kM )k∈K , ( f M ) f ∈F , (pM ) p∈P of Φ
+by somehow removing the tags from M ′ . Unlike for t@, here hh iit does not contain typing
+axioms ensuring that a the restriction of M ′ to elements for which the tag interpretation
+is the identity forms a valid submodel; thus M ′ cannot be defined that way. On the other
+hand, we know that the formulae in hh iit are fully tagged; in particular, all variables are
+accessed through tags. This means we can take the domains of M by restricting those of
+M ′ to the images of the tag interpretations. The result will not be a submodel, so cannot
+take the functions and predicates sM of M to be restrictions of those of M ′ . Instead, sM
+′
+will be defined by applying sM through the tag “interface”.
+′
+Formally, let, for each D ∈ D′ , let D′ be the image of tM (D) (which is aQsubset of D).
+Each D′ uniquely determines its D. We define the auxiliary function T : D∈D′ D → D,
+′
+which only applies tM if the element is not already in the image:
+
+d
+if d ∈ D′
+T D (d) = M ′
+t (D)(d) otherwise
+′
+
+′
+
+Notice that T D adds no tags around an existing tag: T D (tM (D)(d)) = tM (D)(d). We
+′
+define the components of M as follows: D = {D′ | D ∈ D′ }; kM (D̄′ ) = kM (D̄); if
+′
+′
+′
+M (D̄)(T
+′ (d1 ), . . . ,
+f : ∀ᾱ. σ̄ → σ is in F , then f M (D̄′ )(d1 , . . . , dn ) = tM (JσKM
+θ )( f
+Jσ1 KM
+θ
+
+T Jσn KM ′ (dn ))), where θ maps each αi to Di ; if p : ∀ᾱ. σ̄ → o is in P , then pM (D̄′ )(d1 , . . . , dn ) =
+′
+
+θ
+
+pM (D̄)(T Jσ1 KM ′ (d1 ), . . . , T Jσn KM ′ (dn )), where θ maps each αi to Di . The interpretation f M ap′
+
+θ
+
+θ
+
+plies tags tM at the top, whereas the interpretations of f M and pM apply the modified tag
+T at the bottom. This is to ensure that the interpretations of terms and atomic formulae
+in M do not add several consecutive layers of tags. For example, when interpreted in M
+
+24
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+within f (X σ ), f should add a tag around X σ , as well as one around f (X σ ); however, when
+interpreted in M within f (g(X σ )), f should not add a tag around g(X σ ), since g already
+adds one.
+Q
+′
+′
+′
+′
+Given θ : A → D and ξ ′ : V → σ∈Type ′ JσKM
+θ′ , we define θ : A → D by letting θ (α)
+Σ
+Q
+be the unique D ∈ D′ such that D′ = θ(α), and ξ : V → σ∈Type Σ JσKM
+θ by ξ(X )(σ) =
+′
+′
+′
+tM (JσKM
+θ )(ξ (X )(σ)). The next facts follow by induction on σ, t, or ϕ (for arbitrary θ and
+
+ξ ′ ):
+M ′ (JσKM ′ );
+(1) JσKM
+θ is in the image of t
+θ′
+′
+M ;
+(2) JtKM
+=
+Jh
+hti
+i
+K
+′
+t
+θ,ξ
+θ ,ξ
+′
+
+M
+(3) JϕKM
+θ,ξ = Jhhϕiit Kθ′ ,ξ .
+
+Q
+Let ϕ ∈ Φ. To show that M is a model of ϕ, let θ : A → D and ξ : V → σ∈Type Σ JσKM
+θ . By
+Q
+′
+′
+′
+′
+M
+M
+′
+M
+(1), there exists ξ : V → σ∈Type Σ′ JσKθ′ such that ξ(X )(σ) = t (JσKθ )(ξ (X )(σ)) for all
+′
+
+′
+
+′
+
+M (JσKM )(d′ ) =
+X and σ—simply take ξ ′ (X )(σ) to be any element d′ in JσKM
+θ′
+θ′ such that t
+′
+M
+M
+M
+ξ(X )(σ). Since Jhhϕiit Kθ′ ,ξ holds, it follows from (3) that JϕKθ,ξ , i.e. JϕK , also holds, as
+desired.
+
+4.3. Polymorphic Löwenheim–Skolem. The previous completeness results can be used
+to prove Löwenheim–Skolem-like properties for polymorphic first-order logic by appealing
+to the more manageable (and better known) monomorphic first-order logic.
+Lemma 4.11. If a polymorphic Σ-problem Φ has a model, it also has a model M = D,
+
+(kM )k∈K , _, _ such that the following conditions are met :1
+(1) each D ∈ D is countable;
+(2) each kM is injective, and kM (D̄) 6= k′ M (Ē) whenever k 6= k′ ;
+(3) D = {JτKM | τ ∈ GType Σ };
+(4) the type interpretation function J KM is a bijection between GType and D;
+(5) D is countable;
+(6) D is disjoint from each D ∈ D, and any distinct D1 , D2 ∈ D are disjoint.
+Proof. Assume Φ has a model, and recall that by definition the polymorphic signatures
+that we consider are countable. By the soundness of g@ (Theorem 4.7), hhΦiig @ also has a
+model and its signature is countable; hence by classical Löwenheim–Skolem [19], hhΦiig @ has
+a countable model M ′ . It follows from the proof of completeness of g@ that Φ has a model
+M = (D, _, _, _) constructed from M ′ in such a way that each D ∈ D is countable—hence
+M ′ satisfies (1). Now, (2)–(6) follow by applying the same reasoning as in Lemma 2.12 and
+noticing that all the structure modifications from there do not alter the countability of the
+domains D ∈ D.
+1These correspond to the conditions from Lemma 2.12 plus countability of each D ∈ D.
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+25
+
+Lemma 4.12. If Φ has a model M = (D, _, _, _) where all JτKM are infinite for all
+τ ∈ GType, it also has a model M ′ = (D′ , _, _, _) where D′ and all D′ ∈ D′ are countably
+infinite.
+V
+Proof. Let Φ′ be Φ extended with axioms Ax = {∃X1 : σ, . . . , Xn : σ.
+i< j Xi 6≈ X j |
+σ ∈ GType Σ , n ∈ N} that state that all ground types are infinite. Then M = (D, _, _, _) is
+′
+a model of Φ′ . By Lemma 4.11, Φ′ also has a model M ′ = (D′ , _, _, _) with D′ = {JτKM |
+τ ∈ GType Σ } (which is, in particular, countably infinite) and each D′ ∈ D′ at most countably
+′
+infinite, i.e. due to Ax and the fact that each D′ ∈ D has the form JτKM , actually countably
+infinite. M ′ is the desired model of Φ.
+5. Monotonicity-Based Type Encodings — The Monomorphic Case
+The cover-based encodings of Section 4 removed some of the clutter associated with type
+arguments, which are in general necessary to encode polymorphism soundly. Another family
+of encodings focuses on the quantifiers and exploit monotonicity. For types that are inferred
+monotonic, the translation can omit the type information on term variables of these types.
+Informally, a type is monotonic in a problem when, for any model of that problem, we can
+increase the size of the domain that interprets the type while preserving satisfiability.
+This section focuses on the monomorphic case, where the input problem contains no
+type variables or polymorphic symbols. This case is interesting in its own right and serves
+as a stepping stone towards polymorphic monotonicity-based encodings (Section 6).
+Before we start, we need to define variants of the traditional e , t , and g encodings that
+operate on monomorphic problems. Since the monomorphic e is essentially identical to the
+polymorphic e restricted to monomorphic signatures, we use the same notation for both. The
+monomorphic encodings et and e
+g coincide with t and g except that the polymorphic function
+thσi(t) and predicate g hσi(t) are replaced by type-indexed families of unary functions t σ (t)
+and predicates g σ (t), as is customary in the literature [36, §4].
+5.1. Monotonicity. The concept of monotonicity used by Claessen et al. [16, §2.2] declares
+
+a type τ monotonic for a finite problem Φ if for any model M = (Dσ )σ∈Type
+,
+_,
+_
+of Φ
+
+′
+′
+such that Dτ is finite, there exists another model M = (Dσ )σ∈Type , _, _ of Φ such that
+|D′τ | = |Dτ |+1 and |D′σ | = |Dσ | for all σ 6= τ. Their notion, which we call finite monotonicity,
+is designed to ensure that it is possible to produce a model having all types interpreted by
+countably infinite sets, and finally a model having all types interpreted as the same set, so
+that type information can be soundly erased. In this article, we take directly the infiniteinterpretation property as definition of monotonicity and extend the notion to sets of types:
+Definition 5.1 (Monotonicity). Let S be a set of types and Φ be a problem. The set S is
+monotonic in Φ if for all models M = (Dσ )σ∈Type , _, _ of Φ, there exists a model M ′ =
+(D′σ )σ∈Type , _, _ of Φ such that for all types σ, D′σ is infinite if σ ∈ S and |D′σ | = |Dσ |
+otherwise. A type σ is monotonic if {σ} is monotonic. The problem Φ is monotonic if the
+set Type of all types is monotonic.
+Full type erasure is sound for monotonic monomorphic problems. The intuition is that
+a model of such a problem can be extended into a model where all types are interpreted as
+sets of the same cardinality, which can be merged to yield an untyped model.
+
+26
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+Example 5.2. The monkey village of Example 1.1 is monotonic because any model with
+finitely many bananas can be extended to a model with infinitely many, and any model with
+infinitely many bananas and finitely many monkeys can be extended to one where monkeys
+and bananas have the same infinite cardinality (cf. Example 3.4). However, the type of
+monkeys is not monotonic on its own, as we argued intuitively in Example 1.1, nor is it
+finitely monotonic.
+Theorem 5.3 (Monotonic Erasure). Full type erasure is sound for monotonic monomorphic
+problems.
+Proof. Let Φ be such a problem, let Σ = (Type, F , P ) be its signature, and let Σ′ = (F ′ , P ′ )
+be the target signature of e . If Φ is satisfiable, it has a model where all domains are infinite
+by definition of monotonicity. Since Σ is countable, by the downward Löwenheim–Skolem
+theorem [19], Φ also has a model where all domains are countably infinite, hence also a model
+M = (Dσ )σ∈Type , ( f M ) f ∈F , (pM ) p∈P where all domains are interpreted as the same set D,
+
+′
+′
+i.e. each Dσ is D. We define the Σ′ -structure M ′ = D, ( f M ) f ∈F ′ , (pM ) p∈P ′ by taking D
+Q
+′
+to be D and each sM to be sM . For each ξ ′ : V → D, we define ξ : V → σ∈Type Dσ , i.e.
+ξ : V → Type → D, by ξ(X )(σ) = ξ ′ (X ). The next facts follow by induction on t and ϕ (for
+arbitrary ξ):
+′
+M
+(1) Jhhtiie KM
+ξ′ = JtKξ ;
+′
+
+M
+(2) Jhhϕiie KM
+ξ′ = JϕKξ .
+
+It follows by the usual route that M ′ is a model of hhΦiie .
+Remark 5.4. An alternative to invoking the Löwenheim–Skolem theorem would have been
+to require countable infinity in the definition of monotonicity. Although it makes no difference in this article, the more general definition would also apply in the presence of uncountable interpreted types (e.g. for the real numbers). The proof of Theorem 5.3 can be adapted
+to go beyond countable infinity if desired.
+It is often convenient to determine the monotonicity of single types separately, viewed
+as singleton sets. This is enough to make the set of all types, i.e. the problem, monotonic:
+Lemma 5.5 (Global Monotonicity from Separate Monotonicity). If σ is monotonic in Φ
+for each type σ, then Φ is monotonic.
+Proof. Let Σ = (Type, F , P ) be the signature of Φ, and assume Φ is satisfiable. Let σ1 , σ2 , . . .
+be an enumeration of Type, and let ϕk be a formula stating that for all i ∈ {1, . . . , k}, σi ’s
+domain has at least k elements. Finally, let Φ′ = {ϕi | i ∈ N}. By the monotonicity of
+the individual types, it follows by induction on k that each Φ ∪ {ϕi | i ∈ {1, . . . , k}} is
+satisfiable, and hence that each finite subset of Φ ∪ Φ′ is satisfiable. By the compactness
+theorem [19], it follows that Φ ∪ Φ′ is itself satisfiable, and hence Φ has a model with only
+infinite domains.
+5.2. Monotonicity Inference. Claessen et al. introduced a simple calculus to infer finite
+monotonicity for monomorphic first-order logic [16, §2.3]. The definition below generalises
+it from clause normal form to negation normal form. The generalisation is straightforward;
+we present it because we later adapt it to polymorphism. The calculus is based on the
+observation that a type σ must be monotonic if the problem expressed in NNF contains
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+27
+
+no positive literal of the form X σ ≈ t or t ≈ X σ, where X is universal. We call such an
+occurrence of X a naked occurrence. Naked variables are unavoidable to express upper
+bounds on the cardinality of types in first-order logic.
+Definition 5.6 (Naked Variable). The set of naked variables NV(ϕ) of a formula ϕ is defined
+as follows:
+NV(p(¯t )) = ∅
+NV(t1 ≈ t2 ) = {t1 , t2 } ∩ Vtyped
+NV(¬ p(¯t )) = ∅
+
+NV(t1 6≈ t2 ) = ∅
+
+NV(ϕ1 ∧ ϕ2 ) = NV(ϕ1 ) ∪ NV(ϕ2 )
+
+NV(∀X : σ. ϕ) = NV(ϕ)
+
+NV(ϕ1 ∨ ϕ2 ) = NV(ϕ1 ) ∪ NV(ϕ2 )
+NV(∃X : σ. ϕ) = NV(ϕ) − {X σ }
+S
+For a problem Φ, we define NV(Φ) = ϕ∈Φ NV(ϕ).
+
+We see from the ∃ case that existential variables never occur naked in sentences.
+Variables of types other than σ are irrelevant when inferring whether σ is monotonic; a
+variable is problematic only if it occurs naked and has type σ. Annoyingly, a single naked
+variable of type σ, such as X on the right-hand side of the equation hdb (cons b (X, Xs)) ≈ X
+from Example 2.13, will cause us to classify σ as possibly nonmonotonic. We regain some
+precision by extending the calculus with an infinity analysis, as suggested by Claessen et al.:
+trivially, all types with no finite models are monotonic.
+Convention 5.7. Abstracting over the specific analysis used to detect infinite types (e.g.
+Infinox [15]), we fix a set Inf(Φ) of types whose interpretations are guaranteed to be infinite
+in all models of Φ, More precisely,
+the following property is assumed to hold: if τ ∈ Inf(Φ)
+
+and M = (Dσ )σ∈Type , _, _ is a model of Φ, then Dτ is infinite.
+Our monotonicity calculus takes Inf(Φ) into account:
+
+Definition 5.8 (Monotonicity Calculus ⊲). Let Φ be a monomorphic problem over Σ =
+(K , F , P ). A judgement σ ⊲ Φ indicates that the ground type σ is inferred monotonic in Φ.
+The monotonicity calculus consists of the following rules:
+σ ∈ Inf(Φ)
+
+NV(Φ) ∩ {X σ | X ∈ V } = ∅
+
+σ⊲Φ
+
+σ⊲Φ
+
+We write σ ⊲ Φ to indicate that the judgement is derivable and σ 6⊲ Φ otherwise.
+Claessen et al. designed a second, more powerful calculus that extends their first calculus
+to detect predicates that act as guards for naked variables. Whilst the calculus proved
+successful on a subset of the TPTP benchmarks [30], we assessed its suitability on about
+1000 problems generated by Sledgehammer and found no improvement on the simple calculus.
+For this reason, we restrict our attention to the first calculus.
+Theorem 5.9 (Soundness of ⊲). Let Φ be a monomorphic problem. If τ ⊲ Φ, then τ is
+monotonic in Φ.
+Proof. Let Σ = (Type, F , P ) be the signature of Φ, and let τ ∈ Type such that τ ⊲ Φ.
+Assume Φ has a model M = (Dσ )σ∈Type , ( f M ) f ∈F , (pM ) p∈P . We will construct a model
+
+′
+′
+M ′ = (D′σ )σ∈Type , ( f M ) f ∈F , (pM ) p∈P with the same domains as M for σ 6= τ and with
+D′τ infinite. If τ ∈ Inf(Φ), then Dτ is already infinite, so can we take M ′ = M . Otherwise,
+
+28
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+τ 6∈ Inf(Φ), which means the second rule of the calculus must have been applied and no
+variables of type τ occur naked, i.e. NV(Φ) ∩ {X τ | X ∈ V } = ∅. We define D′τ by
+extending Dτ with an infinite number of fresh elements e1 , e2 , . . . and define the functions
+and predicates of M ′ to treat these in the same way as ε(Dτ ). Intuitively, M ′ also satisfies Φ
+because, since no variables of type τ occur naked, the formulae of Φ cannot tell the difference
+between a “clone” ei and the original ε(Dτ ) except for the case of disequality—and there the
+formula instantiated with clones is more likely to be true than the one instantiated with
+ε(Dτ ) (since clones are mutually disequal and disequal to ε(Dτ )).
+Formally, we let E = {e1 , e2 , . . .} be an infinite set disjoint from Dτ , and define
+
+Dσ ∪ E if σ = τ
+′
+Dσ =
+Dσ
+otherwise
+′
+
+Given s : σ̄ → ς, we let sM (d̄) = sM (d̄′ ), where
+
+ε(Dτ ) if σi = τ and di ∈ E
+′
+di =
+di
+otherwise
+Q
+Q
+Given ξ ′ : V → σ∈Type D′σ , we define ξ : V → σ∈Type Dσ by
+
+ε(Dτ )
+if σ = τ and d ∈ E
+ξ(X )(σ)(d) =
+ξ ′ (X )(σ)(d) otherwise
+
+The next facts follow by induction on t or ϕ (for arbitrary ξ ′ ):
+′
+M
+(1) t 6∈ {X τ | X ∈ V } implies JtKM
+ξ′ = JtKξ ;
+′
+
+M
+(2) NV(ϕ) ∩ {X σ | X ∈ V } = ∅ and JϕKM
+ξ imply JϕKξ′ .
+
+(Notice that (2) is an implication, not an equivalence. An inductive proof of the converse
+would fail for the case of disequalities.) In particular, thanks to the absence of naked
+variables of type τ in all ϕ ∈ Φ, M ′ is the desired model of Φ.
+In the light of the above soundness result, we will allow ourselves to write that σ is
+monotonic if σ ⊲ Φ and possibly nonmonotonic if σ 6⊲ Φ.
+5.3. Encoding Nonmonotonic Types. Monotonic types can be soundly erased when
+translating to untyped first-order logic, by Theorem 5.3. Nonmonotonic types in general
+cannot. Claessen et al. [16, §3.2] point out that adding sufficiently many protectors to a
+nonmonotonic problem will make it monotonic, at which point its types can be erased. Thus
+the following general two-stage procedure translates monomorphic problems to untyped firstorder logic:
+1. Selectively introduce protectors (tags or guards) without erasing any types:
+1.1. Infer monotonicity to identify the possibly nonmonotonic types in the problem.
+1.2. Introduce protectors for the universal variables of possibly nonmonotonic types.
+1.3. If necessary (depending on the encoding), generate typing axioms for any function
+symbol whose result type is possibly nonmonotonic, to make it possible to remove
+protectors for terms with the right type.
+2. Erase all the types.
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+29
+
+The purpose of stage 1 is to make the problem monotonic while preserving satisfiability.
+This paves the way for the sound type erasure of stage 2. The following lemmas will help
+us prove such two-stage encodings correct.
+Lemma 5.10 (Correctness Conditions). Let Φ be a monomorphic problem, and let x be a
+monomorphic encoding. The problems Φ and hhΦii x ; e are equisatisfiable provided that the
+following conditions hold:
+Mono: hhΦii x is monotonic.
+Sound: If Φ is satisfiable, so is hhΦii x .
+Complete: If hhΦii x is satisfiable, so is Φ.
+Proof. Immediate from Theorems 3.5 and 5.3.
+5.4. Monotonicity-Based Type Tags. The monotonicity-based encoding et? specialises
+the above procedure for tags. It is similar to the traditional encoding et (the monomorphic
+version of t ), except that it omits the tags for types that are inferred monotonic. By wrapping
+all naked variables (in fact, all terms) of possibly nonmonotonic types in a function term,
+stage 1 yields a monotonic problem.
+Definition 5.11 (Lightweight Tags et?
+t ). The encoding hh iiet ? translates monomorphic problems over Σ = (Type, F , P ) to monomorphic problems over (Type, F ⊎ {tσ : σ → σ | σ ∈
+Type}, P ). It adds no axioms, and its term and formula translations are defined as follows:
+(
+t
+if σ ⊲ Φ
+σ
+with ⌊t ⌋ =
+hhX iiet ? = ⌊X ⌋
+hh f (¯t )iiet ? = ⌊ f (hh¯t iiet ? )⌋
+t σ (t) otherwise
+The monomorphic lightweight type tags encoding et? is the composition hh iiet ? ; e . It translates a
+monomorphic problem over Σ into an untyped problem over Σ′ = (F ′ ⊎ {t1σ | σ ∈ Type}, P ′ ),
+where F ′ , P ′ are as for e .
+Example 5.12. For the algebraic list problem of Example 2.13, the type list_b is monotonic
+by virtue of being infinite, whereas b cannot be inferred monotonic. The et? encoding of the
+problem follows:
+∀X, Xs. nilb 6≈ consb (t b (X ), Xs)
+∀Xs. Xs ≈ nilb ∨ (∃Y, Ys. Xs ≈ consb (t b (Y ), Ys))
+∀X, Xs. t b (hdb (cons b (t b (X ), Xs))) ≈ t b (X ) ∧ tlb (consb (t b (X ), Xs)) ≈ Xs
+∃X, Y, Xs, Ys. consb (t b (X ), Xs) ≈ consb (t b (Y ), Ys) ∧ (t b (X ) 6≈ t b (Y ) ∨ Xs 6≈ Ys)
+The et? encoding treats all variables of the same type uniformly. Hundreds of axioms
+can suffer because of one unhappy formula that uses a type nonmonotonically (or in a way
+that cannot be inferred monotonic). To address this, we introduce a lighter encoding: if a
+universal variable does not occur naked in a formula, its tag can safely be omitted.2
+This new encoding, called et??, protects only naked variables and introduces equations
+t σ ( f (X̄ ) σ ) ≈ f (X̄ ) to add or remove tags around each function symbol f whose result type
+σ is possibly nonmonotonic, and similarly for existential variables.
+2This is related to the observation that only paramodulation from or into a variable can cause ill-typed
+instantiations in a resolution prover [36, §4].
+
+30
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+Definition 5.13 (Featherweight Tags et??
+t ). The encoding hh iiet ?? translates monomorphic
+problems over Σ = (Type, F , P ) to monomorphic problems over (Type, F ⊎ {tσ : σ → σ |
+σ ∈ Type}, P ). Its term and formula translations are defined as follows:
+hht1 ≈ t2 iiet ?? = ⌊hht1iiet ?? ⌋ ≈ ⌊hht2 iiet ?? ⌋
+(
+if σ ⊲ Φ
+hhϕiiet ??
+hh∃X : σ. ϕiiet ?? = ∃X : σ.
+t σ (X ) ≈ X ∧ hhϕiiet ?? otherwise
+with
+
+(
+t
+
+∀
+if σ ⊲ Φ or t ∈
+/ Vtyped
+t σ (t) otherwise
+The encoding adds the following typing axioms:
+
+⌊t σ ⌋ =
+
+∀X̄ : σ̄. t σ ( f (X̄ )) ≈ f (X̄ )
+
+for f : σ̄  σ ∈ F such that σ 6⊲ Φ
+
+∃X : σ. t σ (X ) ≈ X
+
+for σ 6⊲ Φ that is not the result type of a symbol in F
+
+The monomorphic featherweight type tags encoding et?? is the composition hh iiet ?? ; e . The
+target signature for et?? is the same as for et?.
+
+The axioms are necessary for the completeness of et??. They would have been harmless
+for et?: for soundness, we can think of the t σ functions as identities. The side condition of
+the last axiom is a minor optimisation: it avoids asserting that σ is inhabited if the symbols
+in F already witness σ’s inhabitation.
+
+Example 5.14. The et?? encoding of Example 2.13 requires fewer tags than et?, at the cost
+of a typing axiom for hd and typing equations for the existential variables of type b:
+∀Xs. t b (hdb (Xs)) ≈ hdb (Xs)
+∀X, Xs. nilb 6≈ consb (X, Xs)
+∀Xs. Xs ≈ nilb ∨ (∃Y, Ys. t b (Y ) ≈ Y ∧ Xs ≈ consb (Y, Ys))
+∀X, Xs. hdb (consb (X, Xs)) ≈ t b (X ) ∧ tlb (cons b (X, Xs)) ≈ Xs
+∃X, Y, Xs, Ys. t b (X ) ≈ X ∧ t b (Y ) ≈ Y ∧ consb (X, Xs) ≈ consb (Y, Ys) ∧
+(X 6≈ Y ∨ Xs 6≈ Ys)
+Theorem 5.15 (Correctness of ett?, et??
+t ). The monomorphic type tags encodings et? and et??
+are correct.
+Proof. It suffices to show the three conditions of Lemma 5.10.
+
+Mono: By induction on ϕ, it follows that
+(1) X σ ∈ NV(hhϕiiet ? ) implies σ ∈ Inf(Φ);
+(2) X σ ∈ NV(hhϕiiet ?? ) implies σ ∈ Inf(Φ).
+(Indeed, while transforming ϕ into hhϕiiet ?? , et?? tags precisely the variables that would cause
+the condition (1) to fail; and et? tags even more.) Moreover, the typing axioms of et?? have
+no naked variables, and hence σ ⊲ hhϕiiet ? and σ ⊲ hhϕiiet ?? hold for all types σ. Therefore, by
+Theorem 5.9 and Lemma 5.5, σ ⊲ hhϕiiet ? and σ ⊲ hhϕiiet ?? are monotonic.
+Sound: This is immediate for both hh iiet ? and hh iiet ?? : given a model of Φ, we extend it to a
+model of the encoded Φ by interpreting all type tags as the identity.
+Complete for hh iiet ? : The proof is analogous to the corresponding case for t (Theorem 3.16),
+the differences being that here we do not face the complication of interpreting polymorphic
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+31
+
+′
+
+types, and only terms of certain types are tagged. Let M ′ = (D′σ )σ∈Type , ( f M ) f ∈F ⊎{tσ |σ6⊲Φ} ,
+
+′
+(pM ) p∈P be a model of hhΦiiet ? . For each σ ∈ Type, we let
+ ′
+Dσ
+if σ ⊲ Φ
+Dσ =
+′
+{d ∈ D′σ | d is in the image of tM
+}
+otherwise
+σ
+′
+
+We define T σ : D′σ → D′σ so as to apply tM
+σ only if the element is not already in its image:
+
+d
+if d ∈ Dσ
+T σ (d) = M ′
+tσ (d) otherwise
+
+Let M = (Dσ )σ∈Type , ( f M ) f ∈F , (pM ) p∈P , where
+′
+
+′
+
+M (T (d ), . . . , T (d ))) for f : σ̄ → σ is in F ;
+• f M (d1 , . . . , dn ) = tM
+σ1 1
+σn n
+σ (f
+′
+M
+M
+(T
+(d
+),
+.
+.
+.
+,
+T
+(d
+p
+(d
+,
+.
+.
+.
+,
+d
+)
+=
+p
+•
+σ1 1
+σn n )) if p : σ̄ → o is in F .
+1
+n
+Q
+Q
+′
+′
+Given ξ : V → σ∈Type Dσ , we define ξ : V → σ∈Type Dσ as follows:
+
+ ′
+ξ (X )(σ)
+if σ ⊲ Φ
+ξ(X )(σ) =
+′
+tσ (ξ (X )(σ)) otherwise
+
+The next facts follow by induction on t or ϕ (for arbitrary ξ ′ ):
+M′
+(1) JtKM
+ξ = Jhhtiit Kξ′ ;
+′
+
+M
+(2) JϕKM
+ξ = Jhhϕiit Kξ′ .
+
+Q
+Let ϕ ∈ Φ. To show that M is a model of ϕ, let ξ : V → σ∈Type Dσ . By the definition
+Q
+of Dσ , there exists ξ ′ : V → σ∈Type D′σ such that the defining property of ξ holds. Now,
+′
+M
+M also holds, as desired.
+since Jhhϕiiet ? KM
+ξ′ holds, it follows from (2) that JϕKξ , i.e. JϕK
+Complete for hh iiet ?? : The proof is analogous to the corresponding case for t@ (Theo′
+′
+rem 4.10). Starting with a model M ′ = (D′σ )σ∈Type , ( f M ) f ∈F ⊎{tσ |σ6⊲Φ} , (pM ) p∈P of hhΦiiet ?? ,
+we define a model M of Φ as follows, where the typing axioms ensure that each Dσ is
+nonempty and each sM is well defined:
+ ′
+if σ ⊲ Φ
+Dσ
+′
+• Dσ =
+′
+M
+{d ∈ Dσ | tσ (d) = d} otherwise
+′
+M
+• s is the restriction of sM .
+Q
+The next facts follow by induction on t or ϕ (for arbitrary ξ : V → σ∈Type Dσ ):
+′
+
+M
+(1) JtKM
+ξ = Jhhtiit Kξ′ ;
+
+′
+
+M
+(2) JϕKM
+ξ = Jhhϕiit Kξ′ .
+
+Then, by the usual route, it follows that M is a model of Φ.
+5.5. Monotonicity-Based Type Guards. The e
+g ? and e
+g ?? encodings are defined analogously to et? and et?? but using type guards. The e
+g ? encoding omits the guards for types
+that are inferred monotonic, whereas e
+g ?? omits more guards that are not needed to make
+the intermediate problem monotonic.
+
+32
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+Definition 5.16 (Lightweight Guards e
+g ?). The encoding hh iig
+e ? translates monomorphic
+problems over Σ = (Type, F , P ) to monomorphic problems over (Type, F , P ⊎ {gσ : σ → o |
+σ ∈ Type}). Its term and formula translations are defined as follows:
+(
+if σ ⊲ Φ
+hhϕiige ?
+hh∀X : σ. ϕiige ? = ∀X : σ.
+σ
+g σ (X ) → hhϕiig
+e ? otherwise
+(
+if σ ⊲ Φ
+hhϕiige ?
+hh∃X : σ. ϕiige ? = ∃X : σ.
+σ
+g σ (X ) ∧ hhϕiig
+e ? otherwise
+The encoding adds the following typing axioms:
+∀X̄ : σ̄. g σ ( f (X̄ σ̄ ))
+σ
+
+∃X : σ. g σ (X )
+
+for f : σ̄  σ ∈ F such that σ 6⊲ Φ
+for σ 6⊲ Φ that is not the result type of a symbol in F
+
+The monomorphic lightweight type guards encoding e
+g ? is the composition hh iig
+e ? ; e . It translates a monomorphic problem over Σ into an untyped problem over Σ′ = (F ′ , P ′ ⊎ {g1σ |
+σ ∈ Type}), where F ′ , P ′ are as for e .
+Example 5.17. The e
+g ? encoding of Example 2.13 is as follows:
+∀Xs. g b (hdb (Xs))
+∀X, Xs. g b (X ) → nilb 6≈ consb (X, Xs)
+∀Xs. Xs ≈ nilb ∨ (∃Y, Ys. g b (Y ) ∧ Xs ≈ cons b (Y, Ys))
+∀X , Xs. g b (X ) → hdb (cons b (X, Xs)) ≈ X ∧ tlb (consb (X, Xs)) ≈ Xs
+∃X, Y, Xs, Ys. g b (X ) ∧ g b (Y ) ∧ consb (X, Xs) ≈ consb (Y, Ys) ∧ (X 6≈ Y ∨ Xs 6≈ Ys)
+Notice that the tlb equation is needlessly in the scope of the guard. The encoding is more
+precise if the problem is clausified.
+Our novel encoding e
+g ?? omits the guards for variables that do not occur naked, regardless
+of whether they are of a monotonic type.
+
+g ??). The monomorphic featherweight type guards
+Definition 5.18 (Featherweight Guards e
+encoding e
+g ?? is identical to the lightweight encoding e
+g ? except that the condition “if σ ⊲ Φ”
+in the ∀ case is weakened to “if σ ⊲ Φ or X ∈
+/ NV(ϕ)”.
+
+Example 5.19. The e
+g ?? encoding of the algebraic list problem is identical to e
+g ? except
+that the nilb 6≈ consb axiom does not have any guard.
+
+g ?, e
+g ??). The monomorphic type guards encodings e
+g ? and
+Theorem 5.20 (Correctness of e
+e
+g ?? are correct.
+
+Proof. It suffices to show the three conditions of Lemma 5.10.
+
+Mono: By Lemma 5.5, it suffices to show that each type τ such that σ 6⊲ Φ is monotonic in the encoded problem. By Theorem 5.9, types are monotonic unless they are
+possibly finite and variables of their types occur naked in the original problem. Both
+encodings guard all such variables—e
+g ?? guards exactly those variables, while e
+g ? guards
+more. The typing axioms contain no naked variables. We cannot use Theorem 5.9 directly, because guarding a naked variable does not make it less naked—but we can generalise the proof slightly to exploit the guards. Given a model M of the encoded problem
+M = (Dσ )σ∈Type , ( f M ) f ∈F , (pM ) p∈P ⊎{gσ |σ6⊲Φ} , we construct a model M ′ = (D′σ )σ∈Type ,
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+33
+
+
+′
+′
+( f M ) f ∈F , (pM ) p∈P with all types infinite as in the proof of Theorem 5.9, but defining the
+τ-guard interpretation to be false on newly added elements (recall that D′τ = Dτ ⊎ E for
+some countably infinite set E):
+ M
+gσ (d) if σ 6= τ or σ = τ and d ∈ Dσ
+M′
+gσ (d) =
+false
+if σ = τ and d ∈ E
+Q
+Q
+′
+′
+Given ξ : V → σ∈Type Dσ , we define ξ : V → σ∈Type Dσ by
+
+ε(Dτ )
+if σ = τ and d ∈ E
+ξ(σ)(d) =
+′
+ξ (σ)(d) otherwise
+The encoded problem has the form Φ1 ∪ Φ2 , where Φ1 are the added axioms and Φ2 are the
+formula translations from Φ. It is easy to check that M ′ satisfies Φ1 . We say that a formula
+is τ-guarded if all its subformulae of the form ∀X : τ. ϕ have ϕ of the form ¬ gτ (X τ ) ∨ χ and
+all its subformulae of the form ∃X : τ. ϕ have ϕ of the form gτ (X τ ) ∧ χ. All the formulae in
+Φ2 are clearly guarded. The next facts follow by induction on t or ϕ (for arbitrary ξ ′ ):
+′
+M
+(1) JtKM
+ξ′ = JtKξ ;
+(2) If ϕ is guarded and gτ (ξ (τ) (X )) is false whenever X τ ∈ NV(ϕ) ∩ FVars(ϕ), then JϕKM
+ξ
+′
+.
+implies JϕKM
+ξ′
+
+It follows that M ′ satisfies Φ2 as well. Hence it is the desired model of the encoded problem.
+Sound: Just like for tags, this is immediate for both hh iige ? and hh iige ?? : given a model of Φ,
+we extend it to a model of the encoded Φ by interpreting all type guards as everywhere-true
+predicates.
+Complete: The proofs for both hh iige ? and hh iige ?? are very similar to that for t?? (from
+′
+M′
+Theorem 5.15)—the only change is the replacement of the condition tM
+σ (d) = d by gσ (d) in
+the definition of the model M . (Just like for t??, the typing axioms ensure that the structure
+is well defined.)
+A simpler but less instructive way to prove Mono is to observe that the second monotonicity calculus by Claessen et al. [16, §2.4] can infer monotonicity of all problems generated
+by e
+g, e
+g ?, and e
+g ??.
+Remark 5.21. The proofs of Theorems 5.15 and 5.20 remain valid as they are even if
+the generated problems contain more tags or guards than inferred as unnecessary by the
+monotonicity calculus, i.e. if in the definitions of hh iiet ? , hh iiet ?? , hh iige ? , and hh iige ?? we replace
+the condition “σ ⊲ Φ” by “σ ∈ J ”, where J ⊆ {σ ∈ Type Σ | σ ⊲ Φ}. (The replacement
+should be done everywhere, including in the axioms.)
+
+5.6. Heuristic Monomorphisation. Section 6 will show how to translate polymorphic
+types soundly and completely. If we are willing to sacrifice completeness, an easy way to
+extend et?, et??, e
+g ?, and e
+g ?? to polymorphism is to perform heuristic monomorphisation on
+the polymorphic problem:
+1. Heuristically instantiate all type variables with suitable ground types, taking finitely
+many copies of each formula if desired.
+
+34
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+2. Map each ground occurrence shᾱρi of a polymorphic symbol s : ∀ᾱ. σ̄  σ to a fresh
+monomorphic symbol s ᾱρ : ⌊σ̄ρ⌋  ⌊σρ⌋, where ρ is a ground type substitution (a function from type variables to ground types) and ⌊ ⌋ is an injection from ground types to
+nullary type constructors (e.g. {b 7→ b, list(b) 7→ list_b}).
+Heuristic monomorphisation is generally incomplete [12, §2] and often overlooked in the
+literature, but by eliminating type variables it considerably simplifies the generated formulae,
+leading to very efficient encodings. It also provides a simple and effective way to exploit the
+native support for monomorphic types in some automatic provers.
+6. Complete Monotonicity-Based Encodings of Polymorphism
+Heuristic monomorphisation is simple and effective, but its incompleteness can be a cause
+for worry, and its nonmodular nature makes it unsuitable for some applications that need
+to export an entire polymorphic theory independently of any conjecture. Here we adapt the
+type encodings to a polymorphic setting.
+We start by defining a correct but infinitary translation of a polymorphic into a monomorphic problem, called complete monomorphisation. Then we address the genuinely polymorphic issue of encoding type arguments, proving conditions under which composition of
+an encoding x with the type arguments encoding a is correct: x must be complete and
+produce monotonic problems. Finally, we define polymorphic counterparts of the guard and
+tag encodings and show that they satisfy the required conditions by reducing (most of) the
+problem to the monomorphic case via complete monomorphisation.
+6.1. Complete Monomorphisation. The main insight behind complete monomorphisation is that a polymorphic formula having all its type quantification at the top is equisatisfiable to the (generally infinite) set of its monomorphic instances. Complete monomorphisation does not obey our convention about encodings, since it translates each polymorphic
+formula not into a single monomorphic formula but into a set of formulae.
+Definition 6.1 (Instance Type and Most General Instance). A type τ is an instance of a
+type σ if there exists a type substitution ρ such that τ = σρ. If this is the case, we also say
+that τ is less general than σ and that σ is more general than τ, and we write τ ≤ σ. Given
+two types σ and τ, if they have a common instance (i.e. a unifier), then they also have a
+most general common instance, which we denote by mgi(σ, τ).
+Definition 6.2 (Complete Monomorphisation ∞). We define the encoding hh ii∞ that translates polymorphic problems over Σ = (K , F , P ) to monomorphic problems over Σ′ =
+(Type ′ , F ′ , P ′ ), where
+• Type ′ = GType Σ ;
+• for each s : ∀ᾱ. σ̄ → ς in F ⊎ P and each ρ such that each αi is mapped to a ground type
+τi ∈ GType Σ , F ′ ⊎ P ′ contains a symbol s τ̄ : σ̄ρ → σρ.
+We first define the translation of terms and formulae that contain no type variables, i.e. that
+have no type quantifiers and such that all the occurring types in applications of the function
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+or predicate symbols are ground:
+hh f hσ̄i(¯t )ii∞ = fσ̄ (hh¯t ii∞ )
+
+35
+
+hhX σ ii∞ = X σ
+
+hhphσ̄i(¯t )ii∞ = pσ̄ (hh¯t ii∞ )
+hh¬ phσ̄i(¯t )ii∞ = ¬ pσ̄ (hh¯t ii∞ )
+
+hh∀X : σ. ϕii∞ = ∀X : σ. hhϕii∞
+hh∃X : σ. ϕii∞ = ∃X : σ. hhϕii∞
+
+Now, given a sentence ∀ᾱ. ϕ where ᾱ indicates all its universally quantified types, we encode
+it as the set of encodings of its monomorphic instances (via ground type substitutions ρ):
+hh∀ᾱ. ϕii∞ = {hhϕρii∞ | ρ : A → GType}
+Finally, the encoding of a problem is the union of the encoding of its formulae:
+S
+hhΦii∞ = ϕ∈Φ hhϕii∞
+
+Convention 6.3. Whenever we write a polymorphic formula as ∀ᾱ. ϕ, we implicitly assume
+that ᾱ indicates all its universally quantified types, so that ϕ has no type quantifiers.
+Lemma 6.4 (Correctness of ∞). The complete monomorphisation encoding ∞ is correct.
+Proof. First, observe that in any model M of a polymorphic signature, the interpretation
+J KM
+θ,ξ of a term or formula that does not contain type variables does not depend on θ and,
+Q
+from ξ, it only depends on the restriction of ξ to ground types, ξ ′ : V → σ∈GType Σ JσKM .
+
+M
+We can therefore write J KM
+ξ′ instead of J Kθ,ξ′ .
+
+Sound: Assume Φ is satisfiable and let Σ = (K , F , P ) be its polymorphic signature. By
+Lemma 4.11, Φ also has a model M = D, ( f M ) f ∈F , (pM ) p∈P for which J KM : GType Σ →
+D is a bijection—let v : D → GType Σ be its inverse. We define a structure M ′ =
+′
+′
+(D′τ )τ∈Type ′ , ( f M ) f ∈F , (pM ) p∈P ′ for Σ′ as follows:
+
+• D′τ = JτKM ;
+• if s : ∀ᾱ. σ̄ → ς is in F ⊎ P and τ̄ = (τ1 , . . . , τm ) are ground instances of ᾱ = (α1 , . . . , αm )
+′
+
+M
+via ρ, we define by sM
+τ̄ (d̄) = s (v(τ1 ), . . . , v(τm ))(d̄).
+The
+follows by induction on the term or formula δ (for arbitrary ξ : V →
+Q next fact
+′ ):
+D
+τ
+τ∈Type ′
+Σ
+
+′
+
+M
+(1) If δ contains no type variables, then Jhhδii∞ KM
+ξ′ = JδKξ .
+′
+
+In particular, for a sentence ϕ, we have Jhhϕii∞ KM = JϕKM .
+Now let ∀ᾱ. ϕ ∈ Φ. Since M is a model of ∀ᾱ. ϕ, M is also a model of all its ground′
+type instances ϕρ, and hence, since Jhhϕii∞ KM = JϕKM , M ′ is a model of each formula in
+hh∀ᾱ. ϕii∞ . Thus, M ′ is a model of hhΦii∞ , as desired.
+
+′
+′
+Complete: Let M ′ = (D′τ )τ∈Type ′ , ( f M ) f ∈F , (pM ) p∈P ′ be a model of hhΦii∞ , for which
+we can assume without loss of generality that D′τ ∩ D′τ′ = ∅ if τ 6= τ′ . We define a structure
+
+M = D, ( f M ) f ∈F , (pM ) p∈P for Σ as follows:
+• D = {D′τ | τ ∈ Type ′ }—for each D ∈ D, we let v(D) be the unique τ ∈ Type ′ = GType Σ
+such that D = Dσ ;
+′
+• if ᾱ = (α1 , . . . , αm ), s : ∀ᾱ. σ̄ → ς ∈ F ⊎ P , and D̄ ∈ Dm , we define sM (D̄) = sM
+(v(D1 ),...,v(Dm )) .
+The next fact follows by induction on τ:
+(1) τ ∈ GType implies JτKM = D′τ .
+
+36
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+The next fact follows by induction on the term or formula δ (for arbitrary ξ : V →
+Q
+M
+τ∈GType Σ JτK ):
+′
+
+M
+(2) If δ contains no type variables, then JδKM
+ξ = Jhhδii∞ Kξ′ .
+′
+
+In particular, for a sentence ϕ, we have JϕKM = Jhhϕii∞ KM . Now let ∀ᾱ. ϕ ∈ Φ, and assume
+by absurdity that M is not a model of ∀ᾱ. ϕ. Then, since by (1) and the definition of D we
+have that J KM : GType → D is surjective, we obtain a ground-type instance ϕρ of ϕ such
+′
+′
+that M is not a model of ϕρ. By JϕKM = Jhhϕii∞ KM , M ′ is not a model of Jhhϕρii∞ KM , hence
+not a model of hh∀ᾱ. ϕii∞ , which is a contradiction. Therefore M is a model of ∀ᾱ. ϕ. We
+obtain that M is a model Φ, as desired.
+6.2. Monotonicity. The definition of monotonicity from Section 5.1 (Definition 5.1) must
+be adapted to the polymorphic case.
+Definition 6.5 (Monotonicity). Let S be a set of types and Φ be a polymorphic problem.
+The set S is monotonic in Φ if for all models M of Φ, there exists a model M ′ of Φ such that
+′
+′
+for all ground types σ, JσKM is infinite if σ is an instance of a type in S and |JσKM | = |JσKM |
+otherwise. A type σ is monotonic if {σ} is monotonic. The problem Φ is monotonic if the
+set Type of all types is monotonic.
+Example 6.6. For the algebraic list problem of Example 2.10, S = {list(α)} is monotonic
+because all models M of the problem necessarily interpret all of the ground instances of
+list(α) (e.g. list(b), list (list(b))) by infinite domains. Monotonicity is trivially witnessed by
+taking M ′ = M .
+Theorem 6.7 (Monotonic Erasure). The traditional type arguments encoding a is sound
+for monotonic polymorphic problems.
+Proof. Let Φ be such a problem and Σ = (K , F , P ) be its signature, and assume Φ is
+satisfiable. By monotonicity and Lemma 4.12, it also has a model M where all D ∈ D are
+countably infinite. From this model, we construct a model M ′ of hhΦiia ; e with a countably
+infinite domain E that interprets the encoded types as distinct elements of E. The function
+and predicate tables for M ′ are based on those from M , with encoded type arguments
+corresponding to actual type arguments.
+More precisely, let E be an countably infinite set and consider the following functions:
+• the mutually inverse bijections u : D → E and v : E → D;
+• for each D ∈ D, the mutually inverse bijections uD : D → E and vD : E → D.
+Let Σ′ = (F ′ ⊎ K ′ , P ′ ) be the target untyped signature of a . We define the structure M ′
+for Σ′ as follows:
+• D = E.
+′
+• Assume k is an n-ary function in K ′ , meaning k :: n is in K . Then kM (ē) = u(kM (v(ē))).
+• Assume ᾱ = α1 , . . . , αm , σ̄ = σ1 , . . . , σn , and s : ∀ᾱ. σ̄ → ς ∈ F ⊎ P , meaning that s is
+an (m + n)-ary symbol in F ′ ⊎ P ′ . Given c̄ = (c1 , . . . , cm ) ∈ E m and ē = (e1 , . . . , en ) ∈ E n ,
+′
+we define sM (c̄, ē) = uJσKM (sM (v(c̄))(vJσ1 KM (e1 ), . . . , vJσn KM (en ))), where θ maps each αi to
+θ
+θ
+θ
+v(ci ).
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+Given ξ ′ : V → E, we define θ : A → D by θ(α) = v(ξ ′ (V (α))) and ξ : V →
+by ξ(X )(σ) = vJhhσiiKM ′ (ξ ′ (X )), where V (α) and hhσii are as in Definition 3.6.
+ξ′
+
+37
+
+Q
+
+M
+
+σ∈Type Σ JσKθ
+
+The next facts follow by structural induction on σ, t, and ϕ (for arbitrary ξ ′ ):
+′
+M
+• JhhσiiKM
+ξ′ = u(JσKθ );
+′
+
+(JtKM
+• t : σ implies Jhhtiia ; e KM
+θ,ξ );
+ξ′ = uJσKM
+θ
+′
+M
+M
+• Jhhϕiia ; e Kξ′ = JϕKθ,ξ .
+′
+
+In particular, for sentences, we have Jhhϕiia ; e KM = JϕKM ; and since M is a model of Φ, it
+follows that M ′ is a model of hhΦiia ; e .
+Lemma 6.8 (Correctness Conditions). Let Φ be a polymorphic problem, and let x be a
+polymorphic encoding. The problems Φ and hhΦii x ; a ; e are equisatisfiable provided that the
+following conditions hold:
+Mono: hhΦii x is monotonic.
+Sound: If Φ is satisfiable, so is hhΦii x .
+Complete: If hhΦii x is satisfiable, so is Φ.
+Proof. Immediate from Theorems 3.11 and 6.7.
+Lemma 6.9 (Monotonicity Preservation and Reflection by ∞). A polymorphic problem Φ
+is monotonic iff its monomorphic encoding hhΦii∞ is monotonic.
+Proof. Let ϕk be the polymorphic formula stating that all type domains have at least k
+elements, and let Φ′ = {ϕk | k ∈ N}. We note that the following four statements are
+equivalent:
+(1) Φ has a model with all domains infinite;
+(2) Φ ∪ Φ′ has a model;
+(3) hhΦii∞ ∪ hhΦ′ ii∞ has a model;
+(4) hhΦii∞ has a model with all domains infinite.
+The equivalences “(1) iff (2)” and “(3) iff (4)” are obvious, and “(2) iff (3)” follows from the
+correctness of ∞ (Lemma 6.4).
+6.3. Monotonicity Inference. The monotonicity inference of Section 5.2 must be adapted
+to the polymorphic setting. We start by generalising the notion of naked variable.
+Definition 6.10 (Polymorphic Naked Variable). The set of naked variables NV(ϕ) of a
+polymorphic formula ϕ is defined similarly to the monomorphic case (Definition 5.6). The
+following equations are new or slightly different from there:
+NV(phσ̄i(¯t )) = ∅
+NV(¬ phσ̄i(¯t )) = ∅
+NV(∀α. ϕ) = NV(ϕ)
+S
+Again, we take NV(Φ) = ϕ∈Φ NV(ϕ).
+Note from Definitions 5.6 and 6.10 that the naked variables of a polymorphic formula
+occur at the same positions as in all its monomorphic instances. Moreover, the types of the
+naked variables in the completely monomorphised problem are simply the ground instances
+of the types of the naked variables in the original problem:
+
+Lemma 6.11. NV(hhΦii∞ ) = {X τ | τ ∈ GType and there exists σ ≥ τ such that X σ ∈ NV(Φ)}.
+
+38
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+The calculus presented below captures the insight that a polymorphic type is monotonic
+if each of its common instances with the type of any naked variable is an instance of an infinite
+type. Similarly to its monomorphic counterpart, it is parameterised by a fixed set Inf(Φ) of
+(not necessarily ground) types for which any interpretation JσKM
+θ (for any type valuation θ)
+in any model M of Φ is known to be infinite.
+Convention 6.12. It is easy to see that if σ ∈ Inf(Φ) and ρ : A → GType Σ , then σρ is
+infinite in all models of hhΦii∞ . We fix the “known as infinite” types of hhΦii∞ , Inf(hhΦii∞ ), to
+be {σρ | σ ∈ Inf(Φ) and ρ : A → GType Σ }.
+Definition 6.13 (Polymorphic Monotonicity Calculus ⊲). A judgement σ ⊲ Φ indicates
+that the type σ is inferred monotonic in Φ. The monotonicity calculus consists of the single
+rule
+′
+
+for all X σ ∈ NV(Φ), if σ and σ′ have a common instance, then mgi(σ, σ′ ) ∈ Inf ∗ (Φ)
+σ⊲Φ
+∗
+
+where Inf (Φ) = {σ ∈ Type Σ | there exists σ′ ∈ Inf(Φ) such that σ ≤ σ′ } consists of all
+instances of all types in Inf(Φ).
+Example 6.14. For the algebraic list problem of Example 2.10, the only naked variables
+are X α and Xs list(α) , i.e. NV(Φ) = {X α , Xs list(α) }. Assume Inf(Φ) = {list (α)}. Then
+Inf ∗ (Φ) = {list (σ) | σ ∈ Type Σ }. The type list(α) is inferred monotonic by ⊲ because its
+most general common instance with α (the type of X ) and list(α) (the type of Xs) is in
+both cases list(α), which is known to be infinite. In contrast, α and b cannot be inferred
+monotonic: each of them is its most general common instance with α, and neither of them
+is among the types that are known to be infinite.
+Lemma 6.15. The following properties hold for any polymorphic signature Σ and any Σproblem Φ:
+(1) If σ ⊲ Φ and τ ∈ GType Σ such that τ ≤ σ, then τ ⊲ hhΦii∞ .
+(2) If τ ∈ GType Σ , then τ ⊲ hhΦii∞ iff τ ⊲ Φ.
+(3) If σ ⊲ Φ and σ′ ≤ σ, then σ′ ⊲ Φ.
+Proof. (1): Assume σ ⊲ Φ and σ ≥ τ ∈ GType Σ . To show τ ⊲ hhΦii∞ , it suffices to let
+X τ ∈ NV(hhΦii∞ ) and prove τ ∈ Inf(hhΦii∞ ). By Lemma 6.12, we obtain σ′ ≥ τ such that
+′
+X σ ∈ NV(Φ). Since σ and σ′ have a common instance, by the first assumption we have
+mgi(σ, σ′ ) ∈ Inf ∗ (Φ), and hence, since τ ≤ mgi(σ, σ′ ), we have τ ∈ Inf ∗ (Φ)—and since τ is
+ground, we obtain τ ∈ Inf(hhΦii∞ ), as desired.
+(2): Let (A) τ ∈ GType Σ . One implication follows immediately from (1). For the second,
+assume (B) τ ⊲ hhΦii∞ . To prove τ ⊲ Φ, we fix (C) X σ ∈ NV(Φ) such that σ and τ
+have a common instance (i.e. by (A), τ ≤ σ) and prove mgi(σ, τ) ∈ Inf ∗ (Φ), i.e. by (A),
+τ ∈ Inf ∗ (Φ), i.e. again by (A), τ ∈ Inf(hhΦii∞ ). From (C), τ ≤ σ and Lemma 6.12, we obtain
+X τ ∈ NV(hhΦii∞ ); hence, by (A), we have τ ∈ Inf(hhΦii∞ ), as desired.
+(3): Immediate from the definition.
+Note that property (1) of the above lemma states that if a type is inferred monotonic
+in the polymorphic calculus, all its ground instances can be inferred monotonic in the monomorphic calculus associated to the completely monomorphised problem. This allows us to
+prove soundness of the former from soundness of the latter:
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+39
+
+Theorem 6.16 (Soundness of ⊲). Let Φ be a polymorphic problem. If σ ⊲ Φ for all
+σ ∈ Type Σ , then Φ is monotonic.
+Proof. Assume σ ⊲ Φ for all σ ∈ Type Σ . By Lemma 6.15, τ ⊲ hhΦii∞ for all ground instances
+τ of types in Type Σ , i.e. for all τ in the signature of hhΦii∞ . By Theorem 5.9 and Lemma 5.5,
+this makes hhΦii∞ monotonic. Then, by Lemma 6.4, Φ is also monotonic.
+6.4. General Strategy. We will define polymorphic versions of the featherweight and lightweight tags and guard encodings, altogether four encodings: t?, t??, g?, and g??. If x ranges
+over the polymorphic encodings, ex ∈ {et?, et??, e
+g ?, e
+g ??} denotes its monomorphic counterpart.
+We base the correctness of each x on the correctness of ex , by proving the problems hhΦii∞; ex
+and hhΦii x ;∞ equisatisfiable in a monotonicity-preserving way. The following lemma implicitly assumes that the signatures of hhΦii∞; ex and hhΦii x ;∞ coincide, which is easy to check for
+each encoding x .
+Lemma 6.17 (Correctness Conditions via Complete Monomorphisation). Let Φ be a polymorphic problem and let x ∈ { t?, t??, g?, g??}. The problems Φ and hhΦii x ; a ; e are equisatisfiable provided that the following conditions hold :
+Sound: If hhΦii∞; ex has a model, hhΦii x ;∞ has a model with the same interpretation of the
+type constructors.
+Complete: If hhΦii x ;∞ has a model, hhΦii∞; ex has a model with the same interpretation
+of the type constructors.
+Proof. By the correctness of ∞ (Lemma 6.4) and the corresponding correctness theorems for
+ex (more precisely, from the Sound and Complete statements from the proofs of Theorems
+5.15 and 5.20), we have that Φ and hhΦii∞; ex are equisatisfiable. Together with the assumptions, this implies that (A) Φ and hhΦii x ;∞ are equisatisfiable. Moreover, from Lemma 6.9
+and monotonicity of ex (more precisely, from the Mono statements from the proofs of Theorems 5.15 and 5.20), we know that hhΦii∞; ex is monotonic. Hence, by the assumptions, (B)
+hhΦii x ;∞ is also monotonic. The desired fact follows from (A), (B), and Lemma 6.8 (with x
+instantiated with x ; ∞).
+To apply the above lemma, we need to provide an x such that the equation hhΦii x ;∞ =
+hhΦii∞; ex almost holds, in the sense that the two problems are equisatisfiable without changing
+the type constructor interpretation, but possibly changing some of the function or predicate
+symbol interpretation.
+Given ex , we will come up with an encoding x in a systematic way. But first we need
+to define some relevant sets of types for a polymorphic Σ-problem Φ:
+Definition 6.18. Let
+• Type Φ = {σ ∈ Type Σ | σ is the type of a subterm occurring in Φ};
+• S Φ = {τ ∈ GType Σ | τ 6⊲ hhΦii∞ and there exists σ ∈ Type Φ such that τ ≤ σ};
+• T Φ = {τ ∈ GType Σ | there exists σ ∈ Type Φ such that σ 6⊲ Φ and τ ≤ σ}.
+
+Here is how we proceed with the definition of x :
+(1) We emulate the definition of ex , using the polymorphic monotonicity calculus instead of
+the monomorphic one.
+
+40
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+(2) Step (1) will cause hhΦii x ;∞ to introduce more protectors than hhΦii∞; ex . This is because
+the former protects all ground types τ that are instances of types σ ∈ Type Φ such that
+σ 6⊲ Φ (namely, T Φ ), whereas the latter protects all ground types τ that are instances
+of types in Type Φ and satisfy τ 6⊲ hhΦii∞ (namely, S Φ ). We have S Φ ⊆ T Φ but generally
+not vice versa. To repair this mismatch, we add axioms that semantically eliminate
+the protectors for the types in T Φ but not in S Φ . To achieve this, we must characterise
+T Φ −S Φ (which is an infinite set even for finite problems Φ) as the set of ground instances
+of a set UΦ of types so that UΦ is finite whenever Φ is.
+We define UΦ next:
+Definition 6.19 (Cap). Given a set of types S , a cap for it is a set S ′ ⊆ S such that all
+types in S are instances of types in S ′ . A cap is minimal if it contains no two distinct types
+σ and σ′ such that σ ≤ σ′ . For each σ, let Uσ be a minimal cap of the set
+′′
+
+Uσ′ = {σ′ ≤ σ | σ′ ∈ Inf ∗ (Φ) or there exists no X σ ∈ NV(Φ)
+such that σ′ and σ′′ have a common instance}
+S
+We let UΦ be an arbitrary cap of {Uσ | σ ∈ Type Φ and σ 6⊲ Φ}.
+
+The set UΦ is both a subset of the monotonic types and a precise characterisation of
+the sets of types whose ground instances give our difference of interest, T Φ − S Φ .
+Lemma 6.20. The following properties hold :
+(1) S Φ ⊆ T Φ ;
+(2) If σ′ ∈ Uσ′ , then σ′ ⊲ Φ;
+(3) If σ ∈ UΦ , then σ ⊲ Φ;
+(4) If τ ∈ T Φ − S Φ , then τ ⊲ hhΦii∞ ;
+(5) T Φ − S Φ = {τ ∈ GType Σ | there exists σ ∈ UΦ such that τ ≤ σ}.
+
+Proof. (1): Assume τ ∈ S Φ and let σ ≥ τ as in the definition of S Φ . By Lemma 6.15(2), we
+have τ 6⊲ Φ, and hence by Lemma 6.15(3) we have σ 6⊲ Φ, ensuring that τ ∈ T Φ .
+(2): It is clear that the condition defining Uσ′ is a strengthening of that defining σ ⊲ Φ.
+(3): Immediate from (2).
+(4): Immediate from the definitions of S Φ and T Φ .
+(5): Let τ ∈ T Φ such that (A) τ 6∈ S Φ . There exists σ such that τ ≤ σ ∈ Type Φ and σ 6⊲ Φ.
+From (4), we have τ ⊲ hhΦii∞ ; hence, by Lemma 6.15(2), τ ⊲ Φ. Since τ is ground, either
+′′
+τ ∈ Inf ∗ (Φ) or there exists no X σ ∈ NV(Φ) such that τ ≤ σ′′ , implying τ ∈ Uσ′ . It follows
+that τ is an instance of an element of Uσ , hence of an element of UΦ , as desired. Now,
+assume τ is ground such that τ ≤ σ′ ∈ UΦ . We obtain σ ∈ Type Φ such that σ 6⊲ Φ and
+σ′ ∈ Uσ . In particular, we have σ′ ≤ σ, hence τ ∈ T Φ . Moreover, by σ′ ∈ Uσ and (2), we
+have σ′ ⊲ Φ; hence by Lemma 6.15(1), we have τ ⊲ hhΦii∞ , implying τ 6∈ S Φ , as desired.
+The following results will hold for any choice of set VΦ between UΦ and {σ ∈ Type Σ |
+σ ⊲ Φ}. The smaller the chosen set, the lighter the encoding.
+Convention 6.21. We fix VΦ such that UΦ ⊆ Vϕ ⊆ {σ ∈ Type Σ | σ ⊲ Φ}.
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+41
+
+6.5. Monotonicity-Based Type Tags. We are now equipped to present the definitions
+of the polymorphic monotonicity-based encodings and prove their correctness. The polymorphic t? encoding can be seen as a hybrid between traditional tags ( t ) and monomorphic
+lightweight tags (et?): as in t , tags take the form of a function thσi(t); as in et?, tags are
+omitted for types that are inferred monotonic.
+The main novelty concerns the typing axioms. The et? encoding omits all typing axioms
+for monotonic types. In the polymorphic case, the monotonic type σ might be an instance of
+a more general, potentially nonmonotonic type for which tags are generated. For example, if
+α is tagged (because it is possibly nonmonotonic) but its instance list (α) is not (because it is
+infinite and hence monotonic), there will be mismatches between tagged and untagged terms.
+Our solution is to add the typing axiom t hlist(α)i(Xs) ≈ Xs, which allows the prover to add
+or remove a tag for the infinite type list(α). Such an axiom is sound for any monotonic type.
+Definition 6.22 (Lightweight Tags t?). The encoding t? translates polymorphic problems
+over Σ = (Type, F , P ) to polymorphic problems over (Type, F ⊎ {t : ∀α. α → α}, P ). Its
+term and formula translations are defined as follows:
+(
+t
+if σ ⊲ Φ
+hh f hσi(¯t ) σ iit ? = ⌊ f hσi(hh¯t iit ? )⌋ hhX σ iit ? = ⌊X ⌋ with ⌊t σ ⌋ =
+thσi(t) otherwise
+The encoding adds the following typing axioms:
+∀TVars(σ). ∀X : σ. t hσi(X σ ) ≈ X σ for σ ∈ VΦ
+The polymorphic lightweight type tags encoding t? is the composition hh iit ? ; a ; e . It translates
+a polymorphic problem over Σ into an untyped problem over Σ′ = (F ′ ⊎ {t2 }, P ′ ), where
+F ′ , P ′ are as for a .
+Example 6.23. The t? encoding of of Example 2.10 follows:
+∀A, Xs. t(list(A), Xs) ≈ Xs
+∀A, X, Xs. nil(A) 6≈ cons(A, t(A, X ), Xs)
+∀A, Xs. Xs ≈ nil(A) ∨ (∃Y, Ys. Xs ≈ cons(A, t(A, Y ), Ys))
+∀A, X, Xs. t(A, hd(A, cons(A, t(A, X ), Xs))) ≈ t(A, X ) ∧
+tl(A, cons(A, t(A, X ), Xs)) ≈ Xs
+∃X, Y, Xs, Ys. cons(b , t(b , X ), Xs) ≈ cons(b , t(b , Y ), Ys) ∧
+(t(b , X ) 6≈ t(b , Y ) ∨ Xs 6≈ Ys)
+The typing axiom allows any term to be typed as list(α), which is sound because list(α)
+is infinite. It would have been equally correct to provide separate axioms for nil, cons, and
+tl. Either way, the axioms are needed to remove the t(A, X ) tags in case the proof requires
+reasoning about list(list(α)).
+The lighter encoding t?? protects only naked variables and introduces equations of the
+form thσi( f hᾱi(X̄ )) ≈ f hᾱi(X̄ ) to add or remove tags around each function symbol f of a
+possibly nonmonotonic type σ, and similarly for existential variables.
+Definition 6.24 (Featherweight Tags t??). The encoding t?? translates polymorphic problems over Σ = (Type, F , P ) to polymorphic problems over (Type, F ⊎ {t : ∀α. α → α}, P ).
+
+42
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+Its term and formula translations are defined as follows:
+hht1 ≈ t2 iit ?? = ⌊hht1iit ?? ⌋ ≈ ⌊hht2 iit ?? ⌋
+(
+hhϕiit ??
+if σ ⊲ Φ
+hh∃X : σ. ϕiit ?? = ∃X : σ.
+thσi(X ) ≈ X ∧ hhϕiit ?? otherwise
+with
+
+(
+∀
+t
+if σ ⊲ Φ or t ∈
+/ Vtyped
+⌊t ⌋ =
+thσi(t) otherwise
+σ
+
+The encoding adds the typing axioms of t? (from Definition 6.22) and the following:
+∀ᾱ. ∀X̄ : σ̄. thσi( f hᾱi(X̄ σ̄ )) ≈ f hᾱi(X̄ σ̄ )
+σ
+
+∀TVars(σ). ∃X : σ. thσi(X ) ≈ X
+
+σ
+
+for f : ∀ᾱ. σ̄  σ ∈ F such that σ 6⊲ Φ
+for σ ∈ Type Φ such that σ 6⊲ Φ and σ is not
+an instance of the result type of some f ∈ F
+
+The polymorphic featherweight type tags encoding t?? is the composition hh iit ?? ; a ; e . The
+target signature of t?? is the same as that of t?.
+Example 6.25. The t?? encoding of Example 2.10 requires fewer tags than et?, at the cost
+of two additional typing axioms and two typing equations for the existential variables of
+type b:
+∀A, Xs. t(A, hd(A, Xs)) ≈ hd(A, Xs)
+∀A, Xs. t(list(A), Xs) ≈ Xs
+∀A. ∃X . t(A, X ) ≈ X
+∀A, X, Xs. nil(A) 6≈ cons(A, X, Xs)
+∀A, Xs. Xs ≈ nil(A) ∨ (∃Y, Ys. t(A, Y ) ≈ Y ∧ Xs ≈ cons(A, Y, Ys))
+∀A, X, Xs. hd(A, cons(A, X, Xs)) ≈ t(A, X ) ∧ tl(A, cons(A, X, Xs)) ≈ Xs
+∃X, Y, Xs, Ys. t(b , X ) ≈ X ∧ t(b , Y ) ≈ Y ∧ cons(b , X, Xs) ≈ cons(b , Y, Ys) ∧
+(X 6≈ Y ∨ Xs 6≈ Ys)
+Theorem 6.26 (Correctness of t?, t??). The polymorphic type tags encodings t? and t?? are
+correct.
+Proof. First we discuss the case of t?. The following property can be routinely checked:
+(A) hhΦiit ? ;∞ = {ϕ# | ϕ ∈ hhΦii∞;et ? } ∪ {∀X τ . tτ (X τ ) ≈ X τ | τ ∈ GInst(VΦ )}
+where GInst(VΦ ) denotes the set of ground instances of types in VΦ and ϕ# denotes the
+modification of ϕ obtained by adding, for each τ ∈ T Φ − S Φ , a tag tτ around every term of
+type τ. Recall that UΦ ⊆ Vϕ ⊆ {σ ∈ Type Σ | σ ⊲ Φ}. We have the following:
+(1) T Φ − S Φ ⊆ GInst(VΦ );
+(2) GInst(VΦ ) ⊆ {σ ∈ GType Σ | σ ⊲ Φ};
+(3) if τ ∈ VΦ , the symbol tτ does not occur in hh ii∞;et ? .
+Property (1) follows from Lemma 6.20(5), (2) from Lemma 6.15(3), and (3) from (2) and
+the definition of hh iiet ? . Now we are ready to check the conditions of Lemma 6.17.
+Sound: Given a model M of hhΦii∞;et ? , we modify it into a structure M ′ by reinterpreting,
+for all τ ∈ GInst(VΦ ), the symbols tτ as identity. Thanks to (3), M ′ is still a model of
+hhΦii∞;et ? and, thanks to (A) and (1), it is also a model of hhΦiit ? ;∞ .
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+43
+
+Complete: Any model of hhΦiit ? ;∞ is also a model of hhΦii∞;et ? , since, thanks to (1), in the
+presence of {∀X τ . tτ (X τ ) ≈ X τ | τ ∈ GInst(VΦ )} each ϕ# is equivalent to ϕ.
+The case of t?? is similar, with the following modifications:
+(A) hhΦiit ? ;∞ = {ϕ# | ϕ ∈ hhΦii∞;et ? } ∪ {∀X τ . tτ (X τ ) ≈ X τ | τ ∈ GInst(VΦ )} ∪ Ax
+where Ax consists of all ground instances ϕ ρ of the additional axioms ∀ᾱ. ϕ from Definition 6.24 where the occurring tτ is such that τ ∈ T Φ − S Φ . What we retain about Ax is that
+Ax is satisfied by any structure that interprets as identity each tτ with τ ∈ T Φ − S Φ , and
+hence, by (1), we have
+(4) Ax is satisfied by any structure that interprets as identity each tτ with τ ∈ GInst(VΦ ).
+Moreover, ϕ# is modified to add tags to ϕ in fewer places—not to arbitrary terms, but only
+to naked universal variables. Then the proof for t? works here too, additionally invoking (4)
+in the proof of soundness.
+6.6. Monotonicity-Based Type Guards. Analogously to t?, the g? encoding is best
+understood as a hybrid between traditional guards ( g ) and monomorphic lightweight guards
+(e
+g ?): as in g , guards take the form of a predicate g hσi(t); as in e
+g ?, guards are omitted for
+types that are inferred monotonic.
+Once again, the main novelty concerns the typing axioms. The e
+g ? encoding omits all
+typing axioms for monotonic types. In the polymorphic case, the monotonic type σ might be
+an instance of a more general, potentially nonmonotonic type for which guards are generated.
+Our solution is to add the typing axiom ghσi(X ), which allows the prover to discharge any
+guard for the monotonic type σ.
+Definition 6.27 (Lightweight Guards g?). The encoding g? translates polymorphic problems over Σ = (Type, F , P ) to polymorphic problems over (Type, F , P ⊎ {g : ∀α. α → o}).
+Its term and formula translations hh iig ? ; a ; e are defined as follows:
+(
+hhϕiig ?
+if σ ⊲ Φ
+hh∀X : σ. ϕiig ? = ∀X : σ.
+σ
+g hσi(X ) → hhϕiig ? otherwise
+(
+hhϕiig ?
+if σ ⊲ Φ
+hh∃X : σ. ϕiig ? = ∃X : σ.
+σ
+g hσi(X ) ∧ hhϕiig ? otherwise
+The encoding adds the following typing axioms:
+∀TVars(σ). ∀X : σ̄. ghσi(X σ )
+
+for σ ∈ VΦ
+
+∀ᾱ. ∀X̄ : σ̄. ghσi( f hᾱi(X̄ σ̄ ))
+
+for f : ∀ᾱ. σ̄  σ ∈ F such that σ 6⊲ Φ
+
+∀TVars(σ). ∃X : σ. ghσi(X σ )
+
+for σ ∈ Type Φ such that σ 6⊲ Φ and σ is not
+an instance of the result type of some f ∈ F
+
+The polymorphic lightweight type guards encoding g? is the composition hh iig ? ; a ; e . It translates a polymorphic problem over Σ into an untyped problem over Σ′ = (F ′ , P ′ ⊎ {g2 }),
+where F ′ , P ′ are as for a .
+The featherweight cousin is a straightforward generalisation of g? along the lines of the
+generalisation of e
+g ? into e
+g ??.
+
+44
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+Definition 6.28 (Featherweight Guards g??). The polymorphic featherweight type guards
+encoding g?? is identical to the lightweight encoding g? except that the condition “if σ ⊲ Φ”
+in the ∀ case is weakened to “if σ ⊲ Φ or X σ ∈
+/ NV(ϕ)”.
+Example 6.29. The g?? encoding of Example 2.10 follows:
+∀A, Xs. g(A, hd(A, Xs))
+∀A, Xs. g(list(A), Xs)
+∀A, X, Xs. nil(A) 6≈ cons(A, X, Xs)
+∀A, Xs. Xs ≈ nil(A) ∨ (∃Y, Ys. g(A, Y ) ∧ Xs ≈ cons(A, Y, Ys))
+∀A, X, Xs. g(A, X ) → hd(A, cons(A, X, Xs)) ≈ X ∧ tl(A, cons(A, X, Xs)) ≈ Xs
+∃X, Y, Xs, Ys. g(b , X ) ∧ g(b , Y ) ∧ cons(b , X, Xs) ≈ cons(b , Y, Ys) ∧ (X 6≈ Y ∨ Xs 6≈ Ys)
+Theorem 6.30 (Correctness of g?, g??). The polymorphic type guards encodings g? and
+g?? are correct.
+Proof. The argument is very similar to that for tags (Theorem 6.26), with the following
+modifications:
+(A) hhΦiit ? ;∞ = {ϕ# | ϕ ∈ hhΦii∞;et ? } ∪ {∀X τ . gτ (X τ ) | τ ∈ GInst(VΦ )} ∪ Ax
+where Ax consists of a set of formulae which is satisfied by each structure that interprets as
+everywhere-true each gτ with τ ∈ GInst(VΦ ) and ϕ# denotes the modification of ϕ obtained
+by adding, for each τ ∈ T Φ − S Φ , a guard gτ on several negative positions in ϕ.
+Apart from this, the proofs for g? and g?? are identical to that for t??, except that
+instead of interpreting tags as identity we interpret guards as everywhere-true.
+7. Implementation
+Our research on polymorphic type encodings was driven by Sledgehammer, a component of
+Isabelle/HOL that harnesses first-order automatic theorem provers to discharge interactive
+proof obligations. The tool heuristically selects hundreds of background facts, translates
+them to untyped or monomorphic first-order logic, invokes the external provers in parallel,
+and reconstructs machine-generated proofs in Isabelle.
+All the encodings presented in this article except for the complete monomorphisation
+translation from Section 6.1 (which plays only an auxiliary theoretical role in our development) enjoy the desirable property that if the source signature and problem are finite, then
+the target signature and problem are also finite. All of these encodings, including the traditional ones, are implemented in Sledgehammer and can be used to target external first-order
+provers. The rest of this section considers implementation issues in more detail.
+7.1. Heuristic Monomorphisation Algorithm. The monomorphisation algorithm implemented in Sledgehammer translates a polymorphic problem into a monomorphic problem
+by heuristically instantiating type variables. It involves three stages:
+1. Separate the monomorphic and the polymorphic formulae, and collect all symbols occurring in the monomorphic formulae (the “mono-symbols”).
+2. For each polymorphic axiom, stepwise refine a set of substitutions, starting from the
+singleton set containing only the empty substitution, by matching known mono-symbols
+against their polymorphic counterparts in the axiom. So long as new mono-symbols
+emerge, collect them and repeat this stage.
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+45
+
+3. Apply the substitutions to the corresponding polymorphic formulae. Only keep fully
+monomorphic formulae.
+To ensure termination, the iterations performed in stage 2 are limited to a configurable
+number K. To curb the exponential growth, the algorithm also enforce an upper bound
+∆ on the number of new formulae. Sledgehammer operates with K = 3 and ∆ = 200
+by default, so that a problem with 500 formulae comprises at most 700 formulae after
+monomorphisation. Experiments found these values suitable. Given formulae about b and
+list(α), the third iteration already generates list(list (list(b))) instances; adding yet another
+layer of list is unlikely to help. Increasing ∆ sometimes helps solve more problems, but its
+potential for clutter is real.
+7.2. Extension to Higher-Order Logic. Isabelle/HOL’s logic, polymorphic higher-order
+logic with axiomatic type classes [35], is not the same as the polymorphic first-order logic
+considered in this article. Sledgehammer’s translation is a three-step process, where the
+first and last step may be omitted, depending on whether monomorphisation is desired and
+whether the target prover supports monomorphic types:
+1. Optionally monomorphise the problem.
+2. Eliminate the higher-order constructs [22, §2.1]. λ-abstractions are rewritten to SK
+combinators or to supercombinators (λ-lifting). Functions are passed varying numbers
+of arguments via an apply operator hAPP : ∀α, β. fun(α, β) × α  β (where fun is
+uninterpreted). Boolean terms are converted to formulae using a unary predicate hBOOL :
+bool  o (where bool is uninterpreted).
+3. Encode the type information. Polymorphic types are encoded using the techniques described in this article. Type classes are essentially sets of types; they are encoded as
+polymorphic predicates ∀α. o (where α is a phantom type variable, Definition 3.12). For
+example, a predicate linorder : ∀α. o could be used to restrict the axioms specifying that
+less_eq : ∀α. α × α  o is a linear order to those types that satisfy the linorder predicate
+(cf. Example 3.15). The type class hierarchy is expressible as Horn clauses [22, §2.3].
+The symbol hAPP would hugely burden problems if it were introduced systematically for all
+arguments to functions. To reduce clutter, Sledgehammer computes the minimum arity n
+needed for each symbol and passes the first n arguments directly, falling back on hAPP for additional arguments. In general, more arguments can be passed directly if monomorphisation
+is performed before hAPP is introduced, because each monomorphic instance of a polymorphic symbol is considered individually. Similar observations can be made for hBOOL.
+7.3. Infinite Types and Constructors. The monotonicity calculus ⊲ is parameterised by
+a set Inf(Φ) of infinite types. One could employ an approach similar to that implemented in
+Infinox [15] to automatically infer finite unsatisfiability of types. This tool relies on various
+proof principles to show that a set of untyped first-order formulae only has models with
+infinite domains. For example, it can infer that list_b is infinite in Example 2.13 because
+cons b is injective in its second argument but not surjective. However, in a proof assistant
+such as Isabelle, it is simpler to exploit metainformation available through introspection.
+Isabelle’s datatypes are registered with their constructors; if some of them are recursive, or
+take an argument of an infinite type, the datatype must be infinite and hence monotonic.
+
+46
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+More specifically, the monotonicity inference is run on the entire problem and maintains
+two finite sets of polymorphic types: the surely infinite types J and the possibly nonmonotonic types N. Every type of a naked variable in the problem is tested for infinity. If the
+test succeeds, the type is inserted into J; otherwise, it is inserted into N. Simplifications are
+performed: there no need to insert σ to J or N if it is an instance of a type already in the
+set; when inserting σ to a set, it is safe to remove any type in the set that is an instance
+of σ. The monotonicity check then becomes
+σ ⊲ Φ ⇐⇒ (∃τ ∈ J. ∃ρ. σ = τρ) ∨ (∀τ ∈ N. ∄ρ. σρ = τρ)
+7.4. Proof Reconstruction. To guard against bugs in the external provers, Sledgehammer
+reconstructs machine-generated proofs in Isabelle. This is usually accomplished by the metis
+proof method [26], supplying it with the short list of facts referenced in the proof found by the
+prover. The proof method is based on the Metis prover [20], a complete resolution prover
+for untyped first-order logic. The metis call is all that remains from the Sledgehammer
+invocation in the Isabelle theory, which can then be replayed without external provers.
+Given only a handful of facts, metis usually succeeds within milliseconds.
+Prior to our work, a large share of the reconstruction failures were caused by typeunsound proofs found by the external provers, due to the use of the unsound encoding a
+[13, §4.1]. We now replaced the internals of Sledgehammer and metis so that they use a
+translation module supporting all the type encodings described in this article.
+Nonetheless, despite the typing information, individual inferences in Metis can be illtyped when types are reintroduced, causing the metis proof method to fail. There are two
+main failure scenarios.
+First, the prover may in principle instantiate variables with “ill-typed” terms at any point
+in the proof. Fortunately, this hardly ever arises in practice, because like other resolution
+provers Metis heavily restricts paramodulation from and into variables [1].
+An issue that is more likely to plague users concerns the infinite types Inf(Φ). In the
+theoretical part of the paper, we required infinity to be a consequence of the problem Φ.
+The implementation is less rigorous; it will happily treat types that are known to be infinite
+in the Isabelle background theories even if Φ itself does not imply infinity of the types. For
+example, assuming nat is known to be infinite, the implementation of the monotonicitybased encodings will not introduce any protectors around the naked variables M and N
+when translating the problem
+on 6≈ off state ∧ (∀X, Y : nat . X ≈ Y )
+
+(where the second conjunct is presumably the negation of a conjecture stating that there exist
+two distinct natural numbers). That problem is satisfiable on its own but unsatisfiable with
+respect to the background theory. Untyped provers will instantiate X and Y with on and
+off to derive a contradiction; and no “type-sound” proof is possible unless we also provide
+characteristic theorems for nat. In general, we would need to provide infinity axioms for
+all types in Inf(Φ) to make the encoding sound irrespective of the background theory; for
+example:
+∀N : nat. zero 6≈ suc(N)
+
+∀M, N : nat. suc(M) ≈ suc(N) → M ≈ N
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+47
+
+Although this now makes a sound proof possible (by instantiating X and Y with zero and
+suc(zero)), it does not prevent the prover from discovering the spurious proof with on and
+off, which cannot be reconstructed by metis.
+Although the above scenarios rarely occur in practice, it would be more satisfactory if
+proof reconstruction were always possible. A solution would be to connect our formalised
+soundness proofs with a verified checker for untyped first-order proofs. This remains for
+future work.
+8. Evaluation
+To evaluate the type encodings described in this article, we put together two sets of 1000
+polymorphic first-order problems originating from 10 existing Isabelle theories, translated
+with Sledgehammer’s help (100 problems per theory).3 Nine of the theories are the same as
+in a previous evaluation [3]; the tenth one is an optimality proof for Huffman’s algorithm.
+Our test data are publicly available [4].
+The problems in the first benchmark set include about 50 heuristically selected facts
+(before monomorphisation); that number is increased to 500 for the second set, to reveal
+how well the encodings scale with the problem size.
+We evaluated each type encoding with five modern automatic theorem provers: the
+resolution provers E 1.8 [28], SPASS 3.8ds [9], and Vampire 3.0 (revision 1803) [27] and
+the SMT solvers Alt-Ergo 0.95.2 [10] and Z3 4.3.2 (revision 944dfee008) [23]. To make the
+evaluation more informative, we also tested the provers’ native support for types where it is
+available; it is referred to as e
+n (monomorphic) and n (polymorphic). Only Alt-Ergo supports
+polymorphic types natively.
+Each prover was invoked with the set of options we had previously determined worked
+best for Sledgehammer.4 The provers were granted 15 seconds of CPU time per problem on
+one core of a 3.06 GHz Dual-Core Intel Xeon processor. Most proofs were found within a few
+seconds; a higher time limit would have had a restricted impact on the success rate [13, §4].
+To avoid giving the unsound encodings ( e and a ) an unfair advantage, for these proof search
+was followed by a certification phase that attempted to re-find the proof using a combination
+of sound encodings, based on its referenced facts. This phase slightly penalises the unsound
+encodings by rejecting a few sound proofs, but such is the price of unsoundness in practice.
+Figures 2 and 3 give, for each combination of prover and encoding, the number of
+solved problems from each problem set. Rows marked with e concern the monomorphic
+encodings. The encodings e
+a , et@, and e
+g@ are omitted; the first two coincide with e
+e , whereas
+et@ and e
+g@ are identical to degenerate versions of et?? and e
+g ?? that treat all types as possibly
+nonmonotonic. We observe the following:
+• Among the encodings to untyped first-order logic, the monomorphic monotonicity-based
+encodings (especially e
+g ?? but also et??, e
+g ?, and et?) performed best overall. Their performance is close to that of the provers’ native support for simple types (e
+n ). Polymorphic
+encodings lag behind; this is likely due in part to the synergy between the monomorphiser
+and the translation of higher-order constructs (cf. Section 7.2).
+3The TPTP benchmark suite [30], which is customarily used for evaluating theorem provers, has just
+begun collecting polymorphic (TFF1) problems.
+4The setup for E was suggested by Stephan Schulz and includes the little known “symbol offset” weight
+function. We ran Alt-Ergo with the default setup, SPASS in Isabelle mode, Vampire in CASC mode, and
+Z3 through the z3_tptp wrapper but otherwise with the default setup.
+
+48
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+Alt-Ergo
+E
+SPASS
+Vampire
+Z3
+
+e
+
+e
+
+e
+
+e
+
+e
+
+SPASS
+Vampire
+Z3
+
+e
+
+e
+
+e
+
+e
+
+e
+
+a
+
+t
+
+t?
+
+t??
+
+t@
+
+g
+
+g?
+
+g??
+
+g@
+
+n
+
+268
+293
+319
+338
+289
+322
+328
+340
+295
+326
+
+275
+–
+330
+–
+316
+–
+335
+–
+323
+–
+
+243
+245
+322
+337
+290
+322
+291
+331
+299
+307
+
+218
+293
+311
+353
+275
+328
+304
+355
+245
+320
+
+296
+301
+325
+343
+319
+332
+320
+351
+317
+341
+
+272
+–
+269
+–
+196
+–
+243
+–
+311
+–
+
+233
+296
+268
+335
+223
+317
+281
+329
+289
+342
+
+291 295
+303 304
+325 336
+351 352
+302 314
+330 337
+320 328
+356 354
+301 317
+344 344
+
+259
+–
+288
+–
+244
+–
+301
+–
+295
+–
+
+301
+302
+–
+–
+–
+349
+–
+370
+–
+343
+
+Figure 2: Number of solved problems with 50 facts
+
+Alt-Ergo
+E
+
+e
+
+e
+
+a
+
+t
+
+t?
+
+t??
+
+t@
+
+g
+
+g?
+
+g??
+
+g@
+
+n
+
+268
+285
+170
+376
+136
+333
+318
+406
+247
+363
+
+218
+–
+355
+–
+321
+–
+396
+–
+358
+–
+
+183
+209
+261
+331
+289
+287
+164
+231
+253
+260
+
+223
+302
+271
+388
+259
+323
+286
+384
+241
+358
+
+273
+311
+353
+393
+299
+333
+365
+406
+362
+369
+
+216
+–
+193
+–
+154
+–
+230
+–
+273
+–
+
+157
+251
+205
+316
+163
+229
+219
+314
+213
+349
+
+240
+311
+345
+388
+278
+327
+312
+406
+305
+370
+
+273
+313
+355
+390
+296
+334
+349
+405
+363
+369
+
+190
+–
+237
+–
+194
+–
+259
+–
+270
+–
+
+260
+318
+–
+–
+–
+343
+–
+440
+–
+370
+
+Figure 3: Number of solved problems with 500 facts
+e
+
+Clauses
+Literals per clause
+Symbols per atom
+Symbols
+
+e
+
+e
+
+e
+
+e
+
+a
+
+t
+
+t?
+
+t??
+
+t@
+
+g
+
+g?
+
+g??
+
+g@
+
+89
+99 100 108 140 167 166 139 139 166
+125
+–
+127 127 141
+–
+242 141 141
+–
+2.3 2.4
+2.4 2.3 2.2 2.5
+4.3 3.2 2.6 3.8
+2.3
+–
+2.3 2.3 2.2
+–
+4.4 2.5 2.4
+–
+6.3 8.0 18.3 16.0 10.3 9.9
+5.7 8.0 8.6 5.7
+6.2
+– 10.6 7.0 6.2
+–
+4.3 5.5 5.7
+–
+1276 1870 4339 3924 3235 4070 4051 3609 3103 3610
+1757
+– 3060 2040 1935
+– 4548 1951 1904
+–
+
+Figure 4: Average size of clausified problems with 50 facts
+
+• Among the polymorphic encodings, our novel cover-based and monotonicity-based encodings ( t@, t?, t??, g@, g?, and g??), with the exception of t@, constitute a substantial
+improvement over the traditional sound schemes ( t and g ).
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+49
+
+• As suggested in the literature, there is no clear winner between tags and guards. We
+expected monomorphic guards to be especially effective with SPASS, since they are internally mapped to soft sorts (an optimised representation of unary predicates [34]), but this
+is not corroborated by the data.
+
+• Despite the proof reconstruction phase, the unsound encoding a achieved similar results
+to the sound polymorphic encodings. In contrast, its monomorphic cousin e
+e is generally
+no match for the sound monomorphic schemes.
+
+• Oddly, the polymorphic prover Alt-Ergo performs significantly better on monomorphised
+
+problems than on the corresponding polymorphic ones. This raises serious doubts about
+the quality of the prover’s heuristics for instantiating type variables.
+For the first benchmark set, Figure 4 presents the average number of clauses, literals per
+clause, symbols per atom, and symbols for clausified problems (using E’s clausifier), to give
+an idea of each encoding’s overhead. The striking point is the lightness of the monomorphic
+encodings, as witnessed by the number of symbols. Because monomorphisation generates
+several copies of the same formulae, we could have expected it to lead to larger problems,
+but this underestimates the cost of encoding types as terms in the polymorphic encodings.5
+The strong correlation between the success rates in Figure 3 and the average number of
+symbols in Figure 4 confirms the expectation that clutter (whether type arguments, tags, or
+guards) slows down automatic provers.
+Independently of these empirical results, the new type encodings made an impact at the
+2012 edition of CASC, the annual automatic prover competition [31]. Isabelle’s automatic
+proof tools, including Sledgehammer, compete against the automatic provers LEO-II, Satallax, and TPS in the higher-order division. Largely thanks to the new schemes (but also to
+improvements in the underlying first-order provers), Isabelle moved from the third place it
+had occupied since 2009 to the first place.
+9. Related Work
+The earliest descriptions of type tags and type guards we are aware of are due to Enderton [18,
+§4.3] and Stickel [29, p. 99]. Wick and McCune [36, §4] compare type arguments, tags, and
+guards in a monomorphic setting. Type arguments are described by Meng and Paulson [22],
+who also consider full type erasure and polymorphic type tags and present a translation of
+axiomatic type classes. As part of the MPTP project, Urban [33] extended the untyped
+TPTP FOF syntax with dependent types to accommodate Mizar and designed translations
+to plain FOF.
+The intermediate verification language and tool Boogie 2 [21] supports a restricted
+form of higher-rank polymorphism (with polymorphic maps), and Why3 [11] provides rank1 polymorphism. Both define translations to a monomorphic logic and rely on proxies to
+handle interpreted types [12, 17, 21]. One of the Boogie translations [21, §3.1] uses SMT
+triggers to prevent ill-typed instantiations in conjunction with type arguments; however,
+this approach is risky in the absence of a semantics for triggers. Bouillaguet et al. [14, §4]
+5The increase visible in the e column, from 89 to 125 clauses and from 1276 to 1757 symbols, is due to
+
+the multiple copies arising from monomorphisation. Even though these become identical after type erasure,
+they are counted as separate in the statistics, and it is up to the automatic provers to notice that they are
+the same.
+
+50
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+showed that full type erasure is sound if all types can be assumed to have the same cardinality
+and exploit this in the verification system Jahob.
+An alternative to encoding polymorphic types or monomorphising them away is to
+support them natively in the prover. This is ubiquitous in interactive theorem provers,
+but perhaps the only production-quality automatic prover that supports polymorphism is
+Alt-Ergo [10].
+Blanchette and Krauss [6] studied monotonicity inferences for higher-order logic without
+polymorphism. Claessen et al. [16] were first to apply them to type erasure.
+10. Conclusion
+This article introduced a family of translations from polymorphic into untyped first-order
+logic, with a focus on efficiency. Our monotonicity-based encodings soundly erase all types
+that are inferred monotonic, as well as most occurrences of the remaining types. The best
+translations outperform the traditional encoding schemes.
+We implemented the new translations in the Sledgehammer tool for Isabelle/HOL,
+thereby addressing a recurring user complaint. Although Isabelle certifies external proofs,
+unsound proofs are annoying and often conceal sound proofs. The same translation module forms the core of Isabelle’s TPTP exporter tool, which makes entire theorem libraries
+available to first-order reasoners. Our refinements to the monomorphic case have made their
+way into the Monotonox translator [16]. Applications such as Boogie [21], LEO-II [2], and
+Why3 [11] also stand to gain from lighter encodings.
+The TPTP family recently welcomed the addition of TFF1 [7], an extension of the
+monomorphic TFF0 logic with rank-1 polymorphism. Equipped with a concrete syntax and
+translation tools, we can turn any popular automatic theorem prover into an efficient polymorphic prover. Translating the untyped proof back into a typed proof is usually straightforward, but there are important corner cases that call for more research. It should also be
+possible to extend our approach to interpreted arithmetic.
+From both a conceptual and an implementation point of view, the encodings are all
+instances of a general framework, in which mostly orthogonal features can be combined in
+various ways. Defining such a large number of encodings makes it possible to select the
+most appropriate scheme for each automatic prover, based on empirical evidence. In fact,
+using strategy scheduling or parallelism, it is advantageous to have each prover employ a
+combination of encodings with complementary strengths.
+Acknowledgement
+Koen Claessen and Tobias Nipkow made this collaboration possible. Lukas Bulwahn, Peter
+Lammich, Rustan Leino, Tobias Nipkow, Nir Piterman, Alexander Steen, Mark Summerfield,
+Tjark Weber, and several anonymous reviewers suggested dozens of textual improvements; in
+particular, the three reviewers of this extended, journal version accomplished a remarkable
+work, going well beyond the call of duty. Blanchette was partly supported by the Deutsche
+Forschungsgemeinschaft (DFG) projects Quis Custodiet and Hardening the Hammer (grants
+NI 491/11-2 and NI 491/14-1). Popescu was partly supported by the DFG project Security
+Type Systems and Deduction (grant NI 491/13-2) as part of the program Reliably Secure
+Software Systems (RS3 , priority program 1496). The authors are listed alphabetically.
+
+ENCODING MONOMORPHIC AND POLYMORPHIC TYPES
+
+51
+
+References
+[1] Bachmair, L., Ganzinger, H., Lynch, C., Snyder, W.: Basic paramodulation. Inf. Comput. 121(2),
+172–192 (1995)
+[2] Benzmüller, C., Paulson, L.C., Theiss, F., Fietzke, A.: LEO-II—A cooperative automatic theorem
+prover for higher-order logic. In: A. Armando, P. Baumgartner, G. Dowek (eds.) IJCAR 2008, LNAI,
+vol. 5195, pp. 162–170. Springer (2008)
+[3] Blanchette, J.C., Böhme, S., Paulson, L.C.: Extending Sledgehammer with SMT solvers. J. Autom.
+Reasoning 51(1), 109–128 (2013)
+[4] Blanchette, J.C., Böhme, S., Popescu, A., Smallbone, N.: Empirical data associated with this article.
+http://www21.in.tum.de/~blanchet/enc_types_data_lmcs.tar.gz (2012)
+[5] Blanchette, J.C., Böhme, S., Popescu, A., Smallbone, N.: Encoding monomorphic and polymorphic
+types. In: N. Piterman, S. Smolka (eds.) TACAS 2013, LNCS, vol. 7795, pp. 493–507. Springer (2013)
+[6] Blanchette, J.C., Krauss, A.: Monotonicity inference for higher-order formulas. J. Autom. Reasoning
+47(4), 369–398 (2011)
+[7] Blanchette, J.C., Paskevich, A.: TFF1: The TPTP typed first-order form with rank-1 polymorphism.
+In: M.P. Bonacina (ed.) CADE-24, LNAI, vol. 7898, pp. 414–420. Springer (2013)
+[8] Blanchette, J.C., Popescu, A.: Mechanizing the metatheory of Sledgehammer. In: P. Fontaine,
+C. Ringeissen, R.A. Schmidt (eds.) FroCoS 2013, LNCS, vol. 8152, pp. 245–260. Springer (2013)
+[9] Blanchette, J.C., Popescu, A., Wand, D., Weidenbach, C.: More SPASS with Isabelle—Superposition
+with hard sorts and configurable simplification. In: L. Beringer, A. Felty (eds.) ITP 2012, LNCS, vol.
+7406, pp. 345–360. Springer (2012)
+[10] Bobot, F., Conchon, S., Contejean, E., Lescuyer, S.: Implementing polymorphism in SMT solvers. In:
+C. Barrett, L. de Moura (eds.) SMT 2008 (2008)
+[11] Bobot, F., Filliâtre, J.C., Marché, C., Paskevich, A.: Why3: Shepherd your herd of provers. In: K.R.M.
+Leino, M. Moskal (eds.) Boogie 2011, pp. 53–64 (2011)
+[12] Bobot, F., Paskevich, A.: Expressing polymorphic types in a many-sorted language. In: C. Tinelli,
+V. Sofronie-Stokkermans (eds.) FroCoS 2011, LNCS, vol. 6989, pp. 87–102. Springer (2011)
+[13] Böhme, S., Nipkow, T.: Sledgehammer: Judgement Day. In: J. Giesl, R. Hähnle (eds.) IJCAR 2010,
+LNAI, vol. 6173, pp. 107–121. Springer (2010)
+[14] Bouillaguet, C., Kuncak, V., Wies, T., Zee, K., Rinard, M.: Using first-order theorem provers in the
+Jahob data structure verification system. In: B. Cook, A. Podelski (eds.) VMCAI 2007, LNCS, vol.
+4349, pp. 74–88. Springer (2007)
+[15] Claessen, K., Lillieström, A.: Automated inference of finite unsatisfiability. J. Autom. Reasoning 47(2),
+111–132 (2011)
+[16] Claessen, K., Lillieström, A., Smallbone, N.: Sort it out with monotonicity—Translating between manysorted and unsorted first-order logic. In: N. Bjørner, V. Sofronie-Stokkermans (eds.) CADE-23, LNAI,
+vol. 6803, pp. 207–221. Springer (2011)
+[17] Couchot, J.F., Lescuyer, S.: Handling polymorphism in automated deduction. In: F. Pfenning (ed.)
+CADE-21, LNAI, vol. 4603, pp. 263–278. Springer (2007)
+[18] Enderton, H.B.: A Mathematical Introduction to Logic. Academic Press (1972)
+[19] Hodges, W.: Model Theory. Cambridge University Press (1993)
+[20] Hurd, J.: First-order proof tactics in higher-order logic theorem provers. In: M. Archer, B. Di Vito,
+C. Muñoz (eds.) Design and Application of Strategies/Tactics in Higher Order Logics, no. CP-2003212448 in NASA Tech. Reports, pp. 56–68 (2003)
+[21] Leino, K.R.M., Rümmer, P.: A polymorphic intermediate verification language: Design and logical
+encoding. In: J. Esparza, R. Majumdar (eds.) TACAS 2010, LNCS, vol. 6015, pp. 312–327. Springer
+(2010)
+[22] Meng, J., Paulson, L.C.: Translating higher-order clauses to first-order clauses. J. Autom. Reasoning
+40(1), 35–60 (2008)
+[23] de Moura, L., Bjørner, N.: Z3: An efficient SMT solver. In: C.R. Ramakrishnan, J. Rehof (eds.) TACAS
+2008, LNCS, vol. 4963, pp. 337–340. Springer (2008)
+[24] Nipkow, T., Klein, G.: Concrete Semantics—with Isabelle/HOL. Springer (2014)
+[25] Nipkow, T., Paulson, L.C., Wenzel, M.: Isabelle/HOL: A Proof Assistant for Higher-Order Logic, LNCS,
+vol. 2283. Springer (2002)
+
+52
+
+J. C. BLANCHETTE, S. BÖHME, A. POPESCU, AND N. SMALLBONE
+
+[26] Paulson, L.C., Susanto, K.W.: Source-level proof reconstruction for interactive theorem proving. In:
+K. Schneider, J. Brandt (eds.) TPHOLs 2007, LNCS, vol. 4732, pp. 232–245. Springer (2007)
+[27] Riazanov, A., Voronkov, A.: The design and implementation of Vampire. AI Comm. 15(2-3), 91–110
+(2002)
+[28] Schulz, S.: System description: E 0.81. In: D. Basin, M. Rusinowitch (eds.) IJCAR 2004, LNAI, vol.
+3097, pp. 223–228. Springer (2004)
+[29] Stickel, M.E.: Schubert’s steamroller problem: Formulations and solutions. J. Autom. Reasoning 2(1),
+89–101 (1986)
+[30] Sutcliffe, G.: The TPTP problem library and associated infrastructure—The FOF and CNF parts,
+v3.5.0. J. Autom. Reasoning 43(4), 337–362 (2009)
+[31] Sutcliffe, G.: Proceedings of the 6th IJCAR ATP system competition (CASC-J6). In: G. Sutcliffe (ed.)
+CASC-J6, EPiC, vol. 11, pp. 1–50. EasyChair (2012)
+[32] Sutcliffe, G., Schulz, S., Claessen, K., Baumgartner, P.: The TPTP typed first-order form with arithmetic. In: N. Bjørner, A. Voronkov (eds.) LPAR-18, LNCS, vol. 7180, pp. 406–419. Springer (2012)
+[33] Urban, J.: MPTP 0.2: Design, implementation, and initial experiments. J. Autom. Reasoning 37(1-2),
+21–43 (2006)
+[34] Weidenbach, C.: Combining superposition, sorts and splitting. In: A. Robinson, A. Voronkov (eds.)
+Handbook of Automated Reasoning, vol. 2, pp. 1965–2013. Elsevier (2001)
+[35] Wenzel, M.: Type classes and overloading in higher-order logic. In: E.L. Gunter, A. Felty (eds.) TPHOLs
+1997, LNCS, vol. 1275, pp. 307–322. Springer (1997)
+[36] Wick, C.A., McCune, W.W.: Automated reasoning about elementary point-set topology. J. Autom.
+Reasoning 5(2), 239–255 (1989)
+
+This work is licensed under the Creative Commons Attribution-NoDerivs License. To view
+a copy of this license, visit http://creativecommons.org/licenses/by-nd/2.0/ or send a
+letter to Creative Commons, 171 Second St, Suite 300, San Francisco, CA 94105, USA, or
+Eisenacher Strasse 2, 10777 Berlin, Germany
+
+

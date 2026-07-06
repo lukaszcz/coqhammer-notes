@@ -1,0 +1,401 @@
+\section{The guarded translation and its intended models}
+\label{sec:translation}
+
+This section defines the guarded translation of \Frag\ into untyped FOL,
+the axiom set it emits, and --- the heart of the soundness argument --- a
+family of untyped models validating the emitted axioms.
+
+\subsection{Target signature and translation}
+
+\begin{definition}[Target signature]
+  \label{def:target-sig}
+  The untyped signature $\Sig$ has:
+  \begin{itemize}
+  \item a function symbol $\hat h$ of arity $k_h + m_h$ for every
+    $h \in \Constr \cup \Fun$;
+  \item a function symbol $\hat I$ of arity $k_I$ for every $I \in \Ind$;
+  \item a constant $\TypeC$;
+  \item a predicate symbol $\hat p$ of arity $k_p + m_p$ for every
+    $p \in \Pred$, and a binary predicate symbol $\T$.
+  \end{itemize}
+  We reuse \Frag's type variables and term variables as FOL variables.
+\end{definition}
+
+\begin{definition}[Translation]
+  \label{def:translation}
+  The term translation $\enc{\cdot}$ maps \Frag-terms and \Frag-types to
+  $\Sig$-terms:
+  \[
+    \enc{x} \defeq x, \qquad
+    \enc{\alpha} \defeq \alpha, \qquad
+    \enc{I(\tup\sigma)} \defeq \hat I(\enc{\tup\sigma}), \qquad
+    \enc{h\langle\tup\sigma\rangle(\tup t)} \defeq
+      \hat h(\enc{\tup\sigma}, \enc{\tup t}).
+  \]
+  The formula translation is defined by
+  \begin{align*}
+    \enc{p\langle\tup\sigma\rangle(\tup t)}
+      &\defeq \hat p(\enc{\tup\sigma}, \enc{\tup t})
+    & \enc{t \eqx{\tau} s} &\defeq \enc{t} = \enc{s} \\
+    \enc{\forall x{:}\tau.\ \phi}
+      &\defeq \forall x.\ \T(x, \enc{\tau}) \imp \enc{\phi}
+    & \enc{\exists x{:}\tau.\ \phi}
+      &\defeq \exists x.\ \T(x, \enc{\tau}) \wedge \enc{\phi} \\
+    \enc{\forall \alpha.\ \phi}
+      &\defeq \forall \alpha.\ \T(\alpha, \TypeC) \imp \enc{\phi}
+  \end{align*}
+  and homomorphically on $\bot$, $\top$, $\wedge$, $\vee$, $\imp$.
+\end{definition}
+
+\begin{definition}[Emitted axioms]
+  \label{def:axioms}
+  The \emph{translation of the environment} is
+  $\Ax \defeq \mathrm{TA} \cup \mathrm{ID} \cup
+  \enc{\mathrm{Prem}(\Env)} \cup \enc{\StructAx_{\exists}}$, where:
+  \begin{enumerate}[label=(T\arabic*)]
+  \item \emph{Typing axioms} $\mathrm{TA}$: for every
+    $h \in \Constr \cup \Fun$,
+    \[
+      \forall \tup\alpha\,\tup x.\
+      \bigwedge_{j} \T(\alpha_j, \TypeC) \imp
+      \bigwedge_{i} \T(x_i, \enc{\tau^h_i}) \imp
+      \T\bigl(\hat h(\tup\alpha,\tup x),\ \enc{\tau^h_0}\bigr),
+    \]
+    (iterated implication, associated to the right) and for every
+    $I \in \Ind$:
+    $\forall\tup\alpha.\ \bigwedge_j \T(\alpha_j,\TypeC) \imp
+    \T(\hat I(\tup\alpha), \TypeC)$.
+  \item \emph{Unguarded injectivity and discrimination} $\mathrm{ID}$: for
+    every constructor $c$ of $I$,
+    \[
+      \forall \tup\alpha\,\tup x\,\tup\alpha'\,\tup x'.\
+      \hat c(\tup\alpha,\tup x) = \hat c(\tup\alpha',\tup x') \imp
+      \textstyle\bigwedge_j \alpha_j = \alpha'_j \wedge
+      \bigwedge_i x_i = x'_i,
+    \]
+    and for every pair $c \neq c'$ of constructors of the same $I$:
+    $\forall \tup\alpha\,\tup x\,\tup\alpha'\,\tup x'.\
+    \hat c(\tup\alpha,\tup x) \neq \hat c'(\tup\alpha',\tup x')$.
+    These are deliberately \emph{unguarded} and quantify the two sides'
+    type arguments independently, as hammer translations emit them.
+  \item \emph{Translated premises and structural sentences}: the
+    $\enc{\cdot}$-images of all sentences in $\mathrm{Prem}(\Env)$ and of
+    the exhaustiveness sentences (S3) and predicate
+    introduction/inversion sentences of $\StructAx$ (written
+    $\StructAx_\exists$; the guarded images of (S1)--(S2) are logical
+    consequences of $\mathrm{ID}$ and need not be emitted).
+  \end{enumerate}
+  Separately, the \emph{typehood-completion axioms} are
+  $\Comp \defeq \mathrm{Cp} \cup \mathrm{Ct}$ with
+  \begin{enumerate}[label=(C\arabic*)]
+  \item $\mathrm{Cp}$: for every $p \in \Pred$, every $j \le k_p$ and every
+    $i \le m_p$,
+    \[
+      \forall\tup\alpha\,\tup x.\
+      \hat p(\tup\alpha,\tup x) \imp \T(\alpha_j, \TypeC),
+      \qquad
+      \forall\tup\alpha\,\tup x.\
+      \hat p(\tup\alpha,\tup x) \imp \T(x_i, \enc{\tau^p_i});
+    \]
+  \item $\mathrm{Ct}$: for every $I \in \Ind$ and $j \le k_I$:
+    $\forall\tup\alpha\,z.\ \T(z, \hat I(\tup\alpha)) \imp
+    \T(\alpha_j, \TypeC)$.
+  \end{enumerate}
+  Given a goal sentence $\phi_0$, the \emph{translated problem} is
+  $\Ax \cup \Comp \cup \{\neg\enc{\phi_0}\}$.
+\end{definition}
+
+\subsection{The intended models \texorpdfstring{$\MN$}{M(N)}}
+\label{subsec:intended}
+
+Fix a ground structure $\NN \models \Th$.  We build an untyped
+$\Sig$-structure whose domain contains, besides denotations for all ground
+types and all their inhabitants, explicit \emph{junk} elements representing
+ill-typed applications.  Junk is generated \emph{freely}, which is what
+validates the unguarded axioms $\mathrm{ID}$.
+
+\begin{definition}[Domain]
+  \label{def:domain}
+  Let
+  \[
+    \Dom_0 \defeq
+    \underbrace{\GTy}_{\text{type elements}} \;\uplus\;
+    \underbrace{\{\ast\}}_{\text{the element } \TypeC} \;\uplus\;
+    \underbrace{\{(\tau, a) \mid \tau \in \GTy,\ a \in \NN_\tau\}}_{
+      \text{tagged carrier elements}} .
+  \]
+  For a function symbol $g \in \Sig$ of arity $n$ and a tuple
+  $\tup d \in (\Dom_0 \uplus \Junk)^n$ define the \emph{sort check}
+  $\mathrm{ok}_g(\tup d)$:
+  \begin{itemize}
+  \item $\mathrm{ok}_{\hat I}(\tup d)$ iff $d_j \in \GTy$ for all
+    $j \le k_I$;
+  \item $\mathrm{ok}_{\hat h}(\tup d)$ (for $h \in \Constr \cup \Fun$) iff
+    $d_j \in \GTy$ for $j \le k_h$ --- write $\tau_j \defeq d_j$ --- and
+    $d_{k_h+i} = \bigl(\tau^h_i[\tup\tau/\tup\alpha],\, a_i\bigr)$ for some
+    $a_i \in \NN_{\tau^h_i[\tup\tau/\tup\alpha]}$, for all $i \le m_h$;
+  \item $\mathrm{ok}_{\TypeC}() $ always.
+  \end{itemize}
+  The junk universe $\Junk$ is the least set of formal pairs closed under:
+  if $g \in \Sig$ is a function symbol of arity $n \ge 1$,
+  $\tup d \in (\Dom_0 \uplus \Junk)^n$ and $\neg\mathrm{ok}_g(\tup d)$,
+  then $(g, \tup d) \in \Junk$.  (Formally,
+  $\Junk = \bigcup_n \Junk_n$ with $\Junk_0 = \emptyset$ and
+  $\Junk_{n+1}$ the set of such pairs over $\Dom_0 \uplus \Junk_n$; the
+  union is closed because $\mathrm{ok}_g$ never holds when some argument
+  lies in $\Junk$.)  The four classes of elements --- ground types, $\ast$,
+  tagged pairs, junk pairs --- are pairwise disjoint (formally, tag them).
+  Finally $\Dom \defeq \Dom_0 \uplus \Junk$; note $\Dom \neq \emptyset$
+  since $\ast \in \Dom$.
+\end{definition}
+
+\begin{definition}[The structure $\MN$]
+  \label{def:MN}
+  $\MN$ is the $\Sig$-structure with domain $\Dom$ and:
+  \begin{itemize}
+  \item $\TypeC^{\MN} \defeq \ast$;
+  \item $\hat I^{\MN}(\tup d) \defeq I(\tup d) \in \GTy$ if
+    $\mathrm{ok}_{\hat I}(\tup d)$, and $(\hat I, \tup d) \in \Junk$
+    otherwise;
+  \item for $h \in \Constr \cup \Fun$:
+    $\hat h^{\MN}(\tup d) \defeq
+    \bigl(\tau^h_0[\tup\tau/\tup\alpha],\
+    h_{\tup\tau}^{\NN}(\tup a)\bigr)$ if $\mathrm{ok}_{\hat h}(\tup d)$
+    holds with $\tup\tau, \tup a$ as in \cref{def:domain}, and
+    $(\hat h, \tup d) \in \Junk$ otherwise;
+  \item $\T^{\MN}(d, u)$ iff either $u = \ast$ and $d \in \GTy$, or
+    $u \in \GTy$ and $d = (u, a)$ for some $a \in \NN_u$;
+  \item $\hat p^{\MN}(\tup d)$ iff $\mathrm{ok}$ holds in the evident
+    sense --- $d_j \in \GTy$ for $j \le k_p$ (write $\tup\tau$) and
+    $d_{k_p+i} = (\tau^p_i[\tup\tau/\tup\alpha], a_i)$ --- \emph{and}
+    $p^{\NN}_{\tup\tau}(\tup a)$ holds.
+  \end{itemize}
+  All interpretations are total and well defined: the sort check determines
+  $\tup\tau$ and $\tup a$ uniquely (tags are part of the elements), and the
+  junk branch applies exactly when it fails.
+\end{definition}
+
+Note the two design decisions embodied in \cref{def:MN}.  First,
+$\hat p^{\MN}$ is \emph{false-extended}: it fails on every argument tuple
+violating $p$'s type discipline.  This is the semantic core of guard
+omission --- it is the model-theoretic counterpart of ``an ill-typed
+application is not a provable proposition'' --- and it makes the completion
+axioms true (\cref{thm:base-soundness}).  Second, junk is \emph{free}: an
+ill-typed application denotes the formal tree recording its head and
+arguments, so distinct ill-typed applications denote distinct elements.
+This validates the unguarded injectivity and discrimination axioms, giving
+a precise sense to the folklore justification that they are ``true in the
+term model''.
+
+\subsection{Denotation and relativization}
+
+Throughout, let $\phi, t, \tau$ be well formed in a context $(V;\Gamma)$,
+let $\theta : V \arr \GTy$ be a ground type instantiation, and let $v$ be a
+\emph{proper valuation}: a sort-respecting assignment
+$v(x) \in \NN_{\Gamma(x)\theta}$ for term variables.  Define the FOL
+valuation $w_{\theta,v}$ on $\MN$ by
+$w_{\theta,v}(\alpha) \defeq \theta(\alpha)$ for $\alpha \in V$ and
+$w_{\theta,v}(x) \defeq (\Gamma(x)\theta,\, v(x))$.
+
+\begin{lemma}[Denotation]
+  \label{lem:denotation}
+  For every type $\sigma \in \Ty{V}$:
+  $\den{\enc{\sigma}}{\MN, w_{\theta,v}} = \sigma\theta \in \GTy$.
+  For every term $t$ with $\wfj{V}{\Gamma}{t : \tau}$:
+  \[
+    \den{\enc{t}}{\MN, w_{\theta,v}} =
+    \bigl(\tau\theta,\ \den{t\theta}{\NN, v}\bigr),
+  \]
+  where $\den{t\theta}{\NN,v}$ is the many-sorted denotation of the ground
+  instance $t\theta$ (\cref{def:ms-structures}).
+\end{lemma}
+
+\begin{proof}
+  Both claims by induction on the syntax.  Types: a variable $\alpha$
+  denotes $\theta(\alpha)$; for $I(\tup\sigma)$ the induction hypothesis
+  gives arguments in $\GTy$, so $\mathrm{ok}_{\hat I}$ holds and the value
+  is $I(\tup\sigma\theta) = I(\tup\sigma)\theta$.  Terms: a variable $x$
+  denotes $w_{\theta,v}(x) = (\Gamma(x)\theta, v(x))$ and
+  $\tau = \Gamma(x)$ by the typing rule.  For
+  $t = h\langle\tup\sigma\rangle(\tup t)$ with
+  $\wfj{V}{\Gamma}{t_i : \tau^h_i[\tup\sigma/\tup\alpha]}$: by the
+  induction hypotheses the type arguments denote
+  $\tup\sigma\theta \in \GTy^{k_h}$ and the term arguments denote
+  $\bigl(\tau^h_i[\tup\sigma/\tup\alpha]\theta,\,
+  \den{t_i\theta}{\NN,v}\bigr) =
+  \bigl(\tau^h_i[\tup\sigma\theta/\tup\alpha],\,
+  \den{t_i\theta}{\NN,v}\bigr)$ (substitution composition, as in
+  \cref{lem:instantiation}).  Hence $\mathrm{ok}_{\hat h}$ holds with
+  $\tup\tau = \tup\sigma\theta$, and the value is
+  $\bigl(\tau^h_0[\tup\sigma\theta/\tup\alpha],\,
+  h^{\NN}_{\tup\sigma\theta}(\dots)\bigr)$, which is exactly
+  $(\tau\theta, \den{t\theta}{\NN,v})$ by the definition of many-sorted
+  denotation of the instance.
+\end{proof}
+
+\begin{lemma}[Relativization]
+  \label{lem:relativization}
+  For every type-quantifier-free formula $\phi$ well formed in
+  $(V;\Gamma)$, every $\theta$ and proper $v$ as above:
+  \[
+    \MN, w_{\theta,v} \models \enc{\phi}
+    \quad\text{iff}\quad
+    \NN, v \models \phi\theta .
+  \]
+  Consequently, for every sentence $\phi_0$ (with prenex type
+  quantifiers): $\MN \models \enc{\phi_0}$ iff $\NN \entg \phi_0$.
+\end{lemma}
+
+\begin{proof}
+  Induction on $\phi$.
+
+  \emph{Atoms.}  $\enc{p\langle\tup\sigma\rangle(\tup t)} =
+  \hat p(\enc{\tup\sigma},\enc{\tup t})$.  By \cref{lem:denotation} the
+  arguments denote $\tup\sigma\theta \in \GTy$ and the tagged pairs
+  $(\tau^p_i[\tup\sigma\theta/\tup\alpha], \den{t_i\theta}{\NN,v})$, so
+  $\mathrm{ok}$ holds and, by \cref{def:MN}, the atom is true in $\MN$ iff
+  $p^{\NN}_{\tup\sigma\theta}(\dots)$ holds, i.e.\ iff
+  $\NN,v \models (p\langle\tup\sigma\rangle(\tup t))\theta$.
+
+  \emph{Equations.}  $\enc{t} = \enc{s}$ holds iff the two tagged pairs are
+  equal; since both carry the same tag $\tau\theta$
+  (\cref{lem:denotation}, using that $t$ and $s$ have the same type
+  $\tau$), this is equivalent to
+  $\den{t\theta}{\NN,v} = \den{s\theta}{\NN,v}$, i.e.\ to
+  $\NN,v \models (t \eqx{\tau} s)\theta$.
+
+  \emph{Connectives.}  Immediate from the induction hypotheses, as both
+  semantics interpret them classically.
+
+  \emph{Term quantifiers.}  Consider
+  $\enc{\forall x{:}\tau.\ \phi} = \forall x.\ \T(x,\enc{\tau}) \imp
+  \enc{\phi}$.  By \cref{lem:denotation},
+  $\den{\enc{\tau}}{\MN,w_{\theta,v}} = \tau\theta \in \GTy$, so for
+  $d \in \Dom$ the guard $\T(d, \tau\theta)$ holds iff $d = (\tau\theta, a)$
+  with $a \in \NN_{\tau\theta}$.  Hence the $\MN$-side quantification,
+  restricted by the guard, ranges exactly over
+  $\{(\tau\theta,a) \mid a \in \NN_{\tau\theta}\}$; for each such $d$ the
+  extended valuation is $w_{\theta, v[x \mapsto a]}$ and the induction
+  hypothesis applies.  This matches the $\NN$-side clause ``for all
+  $a \in \NN_{\tau\theta}$'', including the empty-carrier case (both sides
+  vacuously true).  The existential case is dual (both sides false over an
+  empty carrier).
+
+  \emph{Sentences.}  For
+  $\phi_0 = \forall\seq{\alpha}{n}.\psi$:
+  $\enc{\phi_0} = \forall\tup\alpha.\ \T(\alpha_1,\TypeC) \imp \dots$, and
+  $\T^{\MN}(d, \ast)$ holds iff $d \in \GTy$.  So
+  $\MN \models \enc{\phi_0}$ iff $\MN, [\tup\alpha \mapsto \tup\tau]
+  \models \enc{\psi}$ for all $\tup\tau \in \GTy^n$, which by the main
+  claim (with $\theta = [\tup\tau/\tup\alpha]$, empty $\Gamma$-part) is
+  equivalent to $\NN \models \psi[\tup\tau/\tup\alpha]$ for all
+  $\tup\tau$, i.e.\ to $\NN \entg \phi_0$.
+\end{proof}
+
+\subsection{Base soundness}
+
+\begin{theorem}[Model correctness]
+  \label{thm:base-soundness}
+  For every ground structure $\NN \models \Th$:
+  \ $\MN \models \Ax \cup \Comp$.
+\end{theorem}
+
+\begin{proof}
+  We check each axiom class against \cref{def:MN}; fix an arbitrary
+  valuation $w$ into $\Dom$.
+
+  \emph{(T1) Typing axioms.}  Assume the guards: $w(\alpha_j) \in \GTy$
+  for all $j$ (so they determine $\theta$) and
+  $\T(w(x_i), \den{\enc{\tau^h_i}}{w})$ for all $i$.  Since
+  $w(\tup\alpha) = \tup\tau \in \GTy$, the first part of
+  \cref{lem:denotation} gives
+  $\den{\enc{\tau^h_i}}{w} = \tau^h_i[\tup\tau/\tup\alpha]$ (the lemma's
+  proof uses only the values of $w$ on $\ftv{\tau^h_i}$, all in $\GTy$).
+  So each $w(x_i)$ is a tagged pair
+  $(\tau^h_i[\tup\tau/\tup\alpha], a_i)$; thus $\mathrm{ok}_{\hat h}$
+  holds, the value of $\hat h(\tup\alpha, \tup x)$ under $w$ is
+  $(\tau^h_0[\tup\tau/\tup\alpha], h^{\NN}_{\tup\tau}(\tup a))$, and the
+  conclusion $\T$-atom holds.  The $\hat I$ axioms are analogous
+  ($I(\tup\tau) \in \GTy$ and $\T(I(\tup\tau), \ast)$ holds).
+
+  \emph{(T2) Injectivity.}  Let
+  $d \defeq \hat c^{\MN}(w(\tup\alpha), w(\tup x))$ and
+  $d' \defeq \hat c^{\MN}(w(\tup\alpha'), w(\tup x'))$ and assume $d = d'$.
+  Three cases.  (i) Both sort checks succeed: then
+  $d = (I(\tup\tau), c^{\NN}_{\tup\tau}(\tup a))$ and
+  $d' = (I(\tup\tau'), c^{\NN}_{\tup\tau'}(\tup a'))$; equality of the
+  tags gives $I(\tup\tau) = I(\tup\tau')$ in $\GTy$, whence
+  $\tup\tau = \tup\tau'$ because ground types are syntax (a first-order
+  term algebra, in which constructors are injective); then
+  $c^{\NN}_{\tup\tau}(\tup a) = c^{\NN}_{\tup\tau}(\tup a')$, and
+  $\NN \entg$ (S1) at instance $\tup\tau$ yields $\tup a = \tup a'$; hence
+  $w(\alpha_j) = \tau_j = \tau'_j = w(\alpha'_j)$ and
+  $w(x_i) = (\tau^c_i[\tup\tau/\tup\alpha], a_i) = w(x'_i)$.  (ii) Both
+  fail: $d = (\hat c, w(\tup\alpha)w(\tup x))$ and
+  $d' = (\hat c, w(\tup\alpha')w(\tup x'))$ are formal pairs; their
+  equality gives componentwise equality of the argument tuples, which is
+  the conclusion.  (iii) Exactly one fails: then $d$ is a tagged pair and
+  $d'$ a junk pair (or vice versa), contradicting $d = d'$; the
+  implication holds vacuously.
+
+  \emph{(T2) Discrimination.}  With $d, d'$ as above for $c \neq c'$ of
+  the same $I$: if both sort checks succeed and the tags agree, then
+  $\tup\tau = \tup\tau'$ as before and
+  $\NN \entg$ (S2) at $\tup\tau$ gives
+  $c^{\NN}_{\tup\tau}(\tup a) \neq c'^{\NN}_{\tup\tau}(\tup a')$; if the
+  tags differ, $d \neq d'$ outright.  If both fail, the junk pairs have
+  distinct heads $\hat c \neq \hat c'$.  Mixed cases are distinct by
+  disjointness.
+
+  \emph{(T3) Translated sentences.}  Each is $\enc{\phi}$ for a sentence
+  $\phi$ with $\NN \entg \phi$ (premises and the retained structural
+  sentences are in $\Th$); apply \cref{lem:relativization}.
+
+  \emph{(C1) Predicate completion.}  If
+  $\hat p^{\MN}(w(\tup\alpha), w(\tup x))$ holds then, by
+  \cref{def:MN}, $w(\alpha_j) \in \GTy$ --- so
+  $\T(w(\alpha_j), \ast)$ holds --- and
+  $w(x_i) = (\tau^p_i[\tup\tau/\tup\alpha], a_i)$; since
+  $\den{\enc{\tau^p_i}}{w} = \tau^p_i[\tup\tau/\tup\alpha]$
+  (\cref{lem:denotation}, as in (T1)), the atom
+  $\T(x_i, \enc{\tau^p_i})$ holds.
+
+  \emph{(C2) Hereditary completion.}  Assume
+  $\T(w(z), \den{\hat I(\tup\alpha)}{w})$.  By \cref{def:MN} the second
+  argument must lie in $\GTy \cup \{\ast\}$; the value
+  $\hat I^{\MN}(w(\tup\alpha))$ lies in $\GTy$ only if
+  $\mathrm{ok}_{\hat I}$ holds, i.e.\ all $w(\alpha_j) \in \GTy$ (a junk
+  pair is neither a ground type nor $\ast$).  In that case
+  $\T(w(\alpha_j), \ast)$ holds for each $j$; otherwise the assumption is
+  false and the implication vacuous.
+\end{proof}
+
+\begin{theorem}[Soundness of the guarded translation]
+  \label{thm:base-soundness-end}
+  Let $\Env$ be an environment and $\phi_0$ a sentence.  If
+  $\Ax \cup \Comp \cup \{\neg\enc{\phi_0}\}$ is unsatisfiable, then
+  $\Th \entg \phi_0$.  In particular, if $\Env$ is consistent then
+  $\Ax \cup \Comp$ is satisfiable.
+\end{theorem}
+
+\begin{proof}
+  Contrapositive.  If $\Th \not\entg \phi_0$, pick a ground structure
+  $\NN \models \Th$ with $\NN \not\entg \phi_0$.  By
+  \cref{thm:base-soundness}, $\MN \models \Ax \cup \Comp$, and by
+  \cref{lem:relativization}, $\MN \not\models \enc{\phi_0}$, i.e.\
+  $\MN \models \neg\enc{\phi_0}$.  So the translated problem is
+  satisfiable.  The second claim takes any $\NN \models \Th$ and observes
+  $\MN \models \Ax \cup \Comp$.
+\end{proof}
+
+\begin{remark}
+  \Cref{thm:base-soundness-end} quantifies over \emph{all} models of
+  $\Th$, so its conclusion $\Th \entg \phi_0$ is classical semantic
+  entailment from the source theory --- via \cref{prop:cic-bridge}, a
+  consequence of the CIC environment under excluded middle.  This is the
+  standard guarantee for hammers, whose final arbiter is proof
+  reconstruction in the proof assistant; what the theorem rules out is the
+  ATP refuting a translation of a goal that the source theory does not
+  entail.  All optimization theorems below preserve exactly this
+  guarantee.
+\end{remark}

@@ -1,0 +1,126 @@
+\section{Related work}
+\label{sec:related}
+
+\paragraph{Type encodings for polymorphic logics.}
+The systematic study of sound type erasure begins with Meng and
+Paulson~\cite{MengPaulson2008}, who documented both the performance cost of
+full type annotations and the concrete unsoundness of dropping them
+(\cref{prop:tight-uncovered,prop:tight-nil} are fragment forms of their
+examples), and proposed partial encodings validated empirically.  Couchot
+and Lescuyer~\cite{CouchotLescuyer2007} and Bobot and
+Paskevich~\cite{BobotPaskevich2011} gave provably sound guard- and
+tag-based encodings of polymorphic FOL into untyped and many-sorted FOL.
+Claessen, Lillieström and
+Smallbone~\cite{ClaessenLilliestromSmallbone2011} introduced
+monotonicity-based erasure for many-sorted logic; their ``calculus 2'', in
+which an arbitrary predicate may serve as the guard of a sort provided it
+can consistently be extended to be false outside it, is the direct formal
+ancestor of our covers.  Our \cref{def:MN} builds the false extension into
+the intended model once and for all --- an ill-typed atom is false because
+an ill-typed application is not a provable proposition --- so no
+per-problem satisfiability check is needed; the price is that atoms which
+are not false-extended in $\MN$ (equations, non-rigid $\T$-atoms) can
+never serve as covers, which \cref{sec:tightness} shows is essential
+anyway.  Blanchette, B\"ohme, Popescu and
+Smallbone~\cite{BlanchetteBohmePopescuSmallbone2016} developed the most
+comprehensive framework: their \emph{covers} and \emph{inferable type
+arguments} correspond to our \cref{def:erasable,lem:inference-unique},
+their \emph{featherweight guards} $\mathsf{g}{?}{?}$ --- guards asserted
+only for naked variables --- are the satisfiability-preserving relative of
+our per-formula equivalence, and their monotonicity calculi point to a
+third, complementary omission principle that our development does not
+cover (see below).  Their encodings, implemented in Sledgehammer and, in
+guard form, in Why3~\cite{FilliatrePaskevich2013}, are global problem
+transformations proved sound by model constructions similar in spirit to
+\cref{subsec:intended}; the difference in our setting is dependency ---
+the forced type $\enc{\tau^p_i}[\tup s/\tup\alpha]$ of an argument
+position may mention the other arguments --- and the conclusion is
+correspondingly finer-grained: a per-occurrence logical equivalence
+relative to $\Comp$ rather than the equisatisfiability of a whole-problem
+encoding.
+
+\paragraph{Hammers and CIC.}
+For the hammer context see the survey~\cite{BlanchetteKaliszykPaulsonUrban2016}
+and the systems for HOL~\cite{PaulsonBlanchette2010,KaliszykUrban2014} and
+Mizar~\cite{KaliszykUrban2015}.  CoqHammer~\cite{CzajkaKaliszyk2018}
+defined the translation whose optimization we study; its practically
+tuned variant already omits selected guards and justifies the choices
+empirically, by counterexample-driven testing and reconstruction rates.
+The theoretical companion~\cite{Czajka2018} proves such a translation of
+a class of pure type systems sound \emph{proof-theoretically} --- any FOL
+proof from the translated axioms maps to a source derivation --- but for
+the guarded variant only; omission of redundant guards is stated there as
+a conjecture, and the proof hinges on an invariant that guards are the
+sole channel through which typability information flows into a FOL proof.
+Our results give the classical, model-theoretic counterpart for a
+fragment with inductive types, and suggest a route to the proof-theoretic
+version: \cref{cor:no-loss} shows that a proof from guard-omitted axioms
+converts, purely in FOL, into a proof from the guarded axioms plus
+$\Comp$, so it suffices to extend the invariant to completion axioms ---
+whose source reading is exactly typing inversion: from a reconstruction
+of a proof of $p\,\tup\sigma\,\tup t$ one extracts typing evidence for
+$\tup t$.  Carrying this out in the setting of~\cite{Czajka2018}
+(which would first need extending that framework to inductive types)
+remains future work.  Mizar's \emph{conditional cluster registrations},
+exported to ATPs by MPTP~\cite{Urban2006}, are Horn sentences of exactly
+the completion-axiom shape (``every $\mathit{cardinal}$ is an
+$\mathit{ordinal}$''), used at scale in the MizAR
+hammer~\cite{KaliszykUrban2015}; our $\Comp$ can be read as the
+automatically generated cluster theory of the translated environment.
+In the Lean ecosystem, Lean-auto~\cite{LeanAuto2025} faces the same
+design choice for its monomorphizing translation.  On the source side,
+our erasability criterion parallels Letouzey's program
+extraction~\cite{Letouzey2003}: erasable type arguments are those
+recoverable from the extracted (term-level) data, and result-only
+arguments are exactly the positions where extraction must insert an
+unchecked coercion.
+
+\paragraph{Limitations and future work.}
+The fragment \Frag\ isolates the polymorphic first-order core of CIC, and
+three omissions matter in practice.  (i) \emph{Conversion}: CoqHammer
+emits lambda-lifted definitional equations \emph{unguarded}, justified by
+a different intended semantics in which equality is convertibility of
+(possibly ill-typed) terms; our models interpret equality as identity on
+tagged values and junk trees, so unguarded definitional equations are
+outside the present theorems (and indeed our criterion conservatively
+keeps their guards unless a cover is present).  Reconciling the two
+semantics --- a quotient of the junk universe by an untyped conversion
+--- is the natural next step.  (ii) \emph{Dependent data and higher-order
+features}: type formers with term indices, function types as data, and
+non-prenex polymorphism all break the freeness arguments in
+\cref{lem:subst-inj} and \cref{def:MN}; hammer translations handle them
+by lifting and collapsing, and the interaction of those devices with
+omission (in particular, which lifted atoms are false-extended and hence
+covers) is open --- the known constraint being that atoms headed by
+lifted proposition constants must \emph{not} count as covers, since their
+defining equivalences quantify unguarded.  (iii) \emph{Monotonicity}: for
+types whose translated theory cannot distinguish domain sizes, guards can
+be omitted with \emph{no} cover at all
+\cite{ClaessenLilliestromSmallbone2011,BlanchetteBohmePopescuSmallbone2016};
+adapting monotonicity inference to a dependently typed source, where the
+finiteness of a type can depend on term parameters, is the open problem
+already posed in~\cite{Czajka2018}, and our
+\cref{prop:tight-uncovered} (a one-element type) marks exactly the
+non-monotonic case that any such analysis must detect.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+We have given syntactic criteria for the two dominant redundancies of
+guarded hammer translations of CIC --- type guards covered by a strict
+hypothesis atom, and type arguments recoverable from retained term
+arguments --- and proved them sound, and in the guard case conservative,
+for a polymorphic first-order fragment of CIC with inductive definitions.
+The proofs are self-contained model constructions; the single point of
+contact with CIC metatheory is the (cited) existence of a classical model
+of the source environment, and the single semantic insight doing the work
+is that the intended interpretation of a translated predicate is
+\emph{false-extended}: an ill-typed application is not a provable
+proposition.  The criteria evaluate on the emitted first-order formulas
+using only the declared types of the translated constants, and are
+therefore implementable as a post-processing pass in an existing hammer;
+the completion axioms $\Comp$, themselves sound to emit, make guard
+omission lossless.  The tightness examples delimit what any extension
+must respect: covers must be false-extended atoms, existential guards are
+facts, inference needs a retained witness, and predicates must keep the
+arguments that make them strict.

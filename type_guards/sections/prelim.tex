@@ -1,0 +1,88 @@
+\section{Preliminaries: untyped first-order logic}
+\label{sec:prelim}
+
+We fix notation for the target logic and record a replacement lemma used
+throughout.
+
+\begin{definition}[Syntax]
+  \label{def:fol-syntax}
+  An (untyped, first-order) \emph{signature} $\Sigma$ consists of function
+  symbols with arities (constants being $0$-ary) and predicate symbols with
+  arities.  Terms and formulas over $\Sigma$ and a countably infinite set of
+  variables are defined as usual; the connectives are $\bot$, $\top$,
+  $\wedge$, $\vee$, $\imp$, and the quantifiers $\forall$, $\exists$;
+  $\neg\phi$ abbreviates $\phi \imp \bot$ and $\phi \biimp \psi$ abbreviates
+  $(\phi \imp \psi) \wedge (\psi \imp \phi)$.  The logic includes a
+  distinguished binary equality predicate $=$.  We identify formulas up to
+  renaming of bound variables and assume, whenever a formula is analyzed,
+  that its bound variables are distinct from each other and from all free
+  variables under discussion.  $\forall(\phi)$ denotes the universal closure.
+\end{definition}
+
+\begin{definition}[Semantics]
+  \label{def:fol-semantics}
+  A $\Sigma$-structure $\AA$ consists of a nonempty domain $|\AA|$,
+  functions $h^{\AA} : |\AA|^n \arr |\AA|$ for the function symbols and
+  relations $P^{\AA} \subseteq |\AA|^n$ for the predicate symbols; $=$ is
+  always interpreted as identity on $|\AA|$.  A \emph{valuation} $v$ maps
+  variables to $|\AA|$; $\den{t}{\AA,v}$ and $\AA,v \models \phi$ are
+  defined as usual.  For a set $\Gamma$ of formulas, $\Gamma \models \phi$
+  means: every structure and valuation satisfying (the universal closures
+  of) all of $\Gamma$ satisfies $\forall(\phi)$.  A set of sentences is
+  \emph{satisfiable} if it has a model and \emph{refutable} if it is
+  unsatisfiable.
+\end{definition}
+
+Since ATPs are sound and complete for this semantics, ``the translated
+problem is refutable'' is interchangeable with ``some ATP finds a proof''
+throughout the paper; none of our results depend on a particular proof
+calculus.
+
+\begin{definition}[Polarity]
+  \label{def:polarity}
+  An occurrence of a subformula $\psi$ in a formula $\chi$ is
+  \emph{positive} or \emph{negative} according to the following standard
+  recursion: $\chi$ is positive in itself; if the occurrence of
+  $\psi$ is in $\chi_1$ or $\chi_2$, its polarity in
+  $\chi_1 \wedge \chi_2$, $\chi_1 \vee \chi_2$, $\forall x.\chi_1$,
+  $\exists x.\chi_1$ equals its polarity in $\chi_i$; its polarity in
+  $\chi_1 \imp \chi_2$ equals its polarity in $\chi_2$, and is reversed if
+  the occurrence is in $\chi_1$.
+\end{definition}
+
+\begin{lemma}[Replacement]
+  \label{lem:replacement}
+  Let $\chi'$ be obtained from $\chi$ by replacing one occurrence of a
+  subformula $\psi$ by a formula $\psi'$, where $\psi'$ has no free
+  variables captured differently than in $\psi$ (guaranteed by our
+  convention on bound variables).  Let $\AA$ be a structure.
+  \begin{enumerate}[label=(\roman*)]
+  \item If $\AA \models \forall(\psi \biimp \psi')$ then
+    $\AA \models \forall(\chi \biimp \chi')$.
+  \item If $\AA \models \forall(\psi \imp \psi')$ and the occurrence is
+    positive, then $\AA \models \forall(\chi \imp \chi')$; if the occurrence
+    is negative, then $\AA \models \forall(\chi' \imp \chi)$.
+  \end{enumerate}
+\end{lemma}
+
+\begin{proof}
+  By induction on the structure of $\chi$.  If $\chi = \psi$ is the replaced
+  occurrence, both claims are the assumptions.  Otherwise $\chi$ is built by
+  a connective or quantifier from immediate subformulas, exactly one of
+  which contains the occurrence; apply the induction hypothesis to it and
+  conclude by the monotonicity of each connective in each argument, for
+  every fixed valuation: $\wedge$, $\vee$, $\forall$, $\exists$ are monotone
+  in each argument, and $\imp$ is monotone in its conclusion and antitone in
+  its antecedent --- which is precisely how \cref{def:polarity} propagates
+  polarity.  Quantifier cases use the induction hypothesis at all extensions
+  $v[x \mapsto d]$ of the valuation, which is licensed because the premise
+  of the lemma is the universal closure of $\psi \biimp \psi'$
+  (respectively $\psi \imp \psi'$).
+\end{proof}
+
+\begin{remark}
+  \Cref{lem:replacement} is stated per structure $\AA$; we will apply it
+  with $\AA$ ranging over models of the completion axioms $\Comp$, obtaining
+  entailments of the form $\Comp \models \chi \biimp \chi'$ from
+  $\Comp \models \psi \biimp \psi'$.
+\end{remark}

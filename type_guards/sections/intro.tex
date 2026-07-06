@@ -1,0 +1,136 @@
+\section{Introduction}
+\label{sec:intro}
+
+Hammers~\cite{BlanchetteKaliszykPaulsonUrban2016} connect proof assistants to
+automated theorem provers (ATPs): given a goal, they select a set of premises
+from the ambient library, translate goal and premises into the ATP's logic ---
+usually untyped first-order logic (FOL) with equality --- run external provers,
+and reconstruct a found proof inside the proof assistant.  For proof
+assistants based on the Calculus of Inductive Constructions (CIC), such as
+Rocq (formerly Coq), the translation step must bridge a large gap: CIC is a
+dependently typed higher-order logic, while the target is untyped and
+first-order.  The CoqHammer translation~\cite{CzajkaKaliszyk2018,Czajka2018}
+bridges it by, among other devices, two systematic sources of formula growth:
+
+\begin{enumerate}[label=(\alph*)]
+\item \emph{Type guards.}  A quantification $\forall x{:}\tau.\ \phi$ of the
+  source logic is translated to
+  $\forall x.\ \T(x, \enc{\tau}) \imp \enc{\phi}$, where $\T$ is a binary
+  \emph{typing predicate} of the target logic; dually
+  $\exists x{:}\tau.\ \phi$ becomes
+  $\exists x.\ \T(x,\enc{\tau}) \wedge \enc{\phi}$.  Guards keep the untyped
+  provers from instantiating quantifiers with terms of the wrong type, which
+  is in general necessary for soundness, but they lengthen every clause,
+  enlarge the search space, and are a well-documented performance
+  liability~\cite{MengPaulson2008,BlanchetteBohmePopescuSmallbone2016,
+  ClaessenLilliestromSmallbone2011}.
+\item \emph{Type arguments.}  A polymorphic constant or constructor is
+  translated together with its type instantiations: the list constructor
+  becomes a ternary symbol in $\mathit{cons}(\alpha, x, l)$.  Type arguments
+  inflate every term occurrence and interact badly with term indexing in
+  ATPs~\cite{MengPaulson2008,BlanchetteBohmePopescuSmallbone2016}.
+\end{enumerate}
+
+Both kinds of annotation are often \emph{redundant}.  If a premise has the
+form $\forall x{:}\mathit{nat}.\ \mathit{Even}\,x \imp \phi$, then the guard
+$\T(x,\mathit{nat})$ is superfluous \emph{given} the hypothesis atom
+$\mathit{Even}(x)$: in the intended interpretation the atom
+$\mathit{Even}(x)$ can only hold when $x$ denotes a natural number, because
+$\mathit{Even}$ is a predicate \emph{on} natural numbers --- an ill-typed
+application $\mathit{Even}\,t$ is not a proposition of the source logic at
+all, hence in particular not a provable one.  Similarly, the type argument of
+$\mathit{cons}$ is determined by the type of either of its term arguments,
+whereas the type argument of $\mathit{nil}$ is determined by nothing that
+survives translation and must be kept.  Proof-assistant practice supports the
+intuition --- elaboration infers exactly these annotations --- but turning the
+intuition into a criterion that is \emph{provably} sound is delicate: the
+literature on type encodings for polymorphic first-order and higher-order
+logics contains both a series of soundness proofs for guard-based encodings
+\cite{ClaessenLilliestromSmallbone2011,BlanchetteBohmePopescuSmallbone2016,
+BobotPaskevich2011,CouchotLescuyer2007} and a matching series of concrete
+unsoundness examples for naive omissions~\cite{MengPaulson2008,
+BlanchetteBohmePopescuSmallbone2016}.  For CIC the situation is harder still:
+types are themselves first-class terms, typing is not decidable by sort
+inference, and the only published soundness proof for a hammer translation of
+(a PTS approximation of) CIC~\cite{Czajka2018} leaves guard omission as a
+conjecture and poses the adaptation of monotonicity-based methods as an open
+problem.
+
+\paragraph{Contributions.}
+This paper gives precise criteria for both omissions and proves them correct
+for a substantial fragment of CIC.  Concretely:
+
+\begin{itemize}
+\item We define a source calculus \Frag\ --- a polymorphic first-order
+  fragment of CIC with parameterized inductive data types, inductive
+  predicates, ML-style prenex type quantification, and equality --- together
+  with its \emph{ground companion theory} $\Th$, a many-sorted first-order
+  theory that captures exactly the reasoning about \Frag-formulas that CIC
+  licenses (constructor injectivity, distinctness, case exhaustiveness,
+  predicate introduction and inversion), and we make the connection to CIC
+  precise (\cref{sec:fragment}).
+\item We define the guarded translation $\enc{\cdot}$ of \Frag\ into untyped
+  FOL with equality, including the axiom classes emitted by hammer
+  translations (typing axioms, unguarded injectivity and discrimination
+  axioms, inversion axioms, translated premises) and a class of
+  \emph{typehood-completion axioms} $\Comp$ asserting that provable atoms
+  carry well-typed arguments.  From an arbitrary many-sorted model $\NN$ of
+  $\Th$ we construct an untyped model $\MN$ whose domain contains, besides
+  tagged copies of the carriers of $\NN$, a syntactic universe of \emph{junk}
+  elements denoting ill-typed applications, and we prove that $\MN$ validates
+  the whole translation, completion axioms and unguarded injectivity included
+  (\cref{sec:translation}).  This yields a self-contained, model-theoretic
+  soundness theorem for the guarded translation: if the translated problem is
+  refutable, the goal holds in every model of $\Th$
+  (\cref{thm:base-soundness-end}).
+\item We formulate the guard-omission criterion (\cref{sec:guards}).  Its
+  ingredients are the \emph{typing consequences} $\tc{A}$ of an atom $A$ ---
+  guard atoms forced by $A$'s predicate symbol at each argument position ---
+  and a pair of mutually recursive syntactic judgments
+  $\jtx{x}{u}$/$\jfx{x}{u}$ (``junk-true''/``junk-false'') identifying
+  formulas whose truth value is determined under every valuation that
+  falsifies the guard $\T(x,u)$.  The main theorem
+  (\cref{thm:guard-equivalence}) states that if $\jtx{x}{u}(\phi)$ then
+  \[
+    \Comp \models (\forall x.\ \T(x,u) \imp \phi) \biimp (\forall x.\ \phi),
+  \]
+  a logical equivalence relative to the completion axioms; guard omission is
+  therefore sound at \emph{any} polarity, in premises and goal alike, and,
+  when the completion axioms are emitted, it is also \emph{conservative}: no
+  ATP proof is lost (\cref{cor:no-loss}).  We also analyze the existential
+  and polarity-restricted cases, where only an implication holds, and prove a
+  simultaneous-omission theorem justifying the fixpoint algorithm used in
+  practice (\cref{prop:simultaneous}).
+\item We formulate the type-argument-erasure criterion (\cref{sec:typeargs}):
+  a type argument position $j$ of a function or constructor symbol is
+  erasable iff the corresponding type variable occurs in the declared type of
+  a retained term argument.  We prove a uniqueness lemma in the style of
+  Blanchette et al.'s ``inferable type argument''
+  lemma~\cite{BlanchetteBohmePopescuSmallbone2016} --- in our fragment, by an
+  elementary injectivity property of type substitution --- and construct from
+  $\NN$ an untyped model $\MNe$ of the \emph{erased} translation, in which
+  the omitted arguments are recovered uniquely from the retained ones.  Truth
+  of the translated goal in $\MNe$ again coincides with truth in $\NN$
+  (\cref{lem:erasure-relativization}), which yields soundness of erasure
+  (\cref{thm:erasure-soundness}) and of the combination of both optimizations
+  (\cref{thm:composition}); the combination requires that predicate symbols
+  are never erased, and we show why.
+\item We prove the criteria \emph{tight} (\cref{sec:tightness}): dropping an
+  uncovered guard, dropping an existential guard conjunct licensed only by
+  junk-truth, erasing a result-only type argument, and erasing a predicate's
+  type argument each admit a concrete, consistent environment in which the
+  transformed translation refutes a goal that fails in some model of $\Th$.
+  These four counterexamples are the formal counterparts of unsoundness
+  patterns observed in practice~\cite{MengPaulson2008,
+  BlanchetteBohmePopescuSmallbone2016,CzajkaKaliszyk2018}.
+\end{itemize}
+
+The criteria are designed to be implementable as a purely syntactic
+post-processing pass over the first-order formulas produced by an existing
+hammer translation, requiring from the source system only the declared types
+of the translated constants.  We discuss the relation to guard-based and
+monotonicity-based type encodings, to Mizar's cluster registrations, and to
+the proof-theoretic soundness framework of~\cite{Czajka2018} in
+\cref{sec:related}, together with the limitations of the fragment
+(higher-order features, dependent function types, conversion) and the
+corresponding open problems.

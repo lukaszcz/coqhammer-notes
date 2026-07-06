@@ -1,0 +1,463 @@
+Goal Translation for a Hammer for Coq (Extended Abstract)
+Łukasz Czajka
+
+Cezary Kaliszyk
+
+lukasz.czajka@uibk.ac.at
+
+cezary.kaliszyk@uibk.ac.at
+
+University of Innsbruck, Austria
+
+University of Innsbruck, Austria
+
+Hammers are tools that provide general purpose automation for formal proof assistants. Despite the
+gaining popularity of the more advanced versions of type theory, there are no hammers for such systems. We present an extension of the various hammer components to type theory: (i) a translation of
+a significant part of the Coq logic into the format of automated proof systems; (ii) a proof reconstruction mechanism based on a Ben-Yelles-type algorithm combined with limited rewriting, congruence
+closure and a first-order generalization of the left rules of Dyckhoff’s system LJT.
+
+1
+
+Introduction
+
+Justifying small proof steps is usually a significant part of the process of formalizing proofs in an interactive theorem proving (ITP), or proof assistant, system. Many of such goals would be considered
+trivial by mathematicians. Still, state-of-the-art ITPs require the user to spend an important part of the
+formalization effort on them. The main points that constitute this effort are usually library search, minor
+transformations on the already proved theorems (such as reordering assumptions or reasoning modulo
+associativity-commutativity), as well as combining a small number of simple known lemmas. To reduce
+this effort various automation techniques have been conceived, including techniques from automated reasoning and domain specific decision procedures. The strongest general propose automation technique,
+available for various interactive theorem provers today is provided by “hammers” [10].
+Hammers are proof assistant tools that employ external automated theorem provers (ATPs) in order
+to automatically find proofs of user given conjectures. There are three main components of a hammer:
+• Lemma selection (also called relevance filtering or premise selection) that heuristically chooses a
+subset of the accessible lemmas that are likely useful for the given conjecture.
+• Translation (encoding) of the user given conjecture together with the selected lemmas to the logics
+and input formats of automated theorem provers (ATPs). The focus is usually on first-order logic
+as the majority of the most efficient ATPs today support this foundation. The automated systems
+are in turn used to either find an ATP proof or just further narrow down the subset of lemmas to
+precisely those that are necessary in the proof.
+• Proof reconstruction, which uses the obtained information from the successful ATP run, to reprove
+the lemma in the logic of the proof assistant.
+Robust hammers exist for proof assistants based on higher-order logic (Sledgehammer [27] for Isabelle/HOL [33], HOLyHammer [20] for HOL Light [18] and HOL4 [31]) or dependently typed set
+theory (MizAR [21] for Mizar [7, 34, 6]). The general-purpose automation provided by the most advanced hammers is able to solve 40–50% of the top-level goals in various developments [10], as well as
+more than 70% of the user-visible subgoals [11], and as such has been found very useful in various proof
+developments [17].
+Despite the gaining popularity of the more advanced versions of type theory, implemented by systems
+such as Agda [12], Coq [8], Lean [25], and Matita [4], there are no hammers for such systems. The
+J.C. Blanchette and C. Kaliszyk:
+Hammers for Type Theories (HaTT’16)
+EPTCS 210, 2016, pp. 13–20, doi:10.4204/EPTCS.210.4
+
+c Ł. Czajka & C. Kaliszyk
+This work is licensed under the
+Creative Commons Attribution License.
+
+Goal Translation for a Hammer for Coq (Extended Abstract)
+
+14
+
+construction of such a tool has so far been hindered by the lack of a usable encoding component, as well
+as by comparatively weak proof reconstuction.
+For the proof assistants whose logics are based on the Calculus of Constructions and its extensions,
+the existing encodings in first-order logic so far cover only limited fragments of the source logic [1, 32, 9].
+Why3 [16] provides a translation from its own logic [15] (which is a subset of the Coq logic, including
+features like rank-1 polymorphism, algebraic data types, recursive functions and inductive predicates)
+to the format of various first-order provers (in fact Why3 has been initially used as a translation backend for HOLyHammer). Recently, an encoding of the dependently typed higher-order logic of F∗ into
+first-order logic has also been developed [2].
+The built-in HOL automation is able to reconstruct the majority of the automatically found proofs
+using either internal proof search [19] or source-level reconstruction. The internal proof search mechanisms provided in Coq, such as the firstorder tactic [13], have been insufficient for this purpose so far.
+Matita’s ordered paramodulation [5] is able to reconstruct many goals with up to two or three premises,
+and the congruence-closure based internal automation techniques in Lean [24] are also promising.
+The SMTCoq [3] project has developed an approach to use external SAT and SMT solvers and verify
+their proof witnesses. Small checkers are implemented using reflection for parts of the SAT and SMT
+proof reconstruction, such as one for CNF computation and one for congruence closure. The procedure
+is able to handle Coq goals in the subset of the logic that corresponds to the logics of the input systems.
+Contributions. We present our recently developed proof advice components for type theory and systems
+based on it. We first introduce an encoding of the Calculus of Inductive Constructions, including the
+additional logical constructions introduced by the Coq system, in untyped first-order logic with equality.
+We implement the translation and evaluate it experimentally on the standard library of the Coq proof
+assistant. We advocate that the encoding is sufficient for a hammer system for Coq: the success rates
+are comparable to those demonstrated by early hammer systems for Isabelle/HOL and Mizar, while the
+dependencies used in the ATP proofs are most often sufficient to prove the original theorems. Strictly
+speaking, our translation is neither sound nor complete. However, our experiments suggest that the
+encoding is “sound enough” to be usable. Moreover, we believe that a “core” version of the translation
+is sound and we are currently working on a proof of this fact.
+Secondly, we present a proof reconstruction mechanism based on a Ben-Yelles-type procedure combined with a first-order generalization of the left rules of Dyckhoff’s LJT, congruence closure and heuristic rewriting. With this still preliminary proof search procedure we are able to reprove almost 90% of the
+problems solved by the ATPs, using the dependencies extracted from the ATP output.
+
+2
+
+Translation
+
+In this section we introduce an encoding of (a close approximation of) the Calculus of Inductive Constructions into untyped first-order logic with equality. The encoding should be a practical one, which
+implies that its general theoretical soundness is not the main focus, i.e., of course the translation needs to
+be “sound enough” to be usable, but it is more important that the encoding is efficient enough to provide
+practically useful information about the necessary proof dependencies. In particular, the encoding needs
+to be shallow, meaning that Coq terms of type Prop are translated directly to corresponding first-order
+formulas. Our translation is in fact unsound, e.g., it assumes proof irrelevance and ignores certain universe constraints. However, we believe that under the assumption of proof irrelevance a “core” version
+of the translation is sound, and we are currently working on a proof.
+
+Ł. Czajka & C. Kaliszyk
+
+15
+
+Below we present a variant of the translation for a fragment of the logic of Coq. The intention here
+is to provide a general idea, but not to describe the encoding in detail. In the first-order language we
+assume a unary predicate P, a binary predicate T and a binary function symbol @. Usually, we write ts
+instead of @(t, s).
+For the sake of efficiency, terms of type Prop are encoded directly as FOL formulas using a function F . Terms that have type Type but not Prop are encoded using a function G as guards which
+essentially specify what it means for an object to have the given type. For instance, ∀ f : τ.ϕ where
+τ = Πx : α.β is translated to ∀ f.G (τ, f ) → F (ϕ) where G (τ, f ) = ∀x.G (α, x) → G (β, f x). So G (τ, f )
+says that an object f has type τ = Πx : α.β if for any object x of type α, the application f x has type β.
+Function F encoding propositions as FOL formulas is defined by:
+• If Γ ⊢ t : Prop then FΓ (Πx : t.s) = FΓ (t) → FΓ,x:t (s).
+• If Γ 6⊢ t : Prop then FΓ (Πx : t.s) = ∀x.GΓ (t, x) → FΓ,x:t (s).
+• Otherwise, if none of the above apply, FΓ (t) = P(CΓ (t)).
+Function G encoding types as guards is defined by:
+• If t = Πx : t1 .t2 and Γ ⊢ t1 : Prop then GΓ (Πx : t1 .t2 , s) = FΓ (t1 ) → GΓ,x:t1 (t2 , s).
+• If t = Πx : t1 .t2 and Γ 6⊢ t1 : Prop then GΓ (Πx : t1 .t2 , s) = ∀x.GΓ (t1 , x) → GΓ,x:t1 (t2 , sx).
+• Otherwise, when t is not a product GΓ (t, s) = T (u, CΓ (t)).
+Function C encoding terms as FOL terms is defined by:
+• CΓ (b) = b for b being a variable or a constant,
+• CΓ (ts) is equal to:
+– CΓ (t) if Γ ⊢ s : A : Prop for some A,
+– CΓ (t)CΓ (s) otherwise.
+• CΓ (Πx : t.s) = P~y for a fresh constant P where ~y = FV(Πx : t.s) and
+– if Γ ⊢ (Πx : t.s) : Prop then ∀~y.P~y ↔ FΓ (Πx : t.s) is a new axiom,
+– if Γ 6⊢ (Πx : t.s) : Prop then ∀~yz.P~yz ↔ GΓ (Πx : t.s, z) is a new axiom.
+• CΓ (λ~x : ~t.s) = F~y where s does not start with a lambda-abstraction any more, F is a fresh constant,
+~y = FV(λ~x : ~t.s) and ∀~y.FΓ (∀~x : ~t.F~y~x = s) is a new axiom.
+• CΓ (case(t, c, n, λ~a : α
+~ .λx : c~p~a.τ, λ x~1 : τ~1 .s1 , . . . , λ x~k : τ~k .sk )) = F y~1 y~2 for a fresh constant F where
+– I(c : γ : κ := c1 : γ1 : κ1 , . . . , ck : γk : κk ) ∈ E,
+– Γ2 = y~2 : ρ~2 = FC(Γ; t),
+– Γ1 = y~1 : ρ~1 = FC(Γ; λy~2 : ρ~2 .t(λ x~1 : τ~1 .s1 ) . . . (λ x~k : τ~k .sk )),
+– γi = Π~
+zi : β~i .Π~
+xi : τ~i .σi for i = 1, . . . , k,
+– the following is a new axiom:
+∀y~1 .FΓ1 (∀y~2 : ρ~2
+
+. (∃z~1 : β~1 .∃ x~1 : τ~1 .t = c1 z~1 x~1 ∧ F y~1 y~2 = s1 )
+∨ ...
+∨ (∃~
+zk : β~k .∃ x~k : τ~k .t = ck z~k x~k ∧ F y~1 y~2 = sk ))
+
+Goal Translation for a Hammer for Coq (Extended Abstract)
+
+16
+
+Here t is the term matched on, the type of t has the form c~p~u, the integer n denotes the number
+of parameters (which is the length of ~p), the type τ[~u/~a, t/x] is the return type, i.e., the type of
+the whole case expression, ~a ∩ FV(~p) = 0,
+/ and si [~v/~
+xi ] is the value of the case expression if the
+value of t is ci ~p~v. The free variable context FC(Γ; t) of t in Γ is defined inductively: FC(0;
+/ t) = 0;
+/
+FC(Γ, x : τ; t) = FC(Γ; λx : τ.t), x : τ if x ∈ FV(t); and FC(Γ, x : τ; t) = FC(Γ; t) if x ∈
+/ FV(t).
+In the data exported from Coq there are three types of declarations: definitions, typing declarations
+and inductive declarations. We briefly describe how all of them are translated.
+A definition c = t : τ : κ is translated as follows.
+• If κ = Prop then add F (τ) as a new axiom with label c.
+• If κ 6= Prop then
+– add G (τ, c) as a new axiom,
+– if τ = Prop then add c ↔ F (t) as a new axiom with label c,
+– if τ = Set or τ = Type then add ∀ f.c f ↔ G (t, f ) as a new axiom with label c,
+– if τ ∈
+/ {Prop, Set, Type} then add the equation c = C (t) as a new axiom with label c.
+A typing declaration c : τ : κ is translated as follows.
+• If κ = Prop then add F (τ) as a new axiom with label c.
+• If κ 6= Prop then add G (τ, c) as a new axiom with label c.
+An inductive declaration I(c : τ : κ := c1 : τ1 : κ1 , . . . , cn : τn : κn ) is translated as follows.
+• Translate the typing declaration c : τ : κ.
+• Translate each typing declaration ci : τi : κ for i = 1, . . . , n.
+• Add axioms stating injectivity of constructors, axioms stating non-equality of different constructors, and the “inversion” axioms for elements of the inductive type.
+For inductive types also induction principles and recursor definitions are translated.
+The above only gives a general outline of the translation. In practice, we make a number of optimisations, e.g., the arity optimisation by Meng and Paulson [23], or translating fully applied functions with
+target type Prop directly to first-order predicates.
+
+3
+
+Reconstruction
+
+We report on our work on proof reconstruction. We evaluate the Coq internal reconstruction mechanisms
+including tauto and firstorder [13] on the original proof dependencies and on the ATP found proofs,
+which are in certain cases more precise. In particular firstorder seems insufficient for finding proofs
+for problems created using the advice obtained from the ATP runs. This is partly caused by the fact that
+it does not fully axiomatize equality, but even on problems which require only purely logical first-order
+reasoning its running time is sometimes unacceptable.
+The formulas that we attempt to reprove usually belong to fragments of intuitionistic logic low in the
+Mints hierarchy [29]. Most of proved theorems follow by combining a few known lemmas. This raises a
+possibility of devising an automated proof procedure optimized for these fragments of intuitionistic logic,
+and for the usage of the advice obtained from the ATP runs. We implemented a preliminary version of a
+Ben-Yelles-type procedure (essentially eauto-type proof search with a looping check) augmented with
+
+Ł. Czajka & C. Kaliszyk
+
+17
+
+Prover
+
+Solved%
+
+Solved
+
+Sum%
+
+Sum
+
+Unique
+
+Vampire
+Z3
+E Prover
+
+32.9
+27.6
+25.8
+
+6839
+5734
+5376
+
+32.9
+34.9
+35.3
+
+6839
+7265
+7337
+
+855
+390
+72
+
+any
+
+35.3
+
+7337
+
+35.3
+
+7337
+
+Table 1: Results of the experimental evaluation on the 20803 FOL problems generated from the propositions in the Coq standard library.
+a first-order generalization of the left rules of Dyckhoff’s system LJT [14], the use of the congruence
+tactic, and heuristic rewriting using equational hypotheses.
+It is important to note that while the external ATPs we employ are classical and the translation
+assumes proof irrelevance, the proof reconstruction phase does not assume any additional axioms. We
+reprove the theorems in the intuitionistic logic of Coq, effectively using the output of the ATPs merely
+as hints for our hand-crafted proof search procedure. Therefore, if the ATP proof is inherently classical
+then proof reconstruction will fail. Currently, the only information from ATP runs we use is a list of
+lemmas needed by the ATP to prove the theorem (these are added to the context) and a list of constant
+definitions used in the ATP proof (we try unfolding these constants and no others).
+Another thing to note is that we do not use the information contained in the Coq standard library
+during reconstruction. This would not make sense for our evaluation of the reconstruction mechanism,
+since we try to reprove the theorems from the Coq standard library. In particular, we do not use any
+preexisting hint databases available in Coq, not even the core database (we use the auto and eauto
+tactics with the nocore option). Also, we do not use any domain-specific decision procedures available
+as Coq tactics, e.g., field, ring or omega.
+
+4
+
+Evaluation
+
+We evaluated our translation on the problems generated from all declarations of terms of type Prop in the
+Coq standard library of Coq version 8.5. We used the following classical ATPs: E Prover version 1.9 [30],
+Vampire version 4.0 [22] and Z3 version 4.0 [26]. The methodology was to measure the number of
+theorems that the ATP could reprove from their extended dependencies within a time limit of 30 s for
+each problem. The extended dependencies of a theorem are obtained by taking all constants occuring in
+the proof term of the theorem in Coq standard library, and recursively taking all constants occuring in
+the types and non-proof definitions of any dependencies extracted so far. Because of the use of extended
+dependencies, the average number of generated FOL axioms for a problem is 193. We limited the
+recursive extraction of extended dependencies to depth 2.
+The evaluation was performed on a 48-core server with 2.2 GHz AMD Opteron CPUs and 320 GB
+RAM. Each problem was always assigned one CPU core. Table 1 shows the results of our evaluation. The
+column “Solved%” denotes the percentage (rounded to the first decimal place) of the problems solved by
+a given prover, and “Solved” the number of problems solved out of the total number of 20803 problems.
+The column “Sum%” denotes the percentage, and “Sum” the total number, of problems solved by the
+prover or any of the provers listed above it. The column “Unique” denotes the number of problems the
+given prover solved but no other prover could solve.
+We also evaluated various proof reconstruction mechanisms on the problems originating from ATP
+
+Goal Translation for a Hammer for Coq (Extended Abstract)
+
+18
+
+Tactic
+
+Time
+
+Solved%
+
+Solved
+
+yreconstr0
+yreconstr
+yreconstr
+yreconstr
+yreconstr
+yreconstr
+simple
+firstorder’
+jprover
+
+10s
+1s
+2s
+5s
+10s
+15s
+1s
+10s
+10s
+
+26.8
+83.1
+85.8
+87.5
+88.1
+88.2
+50.1
+69.6
+56.1
+
+1965
+6097
+6296
+6421
+6466
+6473
+3674
+5103
+4114
+
+90.1
+
+6609
+
+any
+
+Table 2: Results of the evaluation of proof reconstruction on the 7337 problems solved by the ATPs.
+proofs of lemmas in the Coq standard library. In our setting, the Ben-Yelles-type algorithm mentioned
+in the previous section tends to perform significantly better than the available Coq’s tactics. The results
+of the evaluation are presented in Table 2. Our tactic (yreconstr) manages to reconstruct about 88% of
+the reproved theorems. However, it needs to be remarked that if we use the advice obtained from ATP
+runs then about 50% of the the reproved theorems follow by a combination of hypothesis simplification,
+the tactics intuition, auto, easy, congruence and a few heuristics (tactic simple). Moreover, the
+yreconstr tactic without any hints (yreconstr0), i.e., without using any of the information obtained
+from ATP runs, achieves a success rate of about 26%. The reconstruction success rate of the firstorder
+tactic combined with various heuristics is about 70% if generic axioms for equality are added to the
+context (tactic firstorder’). The jp tactic (which integrates the intuitionistic first-order automated
+theorem prover JProver [28] into Coq) combined with various heuristics and equality axioms (tactic
+jprover) achieves a reconstruction success rate of about 56%. This low success rate is explained by the
+fact that in contrast to the firstorder tactic the jp tactic cannot be parameterised by a tactic used at
+the leaves of the search tree when no logical rule applies.
+Acknowledgments. We thank the organizers of the First Coq Coding Sprint, especially Yves Bertot,
+for the help with implementing Coq export plugins. We wish to thank Thibault Gauthier for the first
+version of the Coq exported data, as as well as Claudio Sacerdoti-Coen for improvements to the exported
+data and fruitful discussions on Coq proof reconstruction. This work has been supported by the Austrian
+Science Fund (FWF) grant P26201.
+
+References
+[1] Andreas Abel, Thierry Coquand & Ulf Norell (2005): Connecting a Logical Framework to a First-Order
+Logic Prover. In Bernhard Gramlich, editor: Frontiers of Combining Systems (FroCoS 2005), LNCS 3717,
+Springer, pp. 285–301, doi:10.1007/11559306_17.
+[2] Alejandro Aguirre, Cătălin Hrit, cu, Chantal Keller & Nikhil Swamy (2016): From F∗ to SMT (Extended
+Abstract). In: Hammers for Type Theories, HaTT 2016. To appear.
+[3] Michaël Armand, Germain Faure, Benjamin Grégoire, Chantal Keller, Laurent Théry & Benjamin Werner
+(2011): A Modular Integration of SAT/SMT Solvers to Coq through Proof Witnesses. In Jean-Pierre Jouan-
+
+Ł. Czajka & C. Kaliszyk
+
+19
+
+naud & Zhong Shao, editors: Certified Programs and Proofs (CPP 2011), LNCS 7086, Springer, pp. 135–150,
+doi:10.1007/978-3-642-25379-9_12.
+[4] Andrea Asperti, Wilmer Ricciotti & Claudio Sacerdoti Coen (2014): Matita Tutorial. J. Formalized Reasoning 7(2), pp. 91–199, doi:10.6092/issn.1972-5787/4651.
+[5] Andrea Asperti & Enrico Tassi (2007): Higher order Proof Reconstruction from Paramodulation-Based Refutations: The Unit Equality Case. In Manuel Kauers, Manfred Kerber, Robert Miner & Wolfgang Windsteiger,
+editors: Mathematical Knowledge Management (MKM 2007), LNCS 4573, Springer, pp. 146–160, doi:10.
+1007/978-3-540-73086-6_14.
+[6] Grzegorz Bancerek (2003): On the structure of Mizar types. Electr. Notes Theor. Comput. Sci. 85(7), pp.
+69–85, doi:10.1016/S1571-0661(04)80758-8.
+[7] Grzegorz Bancerek, Czeslaw Bylinski, Adam Grabowski, Artur Kornilowicz, Roman Matuszewski, Adam
+Naumowicz, Karol Pak & Josef Urban (2015): Mizar: State-of-the-art and Beyond. In: Intelligent Computer
+Mathematics - International Conference, CICM 2015, Washington, DC, USA, July 13-17, 2015, Proceedings,
+pp. 261–279, doi:10.1007/978-3-319-20615-8_17.
+[8] Yves Bertot (2008): A Short Presentation of Coq. In Otmane Aït Mohamed, César A. Muñoz & Sofiène
+Tahar, editors: Theorem Proving in Higher Order Logics (TPHOLs 2008), LNCS 5170, Springer, pp. 12–16,
+doi:10.1007/978-3-540-71067-7_3.
+[9] Marc Bezem, Dimitri Hendriks & Hans de Nivelle (2002): Automated Proof Construction in Type Theory
+Using Resolution. J. Autom. Reasoning 29(3-4), pp. 253–275, doi:10.1023/A:1021939521172.
+[10] Jasmin C. Blanchette, Cezary Kaliszyk, Lawrence C. Paulson & Josef Urban (2016): Hammering towards
+QED. J. Formalized Reasoning 9(1), pp. 101–148, doi:10.6092/issn.1972-5787/4593. Available at
+http://jfr.unibo.it/article/view/4593.
+[11] Jasmin Christian Blanchette, David Greenaway, Cezary Kaliszyk, Daniel Kühlwein & Josef Urban
+(2016): A Learning-Based Relevance Filter for Isabelle/HOL. J. Autom. Reasoning, to appear. http://
+cl-informatik.uibk.ac.at/cek/mash2.pdf.
+[12] Ana Bove, Peter Dybjer & Ulf Norell (2009): A Brief Overview of Agda - A Functional Language with
+Dependent Types. In Stefan Berghofer, Tobias Nipkow, Christian Urban & Makarius Wenzel, editors: Theorem Proving in Higher Order Logics (TPHOLs 2009), LNCS 5674, Springer, pp. 73–78, doi:10.1007/
+978-3-642-03359-9_6.
+[13] Pierre Corbineau (2003): First-Order Reasoning in the Calculus of Inductive Constructions. In Stefano
+Berardi, Mario Coppo & Ferruccio Damiani, editors: Types for Proofs and Programs (TYPES 2003), LNCS
+3085, Springer, pp. 162–177, doi:10.1007/978-3-540-24849-1_11.
+[14] Roy Dyckhoff (1992): Contraction-Free Sequent Calculi for Intuitionistic Logic. J. Symb. Log. 57(3), pp.
+795–807, doi:10.2307/2275431.
+[15] Jean-Christophe Filliâtre (2013): One Logic to Use Them All. In Maria Paola Bonacina, editor: International Conference on Automated Deduction (CADE 2013), LNCS 7898, Springer, pp. 1–20, doi:10.1007/
+978-3-642-38574-2_1.
+[16] Jean-Christophe Filliâtre & Andrei Paskevich (2013): Why3 - Where Programs Meet Provers. In: European
+Symposium on Programming (ESOP 2013), pp. 125–128, doi:10.1007/978-3-642-37036-6_8.
+[17] Thomas Hales (2013–2014): Developments in Formal Proofs. Séminaire Bourbaki 1086. abs/1408.6474.
+[18] John Harrison (2009): HOL Light: An Overview. In Stefan Berghofer, Tobias Nipkow, Christian Urban &
+Makarius Wenzel, editors: Theorem Proving in Higher Order Logics (TPHOLs 2009), LNCS 5674, Springer,
+pp. 60–66, doi:10.1007/978-3-642-03359-9_4.
+[19] Joe Hurd (2003): First-Order Proof Tactics in Higher-Order Logic Theorem Provers. In Myla Archer, Ben Di
+Vito & César Muñoz, editors: Design and Application of Strategies/Tactics in Higher Order Logics (STRATA
+2003), NASA Technical Reports NASA/CP-2003-212448, pp. 56–68. Available at http://techreports.
+larc.nasa.gov/ltrs/PDF/2003/cp/NASA-2003-cp212448.pdf.
+
+20
+
+Goal Translation for a Hammer for Coq (Extended Abstract)
+
+[20] Cezary Kaliszyk & Josef Urban (2014): Learning-Assisted Automated Reasoning with Flyspeck. J. Autom.
+Reasoning 53(2), pp. 173–213, doi:10.1007/s10817-014-9303-3.
+[21] Cezary Kaliszyk & Josef Urban (2015): MizAR 40 for Mizar 40. J. Autom. Reasoning 55(3), pp. 245–256,
+doi:10.1007/s10817-015-9330-8.
+[22] Laura Kovács & Andrei Voronkov (2013): First-Order Theorem Proving and Vampire. In: Computer-Aided
+Verification (CAV 2013), pp. 1–35, doi:10.1007/978-3-642-39799-8_1.
+[23] Jia Meng & Lawrence C. Paulson (2008): Translating Higher-Order Clauses to First-Order Clauses. Journal
+of Automated Reasoning 40(1), pp. 35–60, doi:10.1007/s10817-007-9085-y.
+[24] Leonardo de Moura & Daniel Selsam (2016): Congruence Closure in Intensional Type Theory. In: International Joint Conference on Automated Reasoning, IJCAR 2016. To appear.
+[25] Leonardo Mendonça de Moura, Soonho Kong, Jeremy Avigad, Floris van Doorn & Jakob von Raumer (2005):
+The Lean Theorem Prover. In Amy P. Felty & Aart Middeldorp, editors: International Conference on Automated Deduction (CADE 2005), LNCS 9195, Springer, pp. 378–388, doi:10.1007/978-3-319-21401-6_
+26.
+[26] Leonardo Mendonça de Moura & Nikolaj Bjørner (2008): Z3: An Efficient SMT Solver. In C. R. Ramakrishnan & Jakob Rehof, editors: TACAS 2008, LNCS 4963, Springer, pp. 337–340, doi:10.1007/
+978-3-540-78800-3_24.
+[27] Lawrence C. Paulson & Jasmin Blanchette (2010): Three Years of Experience with Sledgehammer, a Practical
+Link between Automated and Interactive Theorem Provers. In: 8th IWIL. Available at http://www4.in.
+tum.de/~schulz/PAPERS/STS-IWIL-2010.pdf.
+[28] Stephan Schmitt, Lori Lorigo, Christoph Kreitz & Aleksey Nogin (2001): JProver : Integrating ConnectionBased Theorem Proving into Interactive Proof Assistants. In Rajeev Goré, Alexander Leitsch & Tobias
+Nipkow, editors: Automated Reasoning, First International Joint Conference, IJCAR 2001, Siena, Italy, June
+18-23, 2001, Proceedings, Lecture Notes in Computer Science 2083, Springer, pp. 421–426, doi:10.1007/
+3-540-45744-5_34.
+[29] Aleksy Schubert, Paweł Urzyczyn & Konrad Zdanowski (2015): On the Mints Hierarchy in First-Order
+Intuitionistic Logic. In Andrew M. Pitts, editor: Foundations of Software Science and Computation Structures (FoSSaCS 2015), Lecture Notes in Computer Science 9034, Springer, pp. 451–465, doi:10.1007/
+978-3-662-46678-0_29.
+[30] Stephan Schulz (2013): System Description: E 1.8. In: Logic for Programming, Artificial Intelligence (LPAR
+2013), pp. 735–743, doi:10.1007/978-3-642-45221-5_49.
+[31] Konrad Slind & Michael Norrish (2008): A Brief Overview of HOL4. In Otmane Ait Mohamed, César
+Muñoz & Sofiène Tahar, editors: TPHOLs 2008, LNCS 5170, Springer, pp. 28–32, doi:10.1007/
+978-3-540-71067-7_6.
+[32] Tanel Tammet & Jan M. Smith (1998): Optimized Encodings of Fragments of Type Theory in First-Order
+Logic. J. Log. Comput. 8(6), pp. 713–744, doi:10.1093/logcom/8.6.713.
+[33] Makarius Wenzel, Lawrence C. Paulson & Tobias Nipkow (2008): The Isabelle Framework. In Otmane Aït
+Mohamed, César A. Muñoz & Sofiène Tahar, editors: Theorem Proving in Higher Order Logics (TPHOLs
+2008), LNCS 5170, Springer, pp. 33–38, doi:10.1007/978-3-540-71067-7_7.
+[34] Freek Wiedijk (2007): Mizar’s Soft Type System. In: Theorem Proving in Higher Order Logics, 20th International Conference, TPHOLs 2007, Kaiserslautern, Germany, September 10-13, 2007, Proceedings, pp.
+383–399, doi:10.1007/978-3-540-74591-4_28.
+
+

@@ -1,0 +1,99 @@
+% Compile with XeTeX:  just  (or: xelatex main; bibtex main; xelatex main; xelatex main)
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=2.7cm]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{mathtools}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue!50!black,citecolor=green!35!black,urlcolor=blue!50!black]{hyperref}
+\usepackage[capitalize,noabbrev]{cleveref}
+
+\input{macros}
+
+\numberwithin{equation}{section}
+\emergencystretch=1.5em
+
+\title{Sound Monomorphisation and Monotonicity-Based Guard Erasure\\
+for Hammers for Dependent Type Theory}
+
+\author{{\L}ukasz Czajka\\[1ex]
+\normalsize TU Dortmund University, Dortmund, Germany\\
+\normalsize \texttt{lukasz.czajka@tu-dortmund.de}}
+
+\date{Draft of \today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Hammers connect proof assistants to automated theorem provers (ATPs)
+by translating goals and selected premises into first-order logic.
+For dependent type theory the standard translation, implemented in
+CoqHammer, is an untyped encoding in which typing information is
+retained through \emph{guards}: atoms $\hastype(x,\tau)$ expressing
+that the individual $x$ has type $\tau$.  Guards make the encoding
+sound but verbose, and quantification over types makes the resulting
+problems hard for ATPs.  Two optimisations promise substantial
+improvements: \emph{heuristic monomorphisation}, which instantiates
+type quantifiers with ground types occurring in the problem, and
+\emph{guard erasure}, which deletes guards that provably do not
+affect provability.  Both have long been used for simple type theory
+in Sledgehammer-style tools, where their correctness rests on the
+model theory of many-sorted first-order logic.  No comparable
+analysis exists for dependent type theory; the standard soundness
+proof for the CoqHammer translation is proof-theoretic and, as its
+author observed, incompatible with the model-theoretic methods
+underlying monotonicity inference.
+
+This paper closes that gap.  We define a calculus $\CICm$ --- a
+predicative fragment of the Calculus of Inductive Constructions with
+an impredicative universe of propositions and parametric inductive
+types --- together with a set-theoretic semantics, and give a
+self-contained, model-theoretic soundness proof for a guarded
+translation of $\CICm$ into classical untyped first-order logic: the
+guard predicate is interpreted as set membership, and every
+first-order consequence of the translated problem is true in the
+induced standard model.  On this basis we prove three groups of
+results.  First, heuristic monomorphisation --- formulated as
+premise instantiation at the level of $\CICm$, followed by
+normalisation and retranslation --- preserves soundness
+unconditionally, and, when generic premises are kept, provability;
+we also show that no complete recursive monomorphisation procedure
+exists.  Second, \emph{signature specialisation}, the per-occurrence
+replacement of guard, application and truth atoms by fresh
+specialised symbols (without bridging axioms), preserves soundness,
+and is provability-preserving on fully monomorphised problems.
+Third, we formulate \emph{monotonicity-based guard erasure} for the
+resulting monomorphic problems and prove it sound: guards of a type
+$\tau$ may be erased whenever $\tau$ is witnessed inhabited and
+either no variable of type $\tau$ occurs naked in a positive
+equation, or the problem forces $\tau$ to be infinite --- a condition
+that for inductive types is established by the injectivity and
+discrimination axioms the translation itself emits.  We prove that
+both side conditions are necessary, and that the classical
+counterexample to guard erasure in the CoqHammer literature is
+precisely a violation of monotonicity.  All proofs are given in
+full.
+\end{abstract}
+
+\tableofcontents
+
+\input{sec-intro}
+\input{sec-calculus}
+\input{sec-semantics}
+\input{sec-translation}
+\input{sec-mono}
+\input{sec-specialization}
+\input{sec-erasure}
+\input{sec-pipeline}
+\input{sec-related}
+\input{sec-conclusion}
+
+\bibliographystyle{alpha}
+\bibliography{refs}
+
+\end{document}

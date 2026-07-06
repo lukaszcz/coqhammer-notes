@@ -1,0 +1,604 @@
+\section{The source calculus \texorpdfstring{$\CICm$}{CIC-}}
+\label{sec:calculus}
+
+This section defines the source calculus of the translation: a monomorphic,
+first-order fragment of the Calculus of Inductive Constructions.  The
+calculus is presented in a \emph{stratified} style: instead of a single
+syntactic category of terms classified by sorts, we keep separate
+categories for set types, propositions, predicates, terms and proofs.  The
+stratification builds the outcome of CIC's sort analysis --- which subterms
+are computational, which are logical, which are type-level --- into the
+grammar, so that the erasure function of \cref{sec:lambdabox} and the
+translation of \cref{sec:translation} are definable by structural recursion
+on raw syntax, with no typing oracle.  \Cref{sec:calculus-cic} discusses how
+the fragment is carved out of full CIC.
+
+\subsection{Syntax}
+\label{sec:calculus-syntax}
+
+We fix countably infinite, pairwise disjoint sets of \emph{term
+variables} (written $x, y, z, w, f, \dots$), of \emph{proof variables}
+($p$, $h, \dots$) and of \emph{predicate variables} ($q, \dots$), and
+disjoint sets of names for \emph{datatypes} ($I$), for \emph{datatype
+constructors} ($\wcns{c}$, $\wcns{d}$), for \emph{inductive predicates}
+($J$), for their \emph{clause constructors} ($\wcns{k}$), and for
+\emph{constants} ($c$).
+
+\begin{definition}[Syntax of $\CICm$]
+\label{def:syntax}
+The syntactic categories of \emph{set types} $\sigma, \tau$,
+\emph{propositions} $\varphi, \psi$, \emph{predicate kinds} $K$,
+\emph{predicate expressions} $P$, \emph{terms} $t, a, b$ and \emph{proofs}
+$\pi$ are defined by the following grammar.
+\begin{align*}
+  \sigma, \tau &\Coloneqq
+    I
+    \mid \Pi x{:}\sigma.\,\tau
+    \mid \varphi \to \tau
+    \mid \refty{x{:}\sigma}{\varphi}
+  \\
+  \varphi, \psi &\Coloneqq
+    \top \mid \bot
+    \mid \varphi \wedge \psi
+    \mid \varphi \vee \psi
+    \mid \varphi \to \psi
+    \mid \forall x{:}\sigma.\,\varphi
+    \mid \exists x{:}\sigma.\,\varphi
+  \\ &\mathrel{\phantom{\Coloneqq}}
+    \mid \forall q{:}K.\,\varphi
+    \mid a =_{\sigma} b
+    \mid J(\tup{a})
+    \mid q(\tup{a})
+  \\
+  K &\Coloneqq (\sigma_1, \dots, \sigma_n) \to \Prop \qquad (n \geq 1)
+  \\
+  P &\Coloneqq q \mid \lambda(x_1{:}\sigma_1, \dots, x_n{:}\sigma_n).\,\varphi
+  \\
+  t, a, b &\Coloneqq
+    x
+    \mid c
+    \mid t\,a
+    \mid t\,\pi
+    \mid \lambda x{:}\sigma.\,t
+    \mid \lambda p{:}\varphi.\,t
+    \mid \wcns{c}(\tup{a})
+  \\ &\mathrel{\phantom{\Coloneqq}}
+    \mid \tcase{a}{z.\tau}{\tup{br}}
+    \mid \tfix\,f{:}T.\,t
+    \mid \trefine{t}{\pi}
+    \mid \tval{t}
+  \\ &\mathrel{\phantom{\Coloneqq}}
+    \mid \tsplit{\pi}{p_1\,p_2.\,t}
+    \mid \tcast{\pi}{z.\tau}{t}
+    \mid \texfalso{\pi}{\sigma}
+  \\
+  \pi &\Coloneqq
+    p
+    \mid c
+    \mid \lambda p{:}\varphi.\,\pi
+    \mid \pi\,\pi'
+    \mid \lambda x{:}\sigma.\,\pi
+    \mid \pi\,a
+    \mid \Lambda q{:}K.\,\pi
+    \mid \pi\,P
+    \mid \langle \pi_1, \pi_2 \rangle
+    \mid \pi.1
+    \mid \pi.2
+  \\ &\mathrel{\phantom{\Coloneqq}}
+    \mid \iota_1(\pi) \mid \iota_2(\pi)
+    \mid \mathsf{vcase}(\pi;\, p_1.\pi_1;\, p_2.\pi_2)
+    \mid \langle a, \pi \rangle_{\exists x{:}\sigma.\varphi}
+    \mid \mathsf{ecase}(\pi;\, x\,p.\,\pi')
+  \\ &\mathrel{\phantom{\Coloneqq}}
+    \mid \mathsf{tt}
+    \mid \texfalso{\pi}{\varphi}
+    \mid \mathsf{refl}_{\sigma}(a)
+    \mid \mathsf{rew}(\pi;\, z.\psi;\, \pi')
+    \mid \wcns{k}(\tup{a}; \tup{\pi})
+    \mid \tind{J}(\tup{z}.\psi;\, \tup{\pi};\, \pi)
+  \\ &\mathrel{\phantom{\Coloneqq}}
+    \mid \tind{I}(z.\psi;\, \tup{\pi};\, a)
+    \mid \tvalid{t}
+  \end{align*}
+where a branch list $\tup{br}$ has the form $\{\wcns{c}_1(\tup{y}_1)
+\Rightarrow t_1 \mid \dots \mid \wcns{c}_m(\tup{y}_m) \Rightarrow t_m\}$
+with one branch for every constructor of the datatype concerned, and $T$ in
+$\tfix\,f{:}T.\,t$ ranges over set types.  In
+$\tcase{a}{z.\tau}{\tup{br}}$ the variable $z$ binds into the motive
+$\tau$; in $\refty{x{:}\sigma}{\varphi}$ the variable $x$ binds into
+$\varphi$; the binding structure of the remaining forms is the evident one.
+Terms of the form $\trefine{t}{\pi}$ carry a refinement-type annotation
+$\refty{x{:}\sigma}{\varphi}$, and $\langle a, \pi\rangle$ carries its
+$\exists$-type; we omit the annotations when they are irrelevant.  We write
+$\neg\varphi$ for $\varphi \to \bot$ and
+$\varphi \leftrightarrow \psi$ for
+$(\varphi \to \psi) \wedge (\psi \to \varphi)$.
+Terms, proofs, types, propositions and predicate expressions are identified
+up to $\alpha$-equivalence, and substitution is capture-avoiding.
+\end{definition}
+
+Three points deserve comment.
+
+First, the calculus has \emph{three} function spaces at the term level:
+$\Pi x{:}\sigma.\tau$ (informative argument), $\varphi \to \tau$
+(propositional premise; note that the premise does not bind a variable
+into $\tau$, so the type is non-dependent, although the term-level
+abstraction $\lambda p{:}\varphi.t$ does bind $p$ in the body), and the
+proof-level implications and quantifications.  Dependency of types on
+terms enters exclusively through refinement types
+$\refty{x{:}\sigma}{\varphi}$ and through the propositions embedded in
+types --- there are no type-level functions, no universes and no large
+elimination, so set types are \emph{rigid}: their outermost former is
+stable under conversion (\cref{lem:rigid}).
+
+Second, the singleton eliminations of CIC appear as the primitive term
+formers $\tsplit{\pi}{p_1 p_2.t}$ (elimination of a conjunction proof into
+a term), $\tcast{\pi}{z.\tau}{t}$ (transport along an equality proof) and
+$\texfalso{\pi}{\sigma}$ ($\bot$-elimination into a term).  These are
+exactly the propositional eliminations into informative positions that
+CIC's elimination restriction permits: at most one constructor, all
+arguments propositional~\cite{Rocq,Letouzey2003}.
+
+Third, refinement types come with the constructor $\trefine{t}{\pi}$
+(pairing a value with a proof of the payload), the projection $\tval{t}$
+(the value) and the proof former $\tvalid{t}$ (the payload); this is
+$\mathsf{sig}$/$\mathsf{exist}$/$\mathsf{proj1\_sig}$/%
+$\mathsf{proj2\_sig}$ after Letouzey's informative-singleton unboxing
+\cite[\S 4.3]{Letouzey2004} has been applied at the level of the calculus
+itself.
+
+\subsection{Environments}
+\label{sec:calculus-env}
+
+\begin{definition}[Declarations and environments]
+\label{def:env}
+A \emph{global environment} $\Env$ is a finite list of declarations of the
+following three kinds.
+\begin{enumerate}[leftmargin=2em]
+\item A \emph{datatype declaration}
+  $\mathsf{data}\ I \defeq \{\, \wcns{c}_1 : (\tup{\sigma}_1);\ \dots;\
+  \wcns{c}_m : (\tup{\sigma}_m) \,\}$ with $m \geq 1$ constructors.  Each
+  constructor argument type $\sigma_{ij}$ is either the datatype name $I$
+  itself (a \emph{recursive argument}) or a closed set type over the
+  preceding environment in which $I$ does not occur.
+\item An \emph{inductive-predicate declaration}
+  $\mathsf{pred}\ J : (\tup{\sigma}) \to \Prop$ with a finite list of
+  clauses
+  \[
+    \wcns{k}_j : \forall \tup{x}_j{:}\tup{\tau}_j.\;
+      \varphi_{j1} \to \dots \to \varphi_{j\ell_j} \to J(\tup{u}_j)
+  \]
+  where the index types $\tup{\sigma}$ are closed set types over the
+  preceding environment, the $\tup{\tau}_j$ are set types over the
+  preceding environment (possibly mentioning $\tup{x}_j$ bound earlier in
+  the same telescope, through refinements), the indices $\tup{u}_j$ are
+  terms over $\tup{x}_j$, and each premise $\varphi_{ji}$ is either of the
+  form $J(\tup{v})$ (a \emph{recursive premise}) or a proposition over the
+  preceding environment and $\tup{x}_j$ in which $J$ does not occur.
+\item A \emph{definition}, either a \emph{term definition}
+  $c \defeq t : \sigma$ with $\sigma$ a closed set type and $t$ a closed
+  term, or a \emph{lemma} $c \defeq \pi : \varphi$ with $\varphi$ a closed
+  proposition and $\pi$ a closed proof.
+\end{enumerate}
+All names declared in $\Env$ are distinct.  An environment consisting only
+of declarations of kinds (1)--(3) --- i.e., in which every constant has a
+body --- is called \emph{definitional}; this paper considers definitional
+environments only (see \cref{rem:axioms} for postulated axioms).
+\end{definition}
+
+\begin{definition}[Contexts]
+A \emph{context} $\Gamma$ is a finite list of declarations $x : \sigma$,
+$p : \varphi$ and $q : K$ with pairwise distinct variables, each type,
+proposition or kind well formed over the preceding declarations
+(\cref{fig:wf}).
+\end{definition}
+
+\subsection{Typing}
+\label{sec:calculus-typing}
+
+The judgements of the calculus are: $\vdash \Env \wf$ (environment
+well-formedness); and, relative to a fixed well-formed $\Env$ which we
+leave implicit, $\Gamma \vdash \sigma \styp$, $\Gamma \vdash \varphi
+\sprop$, $\Gamma \vdash P : K$, $\Gamma \vdash t : \sigma$, and $\Gamma
+\vdash \pi : \varphi$.  The rules are given in
+\cref{fig:wf,fig:terms,fig:proofs}.  Environment well-formedness requires
+each declaration to be well formed over its prefix: the type and
+proposition components of datatype and predicate declarations must be well
+formed in the respective telescopes, and a definition $c \defeq t : \sigma$
+(resp.\ $c \defeq \pi : \varphi$) requires $\vdash \sigma \styp$ and
+$\vdash t : \sigma$ (resp.\ $\vdash \varphi \sprop$ and $\vdash \pi :
+\varphi$) over the prefix.
+
+\begin{figure}[t]
+\small
+\[
+\begin{array}{c}
+\rul{I \in \Env}{\Gamma \vdash I \styp}
+\qquad
+\rul{\Gamma \vdash \sigma \styp \quad \Gamma, x{:}\sigma \vdash \tau \styp}
+    {\Gamma \vdash \Pi x{:}\sigma.\tau \styp}
+\qquad
+\rul{\Gamma \vdash \varphi \sprop \quad \Gamma \vdash \tau \styp}
+    {\Gamma \vdash \varphi \to \tau \styp}
+\\[2.2ex]
+\rul{\Gamma \vdash \sigma \styp \quad \Gamma, x{:}\sigma \vdash \varphi \sprop}
+    {\Gamma \vdash \refty{x{:}\sigma}{\varphi} \styp}
+\qquad
+\rul{}{\Gamma \vdash \top \sprop}
+\qquad
+\rul{}{\Gamma \vdash \bot \sprop}
+\\[2.2ex]
+\rul{\Gamma \vdash \varphi \sprop \quad \Gamma \vdash \psi \sprop}
+    {\Gamma \vdash \varphi \mathbin{\circledast} \psi \sprop}
+\;{\scriptstyle \circledast \in \{\wedge,\vee,\to\}}
+\qquad
+\rul{\Gamma \vdash \sigma \styp \quad \Gamma, x{:}\sigma \vdash \varphi \sprop}
+    {\Gamma \vdash Qx{:}\sigma.\varphi \sprop}
+\;{\scriptstyle Q \in \{\forall,\exists\}}
+\\[2.2ex]
+\rul{\Gamma, q{:}K \vdash \varphi \sprop \quad \Gamma \vdash K\ \mathsf{kind}}
+    {\Gamma \vdash \forall q{:}K.\varphi \sprop}
+\qquad
+\rul{\Gamma \vdash a : \sigma \quad \Gamma \vdash b : \sigma}
+    {\Gamma \vdash a =_{\sigma} b \sprop}
+\\[2.2ex]
+\rul{J : (\tup{\sigma}) \to \Prop \in \Env \quad \Gamma \vdash \tup{a} : \tup{\sigma}}
+    {\Gamma \vdash J(\tup{a}) \sprop}
+\qquad
+\rul{q : (\tup{\sigma}) \to \Prop \in \Gamma \quad \Gamma \vdash \tup{a} : \tup{\sigma}}
+    {\Gamma \vdash q(\tup{a}) \sprop}
+\\[2.2ex]
+\rul{\Gamma \vdash \sigma_i \styp \ (1 \le i \le n)}
+    {\Gamma \vdash (\sigma_1,\dots,\sigma_n) \to \Prop\ \mathsf{kind}}
+\qquad
+\rul{q : K \in \Gamma}{\Gamma \vdash q : K}
+\\[2.2ex]
+\rul{\Gamma, x_1{:}\sigma_1, \dots, x_n{:}\sigma_n \vdash \varphi \sprop}
+    {\Gamma \vdash \lambda(\tup{x}{:}\tup{\sigma}).\varphi : (\tup{\sigma}) \to \Prop}
+\end{array}
+\]
+\caption{Well-formedness of set types, propositions, kinds and predicate
+  expressions.  In the rule for $J(\tup{a})$ (and analogously for
+  $q(\tup{a})$ and index telescopes), $\Gamma \vdash \tup{a} :
+  \tup{\sigma}$ abbreviates $\Gamma \vdash a_i : \sigma_i$ for all $i$;
+  since index types are closed, no substitution occurs in the telescope.}
+\label{fig:wf}
+\end{figure}
+
+\begin{figure}[t]
+\small
+\[
+\begin{array}{c}
+\rul{x : \sigma \in \Gamma}{\Gamma \vdash x : \sigma}
+\qquad
+\rul{(c \defeq t : \sigma) \in \Env}{\Gamma \vdash c : \sigma}
+\qquad
+\rul{\Gamma \vdash t : \Pi x{:}\sigma.\tau \quad \Gamma \vdash a : \sigma}
+    {\Gamma \vdash t\,a : \subst{\tau}{a}{x}}
+\\[2.2ex]
+\rul{\Gamma \vdash t : \varphi \to \tau \quad \Gamma \vdash \pi : \varphi}
+    {\Gamma \vdash t\,\pi : \tau}
+\qquad
+\rul{\Gamma, x{:}\sigma \vdash t : \tau}
+    {\Gamma \vdash \lambda x{:}\sigma.t : \Pi x{:}\sigma.\tau}
+\qquad
+\rul{\Gamma, p{:}\varphi \vdash t : \tau}
+    {\Gamma \vdash \lambda p{:}\varphi.t : \varphi \to \tau}
+\\[2.2ex]
+\rul{\wcns{c} : (\sigma_1,\dots,\sigma_r) \in I \quad
+     \Gamma \vdash a_i : \sigma_i \ (1 \le i \le r)}
+    {\Gamma \vdash \wcns{c}(\tup{a}) : I}
+\qquad
+\rul{\Gamma \vdash t : \refty{x{:}\sigma}{\varphi}}
+    {\Gamma \vdash \tval{t} : \sigma}
+\\[2.2ex]
+\rul{\Gamma \vdash a : I \quad
+     \Gamma, z{:}I \vdash \tau \styp \quad
+     \Gamma, \tup{y}_i{:}\tup{\sigma}_i \vdash t_i :
+       \subst{\tau}{\wcns{c}_i(\tup{y}_i)}{z} \ \ (\text{all } i)}
+    {\Gamma \vdash \tcase{a}{z.\tau}{\{\wcns{c}_i(\tup{y}_i) \Rightarrow
+      t_i\}_i} : \subst{\tau}{a}{z}}
+\\[2.2ex]
+\rul{\Gamma \vdash \refty{x{:}\sigma}{\varphi} \styp \quad
+     \Gamma \vdash t : \sigma \quad
+     \Gamma \vdash \pi : \subst{\varphi}{t}{x}}
+    {\Gamma \vdash \trefine{t}{\pi} : \refty{x{:}\sigma}{\varphi}}
+\qquad
+\rul{\Gamma \vdash \pi : \bot \quad \Gamma \vdash \sigma \styp}
+    {\Gamma \vdash \texfalso{\pi}{\sigma} : \sigma}
+\\[2.2ex]
+\rul{\Gamma \vdash \pi : \varphi_1 \wedge \varphi_2 \quad
+     \Gamma, p_1{:}\varphi_1, p_2{:}\varphi_2 \vdash t : \tau}
+    {\Gamma \vdash \tsplit{\pi}{p_1\,p_2.t} : \tau}
+\qquad
+\rul{\Gamma \vdash t : \sigma \quad \sigma \conv \sigma' \quad
+     \Gamma \vdash \sigma' \styp}
+    {\Gamma \vdash t : \sigma'}
+\\[2.2ex]
+\rul{\Gamma \vdash \pi : a =_{\sigma} b \quad
+     \Gamma, z{:}\sigma \vdash \tau \styp \quad
+     \Gamma \vdash t : \subst{\tau}{a}{z}}
+    {\Gamma \vdash \tcast{\pi}{z.\tau}{t} : \subst{\tau}{b}{z}}
+\\[2.2ex]
+\rul{\begin{array}{c}
+     T = \Pi x_1{:}\sigma_1 \dots \Pi x_n{:}\sigma_n.\tau \quad
+     \sigma_k = I \quad \Gamma \vdash T \styp \\
+     t = \lambda \tup{x}{:}\tup{\sigma}.\,
+         \tcase{x_k}{z.\subst{\tau}{z}{x_k}}{\{\wcns{c}_i(\tup{y}_i)
+         \Rightarrow b_i\}_i} \\
+     \Gamma, f{:}T, \tup{x}{:}\tup{\sigma}, \tup{y}_i{:}\tup{\sigma}'_i
+       \vdash b_i : \subst{\tau}{\wcns{c}_i(\tup{y}_i)}{x_k}
+       \ \ (\text{all } i) \quad
+     \mathrm{grd}_k(f; \tup{y}_i^{\mathrm{rec}}; b_i) \ \ (\text{all } i)
+     \end{array}}
+    {\Gamma \vdash \tfix\,f{:}T.\,t : T}
+\end{array}
+\]
+\caption{Typing of terms.  In the $\tfix$ rule, $x_k$ is the designated
+  \emph{guard argument}; $\tup{y}_i^{\mathrm{rec}} \subseteq \tup{y}_i$
+  denotes the recursive argument positions of $\wcns{c}_i$ (those of type
+  $I$); and the \emph{guard condition}
+  $\mathrm{grd}_k(f; V; b)$ requires every occurrence of $f$ in $b$ to
+  occur in a subterm of the form $f\,a_1 \cdots a_n$ with $a_k \in V$.
+  We further require $f, \tup{x}, \tup{y}_i$ not to be shadowed in $b_i$.}
+\label{fig:terms}
+\end{figure}
+
+\begin{figure}[t]
+\small
+\[
+\begin{array}{c}
+\rul{p : \varphi \in \Gamma}{\Gamma \vdash p : \varphi}
+\qquad
+\rul{(c \defeq \pi : \varphi) \in \Env}{\Gamma \vdash c : \varphi}
+\qquad
+\rul{\Gamma, p{:}\varphi \vdash \pi : \psi}
+    {\Gamma \vdash \lambda p{:}\varphi.\pi : \varphi \to \psi}
+\\[2.2ex]
+\rul{\Gamma \vdash \pi : \varphi \to \psi \quad \Gamma \vdash \pi' : \varphi}
+    {\Gamma \vdash \pi\,\pi' : \psi}
+\qquad
+\rul{\Gamma, x{:}\sigma \vdash \pi : \varphi}
+    {\Gamma \vdash \lambda x{:}\sigma.\pi : \forall x{:}\sigma.\varphi}
+\\[2.2ex]
+\rul{\Gamma \vdash \pi : \forall x{:}\sigma.\varphi \quad \Gamma \vdash a : \sigma}
+    {\Gamma \vdash \pi\,a : \subst{\varphi}{a}{x}}
+\qquad
+\rul{\Gamma, q{:}K \vdash \pi : \varphi}
+    {\Gamma \vdash \Lambda q{:}K.\pi : \forall q{:}K.\varphi}
+\\[2.2ex]
+\rul{\Gamma \vdash \pi : \forall q{:}K.\varphi \quad \Gamma \vdash P : K}
+    {\Gamma \vdash \pi\,P : \subst{\varphi}{P}{q}}
+\qquad
+\rul{\Gamma \vdash \pi_1 : \varphi_1 \quad \Gamma \vdash \pi_2 : \varphi_2}
+    {\Gamma \vdash \langle\pi_1,\pi_2\rangle : \varphi_1 \wedge \varphi_2}
+\\[2.2ex]
+\rul{\Gamma \vdash \pi : \varphi_1 \wedge \varphi_2}
+    {\Gamma \vdash \pi.i : \varphi_i}
+\qquad
+\rul{\Gamma \vdash \pi : \varphi_i}
+    {\Gamma \vdash \iota_i(\pi) : \varphi_1 \vee \varphi_2}
+\\[2.2ex]
+\rul{\Gamma \vdash \pi : \varphi_1 \vee \varphi_2 \quad
+     \Gamma, p_i{:}\varphi_i \vdash \pi_i : \psi \ (i = 1,2)}
+    {\Gamma \vdash \mathsf{vcase}(\pi; p_1.\pi_1; p_2.\pi_2) : \psi}
+\\[2.2ex]
+\rul{\Gamma \vdash a : \sigma \quad \Gamma \vdash \pi : \subst{\varphi}{a}{x}}
+    {\Gamma \vdash \langle a, \pi \rangle : \exists x{:}\sigma.\varphi}
+\qquad
+\rul{}{\Gamma \vdash \mathsf{tt} : \top}
+\qquad
+\rul{\Gamma \vdash a : \sigma}
+    {\Gamma \vdash \mathsf{refl}_{\sigma}(a) : a =_{\sigma} a}
+\\[2.2ex]
+\rul{\Gamma \vdash \pi : \exists x{:}\sigma.\varphi \quad
+     \Gamma, x{:}\sigma, p{:}\varphi \vdash \pi' : \psi \quad
+     x, p \notin \fv{\psi}}
+    {\Gamma \vdash \mathsf{ecase}(\pi; x\,p.\pi') : \psi}
+\qquad
+\rul{\Gamma \vdash \pi : \bot \quad \Gamma \vdash \varphi \sprop}
+    {\Gamma \vdash \texfalso{\pi}{\varphi} : \varphi}
+\\[2.2ex]
+\rul{\Gamma \vdash t : \refty{x{:}\sigma}{\varphi}}
+    {\Gamma \vdash \tvalid{t} : \subst{\varphi}{\tval{t}}{x}}
+\qquad
+\rul{\Gamma \vdash \pi : \varphi \quad \varphi \conv \varphi' \quad
+     \Gamma \vdash \varphi' \sprop}
+    {\Gamma \vdash \pi : \varphi'}
+\\[2.2ex]
+\rul{\Gamma \vdash \pi : a =_{\sigma} b \quad
+     \Gamma, z{:}\sigma \vdash \psi \sprop \quad
+     \Gamma \vdash \pi' : \subst{\psi}{a}{z}}
+    {\Gamma \vdash \mathsf{rew}(\pi; z.\psi; \pi') : \subst{\psi}{b}{z}}
+\\[2.2ex]
+\rul{\begin{array}{c}
+     \wcns{k} : \forall \tup{x}{:}\tup{\tau}.\,\varphi_1 \to \dots \to
+       \varphi_\ell \to J(\tup{u}) \in \Env \\
+     \Gamma \vdash \tup{a} : \tup{\tau} \quad
+     \Gamma \vdash \pi_i : \subst{\varphi_i}{\tup{a}}{\tup{x}} \ (\text{all } i)
+     \end{array}}
+    {\Gamma \vdash \wcns{k}(\tup{a}; \tup{\pi}) :
+       J(\subst{\tup{u}}{\tup{a}}{\tup{x}})}
+\\[2.2ex]
+\rul{\Gamma \vdash \pi : J(\tup{a}) \quad
+     \Gamma, \tup{z}{:}\tup{\sigma} \vdash \psi \sprop \quad
+     \Gamma \vdash \pi_j : \Xi_j(\tup{z}.\psi) \ \ (\text{all clauses } j)}
+    {\Gamma \vdash \tind{J}(\tup{z}.\psi; \tup{\pi}; \pi) :
+       \subst{\psi}{\tup{a}}{\tup{z}}}
+\\[2.2ex]
+\rul{\Gamma \vdash a : I \quad
+     \Gamma, z{:}I \vdash \psi \sprop \quad
+     \Gamma \vdash \pi_i : \Theta_i(z.\psi) \ \ (\text{all constrs } i)}
+    {\Gamma \vdash \tind{I}(z.\psi; \tup{\pi}; a) : \subst{\psi}{a}{z}}
+\end{array}
+\]
+\caption{Typing of proofs.  For a predicate clause
+  $\wcns{k}_j : \forall \tup{x}{:}\tup{\tau}.\varphi_1 \to \dots \to
+  \varphi_\ell \to J(\tup{u})$, the \emph{clause obligation} is
+  $\Xi_j(\tup{z}.\psi) = \forall \tup{x}{:}\tup{\tau}.\,\varphi_1 \to \dots
+  \to \varphi_\ell \to \subst{\psi}{\tup{v}_1}{\tup{z}} \to \dots \to
+  \subst{\psi}{\tup{v}_r}{\tup{z}} \to \subst{\psi}{\tup{u}}{\tup{z}}$,
+  where $J(\tup{v}_1), \dots, J(\tup{v}_r)$ are the recursive premises
+  among the $\varphi_i$ (an induction hypothesis for each).  For a
+  datatype constructor $\wcns{c}_i : (\tup{\sigma}_i)$ of $I$, the clause
+  obligation is $\Theta_i(z.\psi) = \forall \tup{y}{:}\tup{\sigma}_i.\,
+  \subst{\psi}{y_{r_1}}{z} \to \dots \to \subst{\psi}{y_{r_s}}{z} \to
+  \subst{\psi}{\wcns{c}_i(\tup{y})}{z}$, where $y_{r_1}, \dots, y_{r_s}$
+  are the recursive arguments.}
+\label{fig:proofs}
+\end{figure}
+
+\subsection{Reduction and conversion}
+\label{sec:calculus-red}
+
+\begin{definition}[Reduction]
+\label{def:source-red}
+The relation $\red$ on terms is the contextual closure --- in all term,
+proof, type, proposition and predicate positions --- of the following root
+rules:
+\begin{align*}
+  (\lambda x{:}\sigma.t)\,a &\red \subst{t}{a}{x}
+  & (\lambda p{:}\varphi.t)\,\pi &\red \subst{t}{\pi}{p}
+  \\
+  \tfix\,f{:}T.\,t &\red \subst{t}{\tfix\,f{:}T.\,t}{f}
+  & \tval{\trefine{t}{\pi}} &\red t
+  \\
+  c &\red t \quad \text{if } (c \defeq t : \sigma) \in \Env
+  & \tcast{\mathsf{refl}_\sigma(a)}{z.\tau}{t} &\red t
+  \\
+  \tcase{\wcns{c}_i(\tup{a})}{z.\tau}{\{\dots\}} &\red
+     \subst{t_i}{\tup{a}}{\tup{y}_i}
+  \\
+  \tsplit{\langle \pi_1, \pi_2 \rangle}{p_1\,p_2.t} &\red
+     \subst{\subst{t}{\pi_1}{p_1}}{\pi_2}{p_2}
+\end{align*}
+Source \emph{conversion} $\conv$ is the least congruence (on each
+syntactic category, closing under all formers) containing $\red$.
+\end{definition}
+
+Reduction is untyped and unrestricted; in particular fixpoint unfolding is
+not value-restricted.  We prove no metatheoretic properties of $\red$
+itself (no confluence or normalisation of the source is needed anywhere in
+this paper): $\conv$ enters only through the conversion typing rules, and
+the semantics of \cref{sec:semantics} is invariant under it
+(\cref{lem:conv-inv}).
+
+\begin{lemma}[Rigidity of type formers]
+\label{lem:rigid}
+If $\sigma \conv \sigma'$ then $\sigma$ and $\sigma'$ have the same
+outermost former: both are the same datatype name, or both are
+$\Pi x{:}\rho.\tau$-types whose domains and codomains are respectively
+convertible, or both are $\varphi \to \tau$-types with convertible
+components, or both are refinement types with convertible components.  The
+analogous statement holds for propositions.
+\end{lemma}
+
+\begin{proof}
+No root rule of \cref{def:source-red} applies at the root of a set type or
+a proposition --- the root rules rewrite terms and proofs only --- so every
+$\red$-step inside a type or proposition happens strictly below its
+outermost former, or below the outermost former of one of its component
+types and propositions.  The claim follows by induction on the length of
+the conversion path, observing that a single step preserves the outermost
+former and relates components pointwise.
+\end{proof}
+
+\begin{lemma}[Substitution]
+\label{lem:source-subst}
+All judgements admit substitution: if
+$\Gamma, x{:}\sigma, \Gamma' \vdash \mathcal{J}$ and $\Gamma \vdash a :
+\sigma$, then $\Gamma, \subst{\Gamma'}{a}{x} \vdash
+\subst{\mathcal{J}}{a}{x}$, and analogously for proof variables ($\Gamma
+\vdash \pi : \varphi$) and predicate variables ($\Gamma \vdash P : K$).
+\end{lemma}
+
+\begin{proof}
+Routine simultaneous induction on the second derivation, using that
+$\conv$ is closed under substitution (each root rule is) and that
+substitution into predicate atoms $q(\tup{a})[P/q] = P \cdot \tup{a}$ is
+given by \emph{predicate application}: for $P = \lambda(\tup{x} {:}
+\tup{\sigma}).\varphi$ we set $P \cdot \tup{a} =
+\subst{\varphi}{\tup{a}}{\tup{x}}$.  Predicate application terminates:
+$\varphi$ cannot contain $q$ (predicate expressions are closed with
+respect to the variable being substituted after $\alpha$-renaming), so the
+substitution $\subst{\cdot}{P}{q}$ is defined by structural recursion on
+the phrase substituted into, with the atom case delegating to ordinary
+term substitution inside $\varphi$.
+\end{proof}
+
+\subsection{The shallow fragment}
+\label{sec:calculus-shallow}
+
+\begin{definition}[Shallow fragment $\Sfrag$]
+\label{def:shallow-fragment}
+A proposition is \emph{shallow} if it contains no subformula of the form
+$\forall q{:}K.\varphi$ and no atom $q(\tup{a})$ with $q$ a predicate
+variable; a set type is shallow if all propositions occurring in it
+(refinement payloads and premises) are shallow.  We write $\Sfrag$ for the
+class of shallow propositions and set types.
+\end{definition}
+
+Every proposition and type built from datatypes, refinements, inductive
+predicates, equality and the first-order connectives and quantifiers is
+shallow; only genuine predicate quantification is excluded.  The
+translation of \cref{sec:translation} is defined on $\Sfrag$; proofs
+\emph{inside} the environment may use the full calculus, including
+predicate quantification --- the semantics of \cref{sec:semantics} covers
+it --- but a lemma whose \emph{statement} leaves $\Sfrag$ contributes no
+premise axiom, a definition whose type leaves $\Sfrag$ contributes no
+specification axiom, and goals must be shallow and closed.  We further
+require the \emph{declarations} of $\Env$ (datatype constructor argument
+types; inductive-predicate index types, clause telescopes, premises and
+indices) to lie in $\Sfrag$, since the translation must emit structural
+axioms for them.
+
+\subsection{Relation to CIC}
+\label{sec:calculus-cic}
+
+$\CICm$ is designed as the image of a first-order, monomorphic slice of
+CIC under analyses that are part of the CoqHammer translation pipeline or
+of program extraction:
+
+\begin{itemize}[leftmargin=2em]
+\item \emph{Stratification.}  CIC's sort analysis (is this subterm a
+  proof? a proposition? a set-level term?) is decidable and implemented
+  (proposition detection in the translator; \cite[\S 4]{CzajkaKaliszyk2018}).
+  $\CICm$ bakes its outcome into the grammar.  Proof irrelevance, which
+  the translation assumes globally, is not needed in the conversion rule
+  of $\CICm$ (conversion never rewrites inside a proposition's proof in a
+  way visible to the semantics); it reappears as a property of the
+  \emph{model} (\cref{sec:semantics}).
+\item \emph{Refinement types.}  $\mathsf{sig}\ A\ P$ with its constructor
+  $\mathsf{exist}$ and projections is an ordinary inductive type in CIC;
+  the classification of inductive instances by propositional content
+  (empty / propositional singleton / refinement / regular) identifies it,
+  per instance, with the primitive $\refty{x{:}A}{P\,x}$ of $\CICm$ ---
+  this is Letouzey's informative-singleton unboxing \cite[\S
+  4.3]{Letouzey2004} applied at the source.  Instances of
+  $\mathsf{prod}$/$\mathsf{sigT}$ with one propositional component
+  classify the same way.
+\item \emph{Singleton eliminations.}  CIC permits matches on
+  $\Prop$-sorted scrutinees in informative positions only for empty and
+  singleton propositional inductives; these appear in $\CICm$ as
+  $\texfalso{}{}$, $\tsplit{}{}$ and $\tcast{}{}$ ($\bot$, $\wedge$, $=$).
+\item \emph{Monomorphism.}  $\CICm$ has no type variables and no
+  parameterised inductives: each datatype is declared at a ground
+  instance ($\mathsf{list\ nat}$ is a datatype of its own).  Heuristic
+  monomorphisation --- instantiating polymorphic definitions at the type
+  instances occurring in a problem --- is an independent translation stage
+  studied separately; this paper treats the post-monomorphisation
+  fragment.
+\item \emph{Structural fixpoints.}  The $\tfix$ former captures
+  structural recursion with a designated decreasing argument, recursion on
+  immediate constructor subterms, and a case-split body --- the common
+  shape of $\mathsf{Fixpoint}$ definitions.  Deep pattern guards, nested
+  and mutual recursion, and well-founded ($\mathsf{Acc}$-based) recursion
+  are excluded; \cref{sec:limitations} discusses all four, the last being
+  a genuine semantic boundary rather than a presentational one.
+\item \emph{Prop-level logic.}  The primitive connectives of $\CICm$
+  correspond to the inductive definitions of $\mathsf{True}$,
+  $\mathsf{False}$, $\mathsf{and}$, $\mathsf{or}$, $\mathsf{ex}$ and
+  $\mathsf{eq}$ in CIC; identifying them with primitives is harmless
+  because their CIC induction principles are exactly the elimination
+  rules of \cref{fig:proofs}.
+\end{itemize}

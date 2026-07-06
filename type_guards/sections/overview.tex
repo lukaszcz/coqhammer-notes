@@ -1,0 +1,133 @@
+\section{Overview}
+\label{sec:overview}
+
+Before the formal development we walk through the four running examples,
+written in Rocq-like syntax on the left and in the guarded translation on the
+right.  Throughout, $\T(t,u)$ is the typing predicate of the target logic
+(``$t$ has type $u$''), and predicates and functions are translated to
+first-order symbols applied to their type and term arguments.
+
+\paragraph{A covered guard.}
+The premise $\forall x{:}\mathit{nat}.\ \mathit{Even}\,x \imp
+\mathit{Even}\,(S\,(S\,x))$ translates to
+\begin{equation}
+  \label{eq:even-guarded}
+  \forall x.\ \T(x,\mathit{nat}) \imp \mathit{Even}(x) \imp
+  \mathit{Even}(S(S(x))).
+\end{equation}
+The guard is redundant.  In the intended interpretation, an atom
+$\mathit{Even}(t)$ is true only if the source application
+$\mathit{Even}\;t$ is a well-formed \emph{and} provable proposition; since
+$\mathit{Even} : \mathit{nat} \arr \PProp$, well-formedness forces
+$t : \mathit{nat}$.  We say the atom $\mathit{Even}(x)$ \emph{covers} the
+guard $\T(x,\mathit{nat})$: under any valuation sending $x$ outside
+$\mathit{nat}$, the atom is false and the body of \eqref{eq:even-guarded} is
+vacuously true.  Hence \eqref{eq:even-guarded} and
+$\forall x.\ \mathit{Even}(x) \imp \mathit{Even}(S(S(x)))$ have the same
+truth value in the intended model --- an \emph{equivalence}, not merely an
+implication, so the rewrite is legitimate at any polarity.  Moreover the
+equivalence is provable in pure first-order logic from the
+\emph{typehood-completion axiom}
+\[
+  \forall x.\ \mathit{Even}(x) \imp \T(x,\mathit{nat}),
+\]
+which is itself true in the intended model.  This observation drives the
+architecture of \cref{sec:guards}: guard omission is a logical equivalence
+relative to a stock of completion axioms, and the semantic content of the
+soundness proof is concentrated in the single fact that completion axioms
+hold in the intended model.
+
+\paragraph{An inversion axiom.}
+For the inductive predicate $\mathit{le}$ the translation emits an inversion
+axiom
+\[
+  \forall n\, m.\ \T(n,\mathit{nat}) \imp \T(m,\mathit{nat}) \imp
+  \mathit{le}(n,m) \imp
+  \bigl( m = n \vee \exists k.\ \T(k,\mathit{nat}) \wedge \mathit{le}(n,k)
+  \wedge m = S(k) \bigr).
+\]
+Both universal guards are covered by the hypothesis atom
+$\mathit{le}(n,m)$ and may be dropped.  Note that the criterion must look
+\emph{past} the covering atom, not into the disjunction: the disjunct
+$m = n$ contains $m$ ``naked'' in an equation, and equations force no typing
+(junk equals junk).  The recursive judgment $\jt$ of \cref{sec:guards} is
+therefore satisfied at the implication whose antecedent is
+$\mathit{le}(n,m)$, regardless of the shape of what follows.  The
+\emph{existential} conjunct $\T(k,\mathit{nat})$ is different: it is a fact
+provided to the prover, not an obligation; it may be dropped either as a
+weakening at a positive position of a premise
+(\cref{def:admissible,thm:guards-sound}) or, here, as an equivalence via the
+dual junk-\emph{falsity} judgment, because the remaining conjunct
+$\mathit{le}(n,k)$ covers $k$ (\cref{thm:guard-equivalence}); the tightness
+example of \cref{sec:tightness} shows that licensing existential guard
+omission by the universal (junk-truth) rule instead would be unsound.
+
+\paragraph{A guard that must stay, and one covered by it.}
+The lemma $\mathit{app\_nil\_r} : \forall A{:}\mathsf{Type}.\ \forall
+l{:}\mathit{list}\,A.\ l \mathbin{+\!\!+} \mathit{nil} = l$ translates to
+\[
+  \forall \alpha.\ \T(\alpha,\TypeC) \imp \forall l.\
+  \T(l, \mathit{list}(\alpha)) \imp
+  \mathit{app}(\alpha, l, \mathit{nil}(\alpha)) = l .
+\]
+The guard on $l$ is \emph{not} omissible: the body is a bare equation, no
+atom covers $l$, and dropping the guard yields a sentence that is false in
+the intended model (the equation fails for junk $l$, where the left-hand
+side is a stuck application).  The guard on $\alpha$, however, \emph{is}
+omissible: the retained guard $\T(l,\mathit{list}(\alpha))$ itself covers
+it, because typing atoms whose type side is a rigid application of an
+inductive type former force well-formedness of the former's arguments
+($\T(l,\mathit{list}(\alpha))$ can hold only when $\alpha$ denotes a type).
+Covers may thus come from ordinary hypothesis atoms and from \emph{retained}
+guards; since a guard that serves as a cover must itself not be dropped, the
+omissible set is computed as a greatest fixpoint, and
+\cref{prop:simultaneous} shows that any such fixpoint is a sound
+simultaneous omission.
+
+\paragraph{Type arguments.}
+The constructor $\mathit{cons} : \forall A{:}\mathsf{Type}.\ A \arr
+\mathit{list}\,A \arr \mathit{list}\,A$ is translated as a ternary symbol
+$\mathit{cons}(\alpha,x,l)$.  The type argument is recoverable from the
+declared type of either term argument: $A$ occurs in the argument types $A$
+and $\mathit{list}\,A$.  Erasing it --- replacing every occurrence
+$\mathit{cons}(u,t,s)$ by $\mathit{cons}(t,s)$ uniformly in all premises,
+axioms and the goal --- is sound: in the intended model the omitted argument
+is a function of the types of the retained ones (\cref{lem:inference-unique}).
+By contrast $\mathit{nil} : \forall A{:}\mathsf{Type}.\ \mathit{list}\,A$
+has no term argument at all; its type argument is determined only by the
+\emph{expected} type at each occurrence, which has no counterpart at a
+first-order term position.  Erasing it conflates $\mathit{nil}\,\mathit{nat}$
+with $\mathit{nil}\,\mathit{bool}$ as one constant, and
+\cref{prop:tight-nil} turns this into an actual refutation of a goal that
+fails in a model of the source theory --- the formal version of the classic
+``$\mathit{card}\ \mathsf{UNIV}$'' unsoundness of
+Meng and Paulson~\cite{MengPaulson2008}.  Finally, the two optimizations
+interact: the cover $\mathit{Even}(x)$ forces $x : \mathit{nat}$ only
+because the predicate symbol carries its full argument list.  Erasing type
+arguments of \emph{predicates} destroys covers, and
+\cref{prop:tight-pred-erasure} shows the combination is unsound; the
+composition theorem (\cref{thm:composition}) therefore erases only function
+and constructor symbols.
+
+\paragraph{Proof architecture.}
+All soundness statements are relative to the \emph{ground companion theory}
+$\Th$ of the source environment $\Env$: the many-sorted first-order theory of
+all ground type instances of the premises together with the structural
+axioms of the inductive definitions.  \Cref{sec:fragment} defines $\Th$ and
+shows that CIC proves every sentence we place in it, so that a model of
+$\Th$ exists whenever the CIC environment is consistent.  Given any model
+$\NN \models \Th$, \cref{sec:translation} constructs an untyped first-order
+model $\MN$ by disjointly uniting (i) the ground types themselves, as
+denotations of type expressions, (ii) tagged copies
+$\{(\tau,a) \mid a \in \NN_\tau\}$ of the carriers, and (iii) an inductively
+generated universe of \emph{junk} elements: formal application trees that
+record a function symbol applied to arguments violating its type discipline.
+Junk is what makes the model faithful to the untyped setting --- the
+quantifiers of the translated problem really do range over ill-typed terms
+--- and its \emph{free} (injective, non-confusable) construction is what
+validates the unguarded injectivity and discrimination axioms that hammer
+translations emit.  Soundness of each optimization then reduces to checking
+that the transformed axioms remain true in $\MN$ (or in its erased variant
+$\MNe$), and the final theorems all have the same shape: \emph{if the
+optimized translation of $(\Env,\phi_0)$ is refutable, then $\phi_0$ holds
+in every model of $\Th$.}

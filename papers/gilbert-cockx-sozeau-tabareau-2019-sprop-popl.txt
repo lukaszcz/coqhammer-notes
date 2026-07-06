@@ -1,0 +1,1998 @@
+Definitional Proof-Irrelevance without K*
+GAËTAN GILBERT, Inria, France
+JESPER COCKX, Chalmers / Gothenburg University, Sweden
+MATTHIEU SOZEAU, Inria and IRIF, France
+NICOLAS TABAREAU, Inria, France
+Definitional equality—or conversion—for a type theory with a decidable type checking is the simplest tool to
+prove that two objects are the same, letting the system decide just using computation. Therefore, the more
+things are equal by conversion, the simpler it is to use a language based on type theory. Proof-irrelevance,
+stating that any two proofs of the same proposition are equal, is a possible way to extend conversion to make
+a type theory more powerful. However, this new power comes at a price if we integrate it naively, either
+by making type checking undecidable or by realizing new axioms—such as uniqueness of identity proofs
+(UIP)—that are incompatible with other extensions, such as univalence. In this paper, taking inspiration from
+homotopy type theory, we propose a general way to extend a type theory with definitional proof irrelevance,
+in a way that keeps type checking decidable and is compatible with univalence. We provide a new criterion to
+decide whether a proposition can be eliminated over a type (correcting and improving the so-called singleton
+elimination of Coq) by using techniques coming from recent development on dependent pattern matching
+without UIP. We show the generality of our approach by providing implementations for both Coq and Agda,
+both of which are planned to be integrated in future versions of those proof assistants.
+CCS Concepts: • Theory of computation → Type theory;
+Additional Key Words and Phrases: type theory, proof assistants, proof irrelevance
+ACM Reference Format:
+Gaëtan Gilbert, Jesper Cockx, Matthieu Sozeau, and Nicolas Tabareau. 2019. Definitional Proof-Irrelevance
+without K. Proc. ACM Program. Lang. 3, POPL, Article 3 (January 2019), 28 pages. https://doi.org/10.1145/
+3290316
+
+1 INTRODUCTION
+Proof-irrelevance, the principle that any two proofs of the same proposition are equal, is at the
+heart of the Coq extraction mechanism [Letouzey 2004]. In the Calculus of Inductive Constructions (CIC), the underlying theory of the Coq proof assistant, there is an (impredicative) sort P
+that is used to characterize types that can be seen as propositions—as opposed to types whose inhabitants have a computational meaning, which live in the predicative sort Ty . This static piece
+of information is used to extract a Coq formalization to a purely functional program, erasing safely
+all the parts involving terms that inhabit propositions, because a program can not use those terms
+in computationally relevant ways.
+* This work is supported by the CoqHoTT ERC Grant 64399.
+
+Authors’ addresses: Gaëtan Gilbert, Inria, Gallinette Project-Team, Nantes, France; Jesper Cockx, Chalmers / Gothenburg
+University, Gothenburg, Sweden; Matthieu Sozeau, Inria and IRIF, Pi.R2 Project-Team, Paris, France; Nicolas Tabareau,
+Inria, Gallinette Project-Team, Nantes, France.
+Permission to make digital or hard copies of part or all of this work for personal or classroom use is granted without fee
+provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and
+the full citation on the first page. Copyrights for third-party components of this work must be honored. For all other uses,
+This
+work
+licensed under a Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+contact
+theisowner/author(s).
+© 2019 Copyright held by the owner/author(s).
+2475-1421/2019/1-ART3
+https://doi.org/10.1145/3290316
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+3
+
+3:2
+
+Gaëtan Gilbert, Jesper Cockx, Matthieu Sozeau, and Nicolas Tabareau
+
+In order to concretely guarantee that no computation can leak from propositions to types, Coq
+uses a restriction of the dependent elimination from inductive types in P
+into predicates in Ty .
+This restriction, called the singleton elimination condition, checks that an inductive proposition can
+be eliminated into a type only when:
+(1) the inductive proposition has at most one constructor,
+(2) all the arguments of the constructor are themselves non-computational, i.e. are in P
+.
+However, in the current version of Coq, singleton elimination is the price to pay to be compatible
+with proof irrelevance, but there is no payback. This means that although two proofs of the same
+proposition can not be relevantly distinguished in the system, one can not use the fact that they
+are equal in the logic.
+Consider for instance a working mathematician or computer scientist who defines bounded
+integers in the following way:
+Definition boundedN (k : N) : Type := { n : N & n ≤ k }.
+Here boundedN k is the dependent sum of an integer n together with a proof (in P
+below k, using the inductive definition
+
+) that n is
+
+Inductive ≤ : N → N → Prop :=
+≤0 : ∀ n, 0 ≤ n
+| ≤S : ∀ m n, m ≤ n → S m ≤ S n.
+Then, our user defines an implicit coercion from boundedN to N so that she can work with
+bounded integers almost as if they were integers, apart from additional proofs of boundedness.
+Coercion boundedN_to_N : boundedN ↣ N.
+For instance, she can define the addition of bounded integers by simply relying on the addition of
+integers, modulo a proof that the result is still bounded:
+Definition add {k} (n m : boundedN k) (e : n + m ≤ k) : boundedN k := ( n + m ; e).
+Unfortunately, when it comes to reasoning on bounded integers, the situation becomes more difficult. For instance, the fact that addition of bounded natural numbers is associative
+Definition bounded_add_associativity k (n m p: boundedN k) e1 e2 e'1 e'2 :
+add (add n m e1 ) p e2 = add n (add m p e'1 ) e'2 .
+does not directly follow from associativity of addition on integers, as it additionally requires a
+proof that e2 equals e'2 (modulo the proof of associativity of addition of integers). This should
+be true because they are two proofs of the same proposition, but it does not follow automatically.
+Instead, the user has to prove proof-irrelevance for ≤ manually. This can be proven (using Agda
+style pattern matching of the Equations plugin1 ) by induction on the proof of m ≤ n:
+Equations ≤_hprop {m n} (e e' : m ≤ n) : e = e' :=
+≤_hprop (≤0 _) (≤0 _) := eq_refl;
+≤_hprop (≤S _ _ e) (≤S n m e') := ap (≤S n m) (≤_hprop e e').
+Note the use of functoriality of equality ap : ∀ f, x = y → f x = f y which requires some explicit reasoning on equality. Even if proving associativity of addition was more complicated than expected,
+our user is still quite lucky to deal with an inductive type that is actually a mere proposition, in the
+sense of Homotopy Type Theory (HoTT) [Univalent Foundations Program 2013]. Indeed, ≤ satisfies the propositional (as opposed to definitional, which holds by computation) version of proof
+1
+
+http://mattam82.github.io/Coq-Equations/
+
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+Definitional Proof-Irrelevance without K
+
+3:3
+
+irrelevance, as expressed by the ≤_hprop lemma. For an arbitrary inductive type in P
+, there
+is no reason anymore why it would be a mere proposition, and thus proof irrelevance, even in its
+propositional form, can not be proven and must be stated as an axiom.
+In a setting where proof-irrelevance for P
+is built in, it becomes possible to define an operation on types which turns any type into a definitionally proof irrelevant one and thus makes
+explicit in the system the fact that a value in Squash T will never be used for computation.
+Definition Squash (T : Type) : Prop := ∀ P : Prop, (T → P) → P.
+This operator satisfies the following elimination principle (reduced to proposition) given by
+∀ (T : Type) (P : Prop), (T → P) → Squash T → P.
+which means that it corresponds to the propositional truncation [Univalent Foundations Program
+2013] of HoTT, originally introduced as the bracket type by Awodey and Bauer [Awodey and Bauer
+2004].
+The importance of (definitional) proof irrelevance to simplify reasoning has been noticed for a
+long time, and various works have tried to promote its implementation in a proof assistant based
+on type theory [Pfenning 2001; Werner 2008]. However, this has never been achieved, mainly
+because of the fundamental misunderstanding that singleton elimination was the right constraint
+on which propositions can be eliminated into a type. Indeed, one can think of singleton elimination
+as a syntactic approximation of which types are naturally mere propositions, and thus can be
+eliminated into an arbitrary type without leaking a piece of computation or without implying new
+axioms. But, singleton elimination does not work for indexed datatypes, as for instance it applies
+to the equality type of Coq
+Inductive eq (A : Type) (x : A) : A → Prop := eq_refl : eq A x x
+If proof irrelevance holds for the equality type, every equality has at most one proof, which is
+known as Uniqueness of Identity Proofs (UIP). Therefore, assuming proof irrelevance together with
+the singleton elimination enforces a new axiom in the theory, which is for instance incompatible
+with the univalence axiom from HoTT. This may not seem too problematic to some, but another
+consequence of singleton elimination in presence of definitional proof irrelevance is that it breaks
+decidability of conversion. For instance, the accessibility predicate:
+Inductive Acc (A : Type) (R : A → A → Prop) (x : A) : Prop :=
+Acc_intro : (∀ y : A, R y x → Acc R y) → Acc R x
+satisfies the singleton elimination criterion but implementing definitional proof irrelevance for it
+leads to an undecidable conversion and thus an undecidable type checker (we come back to this
+point in more detail in Section 2).
+An alternative approach is to do as in Lean, where they do have proof irrelevance with singleton elimination, but they only implement a partial version of proof irrelevance for recursive
+inductive types satisfying the singleton elimination, which is restricted to closed terms.2 But this
+partial implementation of the conversion algorithm breaks in particular subject reduction, which
+seems a desirable property for a proof assistant (see a concrete example in Appendix A). Finally,
+singleton elimination fails to capture inductive types with multiple constructors such as ≤ which
+are perfectly valid mere propositions and could be eliminated into types.
+Looking back, Coq and its impredicative sort P
+may not be the only way to implement proof
+irrelevance in a proof assistant. Agda, which only has a predicative hierarchy of universes and no
+P
+, instead uses a notion of irrelevant arguments [Abel and Scherer 2012]. The idea there is to
+2
+
+See a description of this issue in https://github.com/leanprover/lean/issues/654.
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+3:4
+
+Gaëtan Gilbert, Jesper Cockx, Matthieu Sozeau, and Nicolas Tabareau
+
+mark in the function type which arguments can be considered as irrelevant. For instance, our user
+can encode bounded natural numbers in this setting, by specifying that the second argument of
+the dependent pair is irrelevant (as marked by the . in the definition of .(n ≤ k)):
+data boundedNat (k : N) : Set where
+pair : (n : N) → .(n ≤ k) → boundedNat k
+The fact that equality of the underlying natural numbers implies equality of the bounded natural
+numbers comes for free from irrelevance of the second component:
+piBoundedNat : {k : N}(n m : N)(e : n ≤ k)(e ′ : m ≤ k) → n ≡ m → pair n e ≡ pair m e ′
+piBoundedNat n m _ _ refl = refl
+However, in this approach proof irrelevance is not a property of the type being considered but
+rather a way to use the argument of a given function. To get closer to a real management of proof
+irrelevance, irrelevant fields were added to Agda.3 It becomes thus possible to define a variant of
+propositional truncation by defining a record with only one field which is proof irrelevant
+record Squash (A : Set) : Set where
+constructor sq
+field .unsq : A
+Squash A is proof-irrelevant, as shown by the following lemma:
+piSquash : {A : Set}(x y : Squash A) → x ≡ y
+piSquash x y = refl
+However, together with irrelevant fields, there is a notion of irrelevant projections4 , which, as
+observed recently by the Agda community5 , gives rise to an inconsistency in the theory. Indeed,
+in Agda 2.5.3 it is possible to define a function from Squash Bool to Bool that can be shown to be
+definitionally the inverse of sq in an irrelevant context.
+bizarre : Squash (฀ (Bool → Squash Bool)
+(λi → ฀ (Squash Bool → Bool) (λu → (a : Bool) → u (i a) ≡ a)))
+bizarre = sq (sq, unsq, (λa → refl {x = a}))
+This can be used to prove that Squash (true ≡ false) which directly leads to an inconsistency. We
+have worked with Agda developers since then and they have been able to correct this issue based
+on our explanation using a definitionally proof irrelevant universe. Thus, using a universe P
+,
+of definitionally proof irrelevant propositions, is necessary to give a good theoretical justification
+of irrelevant fields, something that hasn’t been done so far. Moreover, being an inhabitant of P
+is a property of a type rather than the property of a particular argument of a function, which makes
+it much more flexible and easier to justify.
+Contributions. In this paper, we propose the first general treatment of a dependent type theory
+with a proof irrelevant sort, with intuitions coming from the notion of homotopy levels of HoTT
+and propositional truncation. This extension of type theory does not add any additional axioms
+(apart from the existence of a proof irrelevant universe) and is in particular compatible with univalence. We prove both consistency and decidability of type checking of the resulting type theory.
+Then we show how to define an almost complete criterion to detect which proof-irrelevant inductive definitions can be eliminated into types, correcting and extending singleton elimination.
+3
+
+Agda 2.2.8, see https://github.com/agda/agda/blob/master/CHANGELOG.md#release-notes-for-agda-2-version-228.
+
+4 Added in Agda 2.2.10.
+5
+
+Issue #2170 at https://github.com/agda/agda/issues/2170.
+
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+Definitional Proof-Irrelevance without K
+
+3:5
+
+This criterion uses the general methodology of proof-relevant unification and dependent pattern
+matching [Cockx and Devriese 2018; Cockx et al. 2014]. Our presentation is not specific to any
+particular type theory, which is shown by an implementation both in Coq, using an impredicative
+proof-irrelevant sort, and in Agda, using a hierarchy of predicative proof-irrelevant sorts.
+Links to the source code of the Coq and Agda implementations together with examples can be
+foudn in https://github.com/CoqHoTT/sProp.
+Plan of the paper. In Section 2, we give an overview of the main techniques and results developed in this paper. Section 3 presents the general dependent type theory with proof-irrelevant
+sorts, called sMLTT. We prove the main metatheoretical properties of sMLTT in Section 4. We
+then describe our criterion correcting and extending singleton elimination in Section 5. Finally, in
+Section 6 we discuss our implementation of definitional proof irrelevance in Coq and in Agda, and
+show its usefulness on various examples (available as anonymous supplemental material), including a formalization of the setoid model in Coq.
+2 LESSONS FROM HOMOTOPY TYPE THEORY
+Before diving into the precise definition of a type theory with definitional proof irrelevance, let us
+explore what makes it difficult to introduce while keeping decidable type checking and avoiding
+to induce additional axioms such as UIP or functional extensionality.
+2.1 sProp as a Syntactical Approximation of Mere Propositions
+The first lesson from HoTT is that each type in P
+must be a mere proposition, i.e. have homotopy level −1. Formally, the universe of mere propositions hP
+is defined as
+Definition hProp := { A : Type & ∀ x y : A , x = y }.
+and thus it corresponds exactly to the universe of types satisfying propositional proof irrelevance.
+As we have mentioned in the introduction, the operator Squash which transforms any type into
+an inhabitant of P
+, corresponds to the propositional truncation.
+The existence of P
+becomes interesting only when we can eliminate some inductive definitions in P
+to arbitrary types. If not, P
+constitutes an isolated logical layer corresponding
+to propositional logic, without any interaction with the rest of the type theory. The question is
+thus:
+“ Which inductive types of a universe of definitionally proof irrelevant types
+can be eliminated over arbitrary types? ”
+Of course, to preserve consistency, this should be restricted to inductive types that can be proven
+to be mere propositions, but this is not enough to preserve decidability of type checking and independence from UIP.
+2.2 Flirting with Extensionality
+Let us first look at an apparently simple class of mere propositions, contractible types. They constitute the lowest level in the hierarchy of types, for which not only there is at most one inhabitant
+up to equality, but there is exactly one. Of course, the unit type in P
+which corresponds to the
+true proposition
+Inductive sUnit : sProp := tt : sUnit.
+is contractible. We will say that the unit type can be eliminated to any type, and thus we get a unit
+type with a definitional η-law such that u ≡ tt for any u : sUnit. But in general, it should not be
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+3:6
+
+Gaëtan Gilbert, Jesper Cockx, Matthieu Sozeau, and Nicolas Tabareau
+
+expected that any contractible type in P
+below.
+
+can be eliminated to an arbitrary type, as we can see
+
+Singleton types. A prototypical example of a non-trivial contractible type is the so-called singleton type. For any type A and a:A, it is defined as the subset of points in A equal to a:
+Definition Sing (A : Type) (a : A) := { b : A & a = b }.
+If we include singleton types in P
+, and hence permit its elimination over arbitrary types, we
+are led to an extensional type theory, in which propositional equality implies definitional equality.
+This would thus add UIP and undecidability of type checking to the theory.6 Indeed, assume that
+singleton types can be eliminated to arbitrary types, then there exists a projection π 1 : Sing A
+a → A which recovers the point from the singleton. But then, for any proof of equality e: a = b
+between a and b in A, using congruence of definitional equality, there is the following chain of
+implications
+(a ; refl) ≡ (b ; e) : Sing A a ⇒ π 1 (a ; refl) ≡ π 1 (b ; e) : A ⇒ a ≡ b : A
+and hence e : a = b implies a ≡ b. From this analysis, it is clear that P
+tractible types.
+
+cannot include all con-
+
+2.3 Flirting with Undecidability
+Let us now look at other inductive types that are mere propositions without being contractible.
+The first canonical example is the empty type
+Inductive sEmpty : sProp := .
+that has no inhabitant, together with an elimination principle which states that anything can be
+deduced from the empty type
+sEmpty_rect : ∀ T : Type, sEmpty → T.
+We will see that this type can be eliminated to any type, and this is actually the main way to make
+P
+communicate with Ty . In particular, it allows the construction of computational values
+by pattern matching and use a contraction in P
+to deal with absurd branches.
+The other kind of inductive definition in P
+that can be eliminated into any type is a dependent sum of a type A in P
+and a dependent family over A in P
+, the nullary case being the
+unit type sUnit.
+Let us now have a look at more complex inductive definitions.
+Accessibility predicate. As mentioned in the introduction, the accessibility predicate is a mere
+proposition but it cannot be eliminated into any type while keeping conversion—and thus typechecking—decidable. Intuitively, this is because the accessibility predicate allows to define fixpoints with a semantic guard (the fact that every recursive call is on terms y such that R y x)
+rather than a syntactic guard (the fact that every recursive call is on a syntactic subterm). This
+is problematic in a definitionally proof irrelevant setting because a function that is defined by induction on an accessibility predicate could be unfolded infinitely many times. To understand why,
+consider the inversion lemma that we can define as soon as Acc can be eliminated into any type
+Definition Acc_inv A R (x : A) (X : Acc x) : ∀ y:A, R y x → Acc y :=
+Acc_rect (fun x ⇒ ∀ y, R y x → Acc y) (fun x X _ ⇒ X) x X.
+This inversion lemma makes use of the general eliminator on Acc:
+6 This remark is originally due to Peter LeFanu Lumsdaine.
+
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+Definitional Proof-Irrelevance without K
+
+3:7
+
+Acc_rect : ∀ P : A → Type, (∀ x : A, (∀ y : A, R y x → Acc y) → (∀ y : A, R y x → P y) → P
+x)
+→ ∀ x : A, Acc x → P x
+But then, from this inversion and using definitional proof irrelevance, the following definitional
+equality is derivable, for any predicate P : A → Type and function F : ∀ x, (∀ y, r y x → P y) →
+P x and X : Acc x
+Acc_rect P F x X ≡ F x (fun y r ⇒ Acc_rect P F y (Acc_inv A R x X y r))
+In an open context, it is undecidable to know how many time this unfolding must be done. Even
+the strategy that there is at most one unfolding may not terminate. Indeed, suppose that we are in
+a (possibly inconsistent) context where there is a proof R_refl showing that R is reflexive. Then,
+applying the unfolding above once to F := fun x f ⇒ f x (R_refl x) computes to
+Acc_rect P F x X ≡ Acc_rect P F x (Acc_intro x (Acc_inv A R x X))
+and the unfolding can start again for ever.
+As mentioned above, if we analyze the source of this infinite unfolding, it is due to the recursive
+call to Acc in the argument of Acc_intro on an arbitrary variable y that is not syntactically smaller
+than the initial x variable, but semantically guarded by the R y x condition. This example shows
+that singleton elimination is not a sufficient criterion for when an inductive type in P
+can
+be eliminated into any type, as one needs to introduce something similar to the syntactic guard
+condition on fixpoints.
+Let us now see why this is not a necessary condition either.
+The Good and the Bad Less Than or Equal. The definition of less than or equal given in introduction does not satisfy the singleton elimination criterion because it has two constructors. However,
+m ≤ n can easily be shown to be a mere proposition for any natural numbers m and n. Thus, it
+is a good candidate for an P
+being eliminable into any type. The reason why it is a mere
+proposition is however more subtle than what singleton elimination usually requires, as not every
+argument of the constructors of ≤ is in P
+. To see why it is a mere proposition, one needs to
+distinguish between forced and non-forced constructor arguments7 . A forced argument is an argument that can be deduced from the indices of the return type of the constructor, and that are not
+computationally relevant. Consider for instance the constructor ≤S : ∀ m n, m ≤ n → m ≤ S n,
+its two first arguments m and n can be computed from the return type S m ≤ S n and are thus
+forced. In contrast, the argument of type m ≤ n cannot be deduced from the type and thus must
+be in P
+.
+However, being a mere proposition is not sufficient as we have seen with singleton types and
+the accessibility predicate. Here the situation is even more subtle. Consider the (propositionally)
+equivalent definition of n ≤ m that is actually the one used in the Coq standard library:
+Inductive ≤bad : N → N → sProp :=
+| ≤bad _refl : ∀ n, n ≤bad n
+| ≤bad S : ∀ m n, m ≤bad n → m ≤bad S n.
+It can also be shown that m ≤bad n is a a mere proposition, but ≤ and ≤bad do not share the
+same inversion principle. Indeed, in the (absurd) context that e : S n ≤bad n, there are two ways
+to form a term of type S n ≤bad S n, either by using ≤bad _refl (S n) or by using ≤bad S (S n) n e.
+This means that allowing m ≤bad n to be eliminated into any type would require to decide whether
+the context is absurd or not, which is obviously not a decidable property of type theory. For m ≤ n
+7 This terminology has been introduced by [Brady et al. 2004].
+
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+3:8
+
+Gaëtan Gilbert, Jesper Cockx, Matthieu Sozeau, and Nicolas Tabareau
+
+the situation is different, because the return type of the two constructors ≤0 and ≤S are orthogonal,
+in the sense they cannot be unified.
+2.4 Dependent Pattern Matching to the Rescue
+We propose a new criterion for when a type in P
+can be eliminated to an arbitrary type, fixing
+and generalizing the singleton elimination criterion. This criterion is general enough to distinguish
+between the definitions of ≤ and ≤bad . In general, an inductive type in P
+may be eliminated
+if it satisfies three properties:
+(1) Every non-forced argument must be in P
+.
+(2) The return types of constructors must be pairwise orthogonal.
+(3) Every recursive call must satisfy a syntactic guard condition.
+To justify this criterion, we provide a general translation from any inductive type satisfying this
+criterion to an equivalent type defined as a fixpoint, using ideas coming from dependent pattern
+matching [Cockx and Devriese 2018; Cockx et al. 2014]. Indeed, looking at the inductive definition
+from right (its conclusion) to left (its arguments) allows us to construct a case tree similarly to what
+is done with a definition by pattern matching. Providing this translation also means we avoid
+the need to extend our core language, as all inductive types can be encoded using the existing
+primitives.
+Rejecting constructor arguments not in sProp. The first property is the most straightforward to
+understand: if a constructor of an inductive type can store some information that is computationally relevant, then it should not be in P
+(or at least, we should never eliminate it into Ty ).
+Rejecting non-orthogonal definitions. The idea of the second property is that the indices of the
+return type of each constructor should fix in which constructor we are, by using disjoint indices
+for the different constructors. This is a syntactical approximation of the orthogonality criterion.
+This is the property that fails to hold for ≤bad .
+Rejecting non terminating fixpoints. In addition to the first two properties, we also require a
+syntactic guard condition on the recursive constructor arguments. This guard condition enforces
+that the resulting fixpoint definition is well-founded. We may thus use the exact same syntactic
+condition already used for fixpoints already implemented in the type theory (no matter which one
+it is, as long as it guarantees termination).
+For instance, in the case of Acc, the case tree induces the following definition, which is automatically rejected by the termination checker because of the unguarded recursive call Acc' y
+Fail Equations Acc' (x: A) : sProp :=
+Acc' x := (∀ y:A, R y x → Acc' y).
+Deriving fixpoints and eliminators automatically. If all three properties are satisfied, we can automatically derive a fixpoint in P
+that is equivalent to the inductive definition. Each constructor
+corresponds to a unique branch of a case tree, and the return type in each branch is the dependent
+sum of the non-forced arguments of the corresponding constructor (the zero case being sUnit).
+For instance, for ≤, this is given by
+Equations ≤fix (n m : N) : sProp :=
+0 ≤fix n := sUnit;
+S m ≤fix S n := m ≤fix n;
+S _ ≤fix 0 := sEmpty.
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+Definitional Proof-Irrelevance without K
+A, B, M, N
+
+::=
+
+Ty
+
+Γ, ∆
+
+::=
+
+. | Γ, x : A
+
+3:9
+
+i | x | M N | λ x : A. M | Π x : A. B | Σx : A. B | π 1 M | π 2 M | (M, N )
+
+Γ ⊢ A : Ty
+
+Γ ⊢ A : Ty
+
+⊢ Γ, x : A
+
+Γ, x : A ⊢ x : A
+
+⊢ .
+
+Γ ⊢ A : Ty
+
+⊢Γ
+Γ ⊢ Ty
+
+i : Ty
+
+Γ ⊢ Π x : A. B : Ty
+
+Γ, x : A ⊢ M : B
+
+i
+
+Γ, x : A ⊢ B : Ty
+
+Γ ⊢ Σ(x : A), B : Ty
+
+j
+
+max(i, j)
+
+Γ ⊢ p : Σ(x : A).B
+
+Γ ⊢ π 1p : A
+
+Γ ⊢ π 2p : B[x ≔ π 1p]
+
+Γ ⊢ (λ x : A. M) N ≡ M {x := N }
+
+j
+
+max(i, j)
+
+Γ⊢N :A
+
+Γ ⊢ M N : B {x := N }
+
+Γ ⊢ p : Σ(x : A).B
+
+Γ ⊢ π 2 (M, N ) ≡ N
+
+Γ, x : A ⊢ B : Ty
+
+i
+
+Γ ⊢ M : Π x : A. B
+
+Γ ⊢ λ x : A. B : Π x : A. B
+Γ ⊢ A : Ty
+
+Γ, x : A ⊢ M : B
+
+Γ ⊢ Π x : A. B : Ty
+
+i+1
+
+Γ ⊢ A : Ty
+
+Γ⊢M :B
+
+Γ⊢M :A
+
+Γ, x : A ⊢ M : B
+
+Γ ⊢ (M, N ) : Σ(x : A).B
+Γ⊢M :B
+
+Γ ⊢ A : Ty
+
+Γ⊢A≡B
+
+Γ⊢M :A
+(π 1 M, π 2 M) ≡ M
+
+Γ ⊢ π 1 (M, N ) ≡ M
+
+(congruence rules omitted)
+Fig. 1. Syntax and typing rules of MLTT
+
+Note that branches corresponding to no constructor are given the value sEmpty. One can then
+also define functions corresponding to the constructors and the elimination principle (to Ty ) of
+the inductive type. Details of the algorithm and its correctness are given in Section 5.
+3 ADDING DEFINITIONAL PROOF IRRELEVANCE TO MLTT
+Most type theories describable by Pure Type Systems (PTS) can be extended with a notion of
+predicative or impredicative hierarchy of sorts P
+i which satisfies definitional proof irrelevance.
+This is illustrated in this paper by the fact that this extension can be applied to both Coq and
+Agda, which correspond to slightly different PTSs. However, to keep the theoretical presentation
+simple, we present this extension for a prototypical PTS-style type theory, namely Martin-Löf
+Type Theory [Martin-Löf 1975] (MLTT), and only go into the difference between the Coq and
+Agda implementations in Section 6. In this section, we first introduce MLTT and then explain how
+to add a proof irrelevant hierarchy of sorts, and various specific types and type constructors in it.
+3.1 MLTT
+MLTT is the PTS-style type theory described in Figure 1, using, as usual, three statements mutually
+recursively defined. The statement ⊢ Γ means that the environment Γ is well formed, while Γ ⊢
+M : A means that the term M has type A in environment Γ and the statement Γ ⊢ A ≡ B means A
+is convertible to B in context Γ.
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+3:10
+
+Gaëtan Gilbert, Jesper Cockx, Matthieu Sozeau, and Nicolas Tabareau
+
+MLTT features dependent products, a negative presentation of dependent sums (using projection instead of pattern-matching) and a predicative hierarchy of universes Ty i . The conversion
+judgment features β-reduction, traditional rules of computation for dependent sums (surjective
+pairing and projections), together with congruence rules for every constructor. As usual, we note
+A → B for Π x : A. B when B does not depend on x.
+MLTT satisfies many good properties among which consistency and decidability of type-checking
+(see [Abel et al. 2018] for the first mechanized proof of those properties). In the sequel, we present
+an extension of MLTT with definitional proof irrelevance that preserves those two properties.
+3.2 Adding sProp to MLTT
+MLTT can be extended with a predicative hierarchy of sorts P
+
+i by adding the rule
+
+⊢Γ
+Γ⊢ P
+
+i : Ty
+
+i+1
+
+and extending the rule of creation of a dependent product to deal with P
+Γ⊢A: P
+
+i
+
+Γ, x : A ⊢ B : Ty
+
+Γ ⊢ Π x : A. B : Ty
+where U i is either P
+
+j
+
+Γ⊢A:U i i
+
+Γ, x : A ⊢ B : P
+
+Γ ⊢ Π x : A. B : P
+
+max(i, j)
+
+j
+
+max(i, j)
+
+or Ty .
+
+An impredicative variant. We will see in section 4 that we can also allow an impredicative version
+of P
+, which amounts to just ignoring the indices on P
+throughout.
+The main feature of P
+is that the types inhabiting it are definitionally proof-irrelevant,
+which is enforced by the following rule of conversion:
+Γ⊢A: P
+
+i
+
+Γ⊢x :A
+
+Γ⊢y :A
+
+Γ⊢x ≡y :A
+So far the universe hierarchy of P
+is mostly unconnected from the universe hierarchy of
+Ty ’s. Therefore, we add several extensions to improve on this. Namely, we add the empty type,
+a squash operator, a box operator and dependent sums in P
+. We call the resulting system
+sMLTT.
+3.3 Empty Type
+We add an empty type in P
+relevant):
+
+, eliminable to any type (including those in Ty
+
+Γ⊢A:U i i
+Γ ⊢ sEmpty : P
+
+i
+
+which are proof
+
+Γ ⊢ e : sEmpty
+
+Γ ⊢ sEmpty_rect A e : A
+
+This is enough to define many other types in P
+. For instance sUnit is just sEmpty → sEmpty
+(whose inhabitant λ x : sEmpty. x is unique up to conversion due to proof irrelevance).
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+Definitional Proof-Irrelevance without K
+
+3:11
+
+3.4 Squash
+We can add a squash operator (a.k.a. bracket type) by the following rules:
+Γ ⊢ A : Ty
+
+Γ⊢x :A
+
+i
+
+Γ ⊢ ∥A∥ : P
+Γ ⊢ A : Ty
+
+i
+
+Γ ⊢ sq x : ∥A∥
+
+i
+
+Γ⊢P : P
+
+j
+
+Γ⊢ f :A→P
+
+Γ ⊢ x : ∥A∥
+
+Γ ⊢ unsq P f x : P
+Note that thanks to definitional proof irrelevance, the non-dependent eliminator unsq P f x is
+enough to define the dependent one.
+In an impredicative setting, ∥A∥, sq x and unsq P f x can be defined using a standard impredicative encoding:
+∥A∥
+≔ Π(P : P
+), (A → P) → P
+sq x
+≔ λP : P
+. λ f : A → P. f x
+unsq P f x ≔ x P f
+In a predicative setting, the situation is similar but the encoding only allows one to define the
+eliminator to lower universes as captured by the following rules
+Γ ⊢ A : Ty
+Γ ⊢ ∥A∥i, j : P
+Γ ⊢ A : Ty
+
+i
+
+Γ⊢P : P
+
+i
+max (i, j+1)
+
+Γ⊢ f :A→P
+
+j
+
+Γ ⊢ x : ∥A∥i, j
+
+j <i
+
+Γ ⊢ unsq P f x : P
+If we want to eliminate the squash type to arbitrary types in a predicative setting, then we have
+to add it as a primitive.
+3.5 Box
+If we see P
+as a sub-universe of Ty
+verse to the squash operator.
+Γ⊢A:P
+Γ ⊢ 2A : Ty
+
+Γ ⊢ P : 2A → Ty
+
+there should be an inclusion from P
+
+to Ty , con-
+
+Γ⊢x :A
+
+i
+
+Γ ⊢ box x : 2A
+
+i
+
+Γ⊢A: P
+P
+j
+
+j or Γ ⊢ P : 2A →
+
+i
+
+Γ, x : A ⊢ f : P (box x)
+
+Γ ⊢ x : 2A
+
+Γ ⊢ unbox P f x : P x
+together with the conversion rule
+Γ ⊢ unbox P f (box a) ≡ f a
+This time, the dependent elimination can not be deduced from the non-dependent one, and the
+conversion rule is not automatic, because 2A lives in Ty i , not in P
+i.
+Having the box operator is equivalent to allowing one of the sides of a pair to be in P
+. Indeed,
+2A is the same as Σ(x : A).Unit or Σ(x : Unit).A, and instead of Σ(x : A).B with A : P
+we
+could use Σ(y : 2A).B[x ≔ unbox A (λ z : A. z) y].
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+3:12
+
+Gaëtan Gilbert, Jesper Cockx, Matthieu Sozeau, and Nicolas Tabareau
+
+This is what we need to be able to talk about properties with both relevant and irrelevant parts.
+For instance the type of symmetric strict relations on some type A is
+Σ(R : A → A → P
+
+).Π x y : A. R x y → R y x
+
+A→A→ P
+is a large type, and the proof of symmetry is an P
+.
+Making the box a primitive construct and deriving from it the concept of relevant pairs with
+an irrelevant component allows for a better separation of concerns. For instance, if we allowed
+irrelevant components in pairs with eta we would have to take care that if all components were
+irrelevant, then the resulting type would be definitionally irrelevant and so should be in P
+.
+In the implementations for Coq and Agda the box is subsumed by inductive types, see Section 6.
+3.6 Dependent Sums
+If both components of a pair are in P
+Γ⊢A: P
+
+Γ, x : A ⊢ B : P
+
+Γ ⊢ Σs (x : A).B : P
+
+, we can allow the pair itself to be in P
+j
+
+max(i, j)
+
+too:
+
+Γ ⊢ p : Σs (x : A).B
+
+Γ ⊢ p : Σs (x : A).B
+
+Γ ⊢ πs1p : A
+
+Γ ⊢ πs2p : B[x ≔ πs1p]
+
+Since we have definitional proof irrelevance, the expected computation rules for the projections
+and the surjective pairing conversion rule already hold and do not have to be added explicitly to
+the conversion.
+In an impredicative setting, dependent sums can be encoded as follows:
+Σs (x : A).B
+:= Π P : P
+. (Π x : A. B x → P) → P
+(a, b) : Σs (x : A).B
+:= λ P : P
+. λ f : _. f a b
+πs1 (p : Σs (x : A).B) : A
+:= p A (λ x : A. λ y : B x . x)
+πs2 (p : Σs (x : A).B) : B(πs1 p) := p (B(πs1 p)) (λ x : A. λ y : B x . y)
+Note that πs2 is well typed due to proof irrelevance of A.
+Dependent sums can also be encoded in a predicative setting extended with primitive squash
+and box:
+Σs (x : A).B
+(a, b) : Σs (x : A).B
+πs1 (p : Σs (x : A).B) : A
+πs2 (p : Σs (x : A).B) : B(πs1p)
+
+:=
+:=
+:=
+:=
+
+∥(x : 2A).2B(unbox A id x)∥
+sq (box a, box b)
+unsq A (λ x : _. unbox _ id (πs1x)) p
+unsq (B(πs1p)) (λ x : _. unbox _ id (πs2x)) p
+
+where we have omitted some obvious type annotations and where id is the identity function.
+3.7 Other Inductive Types
+There is no need for other primitive inductive types in P
+(assuming the corresponding proof
+relevant inductive types are available in Ty ).
+Indeed, either an inductive should not be permitted in P
+because it would introduce inconsistency (booleans) or undecidability (accessibility) and in that case, squashing the corresponding
+proof relevant inductive type is enough.
+In the other case, if the inductive type satisfies the criteria for being in P
+, we will see in
+section 5 that it can actually be encoded as a recursive definition using sEmpty, sUnit and proof
+irrelevant pairs. This translation comes with preconditions on the shape of the inductive type
+being translated, preventing it from working in cases where the inductive cannot be regarded as a
+strict proposition such as booleans (which would make the theory inconsistent) or the accessibility
+predicate (which would make conversion undecidable).
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+Definitional Proof-Irrelevance without K
+
+3:13
+
+4 METATHEORETICAL PROPERTIES OF sMLTT
+In this section, we prove the consistency of the predicative version of sMLTT by reducing it to
+the consistency of Extensional Type Theory (ETT). We then remark that the impredicative version
+is justified by the propositional resizing rule proposed by Vladimir Voevodsky [Voevodsky 2011].
+We further show that sMLTT is either compatible with the univalence axiom or supports a computational version of UIP, depending on whether we authorize elimination of equality in P
+or
+not. Finally, we show that type checking of sMLTT is decidable by modifying the proof by logical
+relations of Abel et al [Abel et al. 2018; Abel and Scherer 2012].
+4.1 ETT
+
+Γ ⊢ A : Ty
+
+i
+
+::=
+
+Γ⊢x :A
+
+Γ⊢y :A
+
+Γ ⊢ x =A y : Ty
+Γ ⊢ e : M =A N
+
+. . . | M =A N | reflM | J (y.q.M, e , u)
+
+A, B, M, N
+
+i
+
+Γ ⊢ e : x =A y
+
+Γ⊢M :A
+
+Γ⊢x ≡y
+
+Γ ⊢ reflM : M =A M
+
+Γ, y : A, q : M =A y ⊢ P : Ty
+
+i
+
+Γ ⊢ u : P {y := M }{q := reflM }
+
+Γ ⊢ J (y.q.P, e, u) : P {y := N }{q := e}
+Γ ⊢ J (y.q.P, reflM , u) ≡ u
+
+(+ other rules of MLTT)
+
+Fig. 2. Syntax and typing rules of ETT
+
+ETT is an extension of MLTT, presented in Figure 2, with a propositional equality x =A y
+that satisfies the reflection rule, that is every propositionally equal terms are convertible. We also
+assume that there is a type Unit with only one inhabitant tt.
+It is well known that ETT has an undecidable type checking as deciding conversion requires to
+decide propositional equality, since it is possible to encode the halting problem with an equality
+in ETT. But ETT still satisfies some good properties: it has a decidable “derivation” checking and
+it is consistent as it is conservative over MLTT with an identity type (plus UIP and functional
+extensionality), as shown by Martin Hofmann [Hofmann 1995].
+We should notice that using the reflection rule and η-law for functions, one can derive functional
+extensionality, that is given two functions f , д : Π x : A. B there is a term
+funextf ,д : (Π a : A. f a =B {x :=a } д a) → f =Π x :A. B д
+Also, the reflection rule allows deriving UIP. So adding the reflection rule to MLTT has additional
+consequences. We show in this section that for sMLTT, UIP can be safely added, but is independent
+from the theory, as we show in Section 4.3 that sMLTT is compatible with univalence.
+4.2 Consistency of sMLTT
+Following the notion of syntactical translations advocated in [Boulier et al. 2017], we prove consistency of sMLTT by a type preserving translation from sMLTT into ETT. The idea of the translation
+is to see inhabitant of P
+as a pair of type in ETT together with a proof that it is a mere proposition. Therefore, P
+is translated as the following dependent sum:
+[ P
+
+i ] := Σ A : Ty
+
+i . Π x y : A. x = y.
+
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+3:14
+
+Gaëtan Gilbert, Jesper Cockx, Matthieu Sozeau, and Nicolas Tabareau
+[Ty
+
+i]
+
+[ P
+
+i]
+
+:= Σ A : Ty
+
+i . Unit
+
+:= Σ A : Ty
+
+i . Π x y : A. x = y
+
+[x]
+
+:= x
+
+[Π x : A. B : Ty ]
+
+:= (Π x : JAK. JBK; tt)
+
+[Π x : A. B : P
+
+]
+
+:= (Π x : JAK. JBK;
+λ f д : Π x : JAK. JBK. π Π JAK JBKpf f д)
+
+[λ x : A. M]
+
+:= λ x : JAK. [M]
+
+[MN ]
+
+:= [M] [N ]
+
+[sEmpty]
+
+:= (Empty; λ x y : Empty. π Empty x y)
+
+[sEmpty_rect P t]
+
+:= Empty_rect [P] [t]
+
+[2A]
+
+:= (π 1 [A], tt)
+
+[box x]
+
+:= [x]
+
+[unbox P f a]
+
+:= [f ] [a]
+
+[Σ x : A. B : Ty ]
+
+:= (Σ x : JAK. JBK; tt)
+
+[Σ x : A. B : P
+
+]
+
+:= (Σ x : JAK. JBK;
+λ X Y : Σ x : JAK. JBK. π Σ JAKpf JBKpf X Y )
+
+[λ x : A. M]
+
+:= λ x : JAK. [M]
+
+[MN ]
+
+:= [M] [N ]
+
+JAK
+
+:= π 1 [A]
+
+JAKpf
+
+:= π 2 [A]
+π Empty x y
+
+:= Empty_rect (x = y) x
+
+πΠ A π B f д
+
+:= funext (λ x : A. π B (f x)(д x))
+
+πΣ πA π B X Y
+
+:= eqΣ (πA (π1X )(π 1Y )) (π B (π 2X )(π 2Y ))
+
+Fig. 3. Syntactical Translation from sMLTT to ETT
+
+The rest of the translation is rather straightforward, but for the fact that we need to provide an additional proof that type constructors which end in P
+build mere propositions. For instance, the
+fact that a dependent product whose codomain is a mere proposition is itself a mere proposition
+can be proven using functional extensionality in ETT. Definitional proof irrelevance is then modeled by the fact that every inhabitant of P
+is a mere proposition together with the reflection
+rule of ETT.
+The translation is described in Figure 3, where eqΣ is defined as the witness that equality between elements of an dependent sum is given by the equality of the corresponding projections
+(which is provable using J )
+eqΣ : Π x y : Σ a : A. B. π 1x =A π 1y → π2x =B {a:=π1 x } π 2y → x =Σ a:A. B y.
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+Definitional Proof-Irrelevance without K
+
+3:15
+
+Note that this statement is slightly more involved in intentional type theory8 as the second equality
+does not type-check in MLTT, because π 2y does not have type B{a := π 1x }. Here, the situation is
+simpler as we can use the reflection rule to convert B{a := π 1y} into B{a := π 1x } using the first
+equality.
+The following two properties are proved by mutual induction (although we state them separately
+for readability).
+L
+4.1 (
+i
+then JΓK ⊢ [t] ≡ [u] in ETT.
+
+i
+
+). For every term t and u of sMLTT, if Γ ⊢ t ≡ u : A
+
+P
+. By induction on the proof of congruence. The structure of the term is preserved by the
+translation, so β-reduction and congruence rules are automatically preserved. The only interesting
+case is the rule for definitional proof-irrelevance which says that when Γ ⊢ A : P
+, then t and
+u are convertible. But by correctness of the translation (Theorem 4.2), we know that JΓK ⊢ [A] :
+Σ A : Ty i . Π x y : A. x = y and [t], [u] have type JAK. Thus we can form of proof of [t] = [u] by
+JAKpf [t] [u]. From which we deduce [t] ≡ [u] by the reflection rule.
+□
+Th
+4.2 (
+h y
+i
+i ). For every typing derivation of
+sMLTT Γ ⊢ M : A, we have the corresponding derivation JΓK ⊢ [M] : JAK in ETT.
+P
+
+. By induction on the typing derivation.
+
+□
+
+About impredicativity and resizing rules. ETT is not sufficient to interpret impredicativity of
+P
+in sMLTT, because if we state [ P
+] := Σ A : Ty 0 . Π x y : A. x = y, where Ty 0 is
+some fixed universe (let say the first one) in the hierarchy, then the typing rule for impredicativity
+of dependent product for P
+can not be interpreted by the translation because for Γ ⊢ A : Ty i
+and Γ, x : A ⊢ B : P
+, one has that
+JΓK ⊢ [Π x : A. B] : Σ A : Ty
+
+i . Π x y : A. x = y
+
+To remedy this situation, we can make use of the propositional resizing rule introduced by Vladimir
+Voevodsky [Voevodsky 2011], which says that every mere proposition can be put in the universe
+Ty 0 .
+Γ ⊢ A : Ty
+
+i
+
+Γ ⊢ e : Π x y : A. x =A y
+
+Γ ⊢ rr(A, e) : Ty
+
+0
+
+The propositional resizing is justified by any classical model of ETT, that is a model which satisfies
+the law of excluded middle, because in such a model, every mere proposition is either sEmpty or
+Unit and thus lives in the lowest universe.9 Using propositional resizing, it is thus possible to define
+the coercion10
+rr P
+:
+(Σ A : Ty i . Π x y : A. x = y) → Σ A : Ty 0 . Π x y : A. x = y
+:= λ A : _. (rr(π 1A, π 2A)), λ x y : rr(π 1A, π 2A). π 2A x y)
+which is enough to interpret impredicativity of P
+
+.
+
+4.3 sMLTT is Compatible with Univalence
+We now show that sMLTT is compatible with univalence, and thus in particular, definitional proof
+irrelevance does not necessary imply UIP. To that end, we consider an extension of ETT with a
+8 The precise statement and a proof of it can be found for instance in [Univalent Foundations Program 2013].
+9 Vladimir Voevodsky has also introduced other resizing rules involving type equivalences which are a bit more controver-
+
+sial as their justifications have not been completely written up.
+10 For simplicity, we assume that inhabitants of A and rrA are the same, but to keep type-checking decidable, we should
+
+use explicit wrapper from one to the other.
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+3:16
+
+Gaëtan Gilbert, Jesper Cockx, Matthieu Sozeau, and Nicolas Tabareau
+[Ty
+
+i]
+
+:= Σ A : FTy
+
+i . Unit
+
+[ P
+
+i]
+
+:= Σ A : FTy
+
+i . Π x y : A. x = y
+
+Fig. 4. Syntactical Translation from sMLTT to HTS
+
+second notion of equality, but restricted to fibrant types. This extension has first been proposed
+by Vladimir Voevodsky under the name Homotopy Type System (HTS) [Voevodsky 2013] and has
+later been reworked by Paolo Capriotti et. al. under the name two-level type theory [Altenkirch
+et al. 2016; Capriotti 2017] (which may or may not be extensional for the strict equality). Those
+two systems differ slightly. In particular, in HTS, there is only one type of integers which is fibrant,
+whereas two level type theory distinguishes between fibrant and non-fibrant types. However, those
+differences are not important for our purpose, so even though we refer to HTS, we could also have
+used an extensional two-level type theory.
+The main idea of HTS is to distinguish between types which live in Ty i for which equality
+is strict, and fibrant types which live in FTy i for which there are two notions of equality: strict
+equality a =A b and homotopical equality a ∼A b. The rules for a ∼A b are the same as for
+propositional equality, except that the formation of a ∼A b is only possible when A is fibrant, and
+the eliminator J∼ is restricted to fibrant predicates:
+Γ ⊢ e : M ∼A N
+
+Γ, y : A, q : M ∼A y ⊢ P : FTy
+
+i
+
+Γ ⊢ u : P {y := M }{q := refl∼M }
+
+Γ ⊢ J∼ (y.q.P, e, u) : P {y := N }{q := e}
+Then, the type of propositional equality is not fibrant, so it is not possible to derive propositional
+equalities from homotopical ones.
+We can modify the translation of Figure 3 to target the fibrant fragment of HTS. In this case,
+types and propositions are interpreted as fibrant types, as shown in Figure 4. Note that [ P
+i ] is
+not by definition fibrant in HTS, so before stating the correctness of this modified translation, we
+need to introduce a new rule in HTS in order to have
+[ P
+
+i ] : FTy
+
+i.
+
+This rule is admissible as has been proven by Thierry Coquand in his note on the universes of
+Bishop sets and strict propositions [Coquand 2016]. Indeed, using the cubical model of type theory (which is a model of HTS), Thierry Coquand shows in particular that the universe of strict
+propositions is fibrant (Theorem 6.2).
+It is now easy to replay the proof of Theorem 4.2 to show the correctness of the syntactical
+translation in HTS and conclude the following corollary.
+C
+
+y 4.3. sMLTT is compatible with univalence.
+
+P
+. As the translation of Ty i is isomorphic to FTy i and the translation of a dependent
+product in Ty i is directly translated as a dependent product, we can add a univalent fibrant
+equality in Ty i in sMLTT which is simply translated as the univalent equality in FTy i .
+□
+4.4 Strict Identity and UIP
+We now consider an optional extension, adding propositional equality in P
+. Since this implies
+uniqueness of identity proofs, this extension is not always desired, in particular if we want to stay
+compatible with univalence, but we mention it because it provides a very simple and modular way
+to add UIP in the system.
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+Definitional Proof-Irrelevance without K
+Γ ⊢ A : Ty
+
+Γ⊢x :A
+
+i
+
+=sA
+
+Γ⊢x
+Γ ⊢ e : M =sA N
+
+3:17
+
+y: P
+
+Γ⊢y :A
+
+Γ⊢M :A
+Γ ⊢ reflsM : M =sA M
+
+i
+
+Γ, y : A, q : M =sA y ⊢ P : Ty
+
+Γ ⊢ u : P {y := M }{q := reflsM }
+
+i
+
+Γ ⊢ Js (y.q.P, e, u) : P {y := N }{q := e}
+Γ ⊢ Js (y.q.P, reflM , u) ≡ u
+Fig. 5. Definition of a strict equality type.
+
+In this context, the computation rule for equality in P
+can equivalently be stated as Γ ⊢
+J (x .q.P, e, u) ≡ u when e : x =s x, as already noted by Benjamin Werner in [Werner 2008]. The
+consistency of this extension is direct as it is justified by the translation presented in Figure 3 by
+simply adding
+[x =sA y] := ([x] =JAK [y], uip JAK [x] [y])
+where uip A x y : Π e e ′ : x =A y. e =x =y e ′ is a proof of UIP in ETT. Then refls and Js are directly
+translated using refl and J .
+4.5 Relevance Marks and Decidability of Type Checking
+A naïve implementation of type theory with P
+requires to check during conversion if the
+terms we are comparing are relevant or not. To compute this information requires 2 rounds of
+typing: first to get its type, then to get the sort of the type, but this is not very efficient. There is
+another issue, this time on the theoretical side: conversion can not be defined independently from
+typing, and the standard technique to prove decidability of type checking developed by Andreas
+Abel and others [Abel et al. 2018; Abel and Scherer 2012] based on algorithmic equality and logical
+relations does not apply. We now introduce a notion of term annotation that allows to solve both
+issues at the same time, thus making it possible to decide irrelevance syntactically, without relying
+on type checking.
+Specifically, we annotate lambdas and products according to the relevance of the bound type. The
+same is done for each variable in a context. When adding a variable to a context and when typing
+a function or product type we need to check the mark on the variable. The syntax with P
+and
+the inference rules for adding a variable to a context are described in Figure 6. Adapting the other
+rules and adding extensions is straightforward and left as an exercise to the reader.
+∗
+
+::=
+
+Relevant | Irrelevant
+
+A, B, M, N
+
+::=
+
+∗
+P
+i | Ty i | x | M N | λ x : A. M
+∗
+| Π x : A. B | Σx : A. B | π 1 M | π 2 M | (M, N )
+
+Γ, ∆
+
+::=
+
+. | Γ, x ∗ : A
+
+Γ ⊢ A : Ty
+⊢ Γ, x
+
+Relevant
+
+i
+
+:A
+
+Γ⊢A: P
+⊢ Γ, x
+
+Irrelevant
+
+i
+
+:A
+
+Fig. 6. sMLTT with relevance marks
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+3:18
+
+Gaëtan Gilbert, Jesper Cockx, Matthieu Sozeau, and Nicolas Tabareau
+
+The procedure to decide the relevance of a term in a context is defined by induction on the
+syntax:
+• relevanceΓ (x) ≔ ∗ when x ∗ ∈ Γ
+• relevanceΓ (M N ) ≔ relevanceΓ (M)
+• relevanceΓ (λ x ∗ : A. M) ≔ relevanceΓ,x ∗ :A (M)
+• Everything else (sorts, product types, relevant sigma types, relevant pairs and relevant projections) is relevant.
+As binders for product types are annotated, we can pass this annotation to the context when we go
+under the binder (for instance in a conversion procedure). Binders in Σ types need no annotation
+since they are always relevant.
+P
+i i 4.4. For M well typed in Γ, relevanceΓ (M) = Irrelevant if and only if there exists A
+such that Γ ⊢ M : A and Γ ⊢ A : sProp.
+P
+. By induction on the typing derivation of M. Only the case for application is of interest.
+The crucial property is that relevance is stable by well-typed substitution: if Γ, x ∗ : A ⊢ T : s,
+Γ ⊢ e : A and Γ ⊢ T [x ≔ e] : s ′ then s is P
+if and only if s ′ is P
+. This is given by
+uniqueness of typing and the fact that substitution is type preserving.
+□
+In a setting with cumulativity, for instance in Coq, uniqueness of typing expresses that two types
+of the same term have a common upper bound, so for correctness of marks, implicit cumulativity
+from P
+to Ty must be forbidden, instead relying on explicit cumulativity through 2.
+Using relevance marks, we can replay the proof of decidability of type checking of Andreas Abel
+and Gabriel Scherer using algorithmic equality and logical relations [Abel and Scherer 2012]—for
+sMLTT without a strict equality, as the work of Abel et al. does not deal with identity types.
+Their setting was designed to handle irrelevant arguments, where irrelevance was marked on the
+typing annotation Γ ⊢ t ÷ A which says that t is used irrelevantly. Here we replace this irrelevance
+annotation by Γ ⊢ t : A ∧ relevanceΓ (t) = Irrelevant. That is, the annotation is not on the typing
+judgment but directly on the term. Concretely, we replace the rule for dealing with irrelevance in
+the definition of structural equality on neutral terms by
+Γ⊢n↔n:A
+
+relevanceΓ (n) = Irrelevant
+
+Γ ⊢ n′ ↔ n′ : A
+
+Γ ⊢ n ↔ n′ : A
+Once this change has been done, we can replay their proof directly to get:
+Th
+
+4.5 (F
+
+Th
+
+6.7, [A
+
+S h
+
+2012]). Γ ⊢ t ≡ t ′ : T is decidable.
+
+5 FROM INDUCTIVE TYPE TO A FIXPOINT
+So far, we have described the type theory sMLTT with a universe P
+consisting of function
+types, the empty type, the unit type, dependent sum types, and a squash type. But in general
+we also want to define arbitrary inductive types in P
+. On one hand, we can always define
+an inductive type in Ty and then apply the propositional squash to bring it into P
+, but this
+restricts its elimination principle to target types in P
+. On the other hand, we mentioned before
+that certain inductive types can be translated to fixpoints using just the empty type, unit type, and
+dependent sum as the basic building blocks in P
+. This translation has already been intuitively
+sketched in Section 2.4. In this section, we give a formal criterion for when this translation is
+possible and show how it can be automated.
+The algorithm described here is inspired by the elaboration of definitions by dependent pattern
+matching to a case tree described by Cockx and Abel [2018], and makes heavy use of much of the
+same machinery for case analysis and proof-relevant unification.
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+Definitional Proof-Irrelevance without K
+
+3:19
+
+Note that there are other ways to define datatypes with a dependent elimination principle, as
+for instance by using an impredicative encoding in a type theory enriched with dependent intersections types as done in Cedille [Stump 2018].
+5.1 Constructing the Case Tree
+From a high-level view, the idea of the translation is to view the definition of the inductive type
+as a function that does some case analysis on the indices and returns the argument types of the
+appropriate constructor in each case. The types for which this translation succeeds are exactly the
+types in P
+that can be eliminated into arbitrary types. For example, recall from Section 2.4
+that we can view the definition of ≤ as the following definition:
+Equations ≤fix (n m : N) : sProp :=
+0 ≤fix n := sUnit;
+S m ≤fix S n := m ≤fix n;
+S _ ≤fix 0 := sEmpty.
+One challenge in this translation is to determine which constructor arguments should appear on
+the right-hand side: for the constructor ≤S (in the second equation), the argument of type m ≤ n
+makes an appearance but the first two arguments m and n do not. These disappearing arguments
+correspond exactly to the forced arguments of the constructor: their values can be uniquely determined from the type.
+To tackle this problem in general, we choose not to translate the inductive definition to a list of
+clauses, but directly to a case tree. For example, we construct the following case tree for ≤:
+0
+
+
+
+m ≤ n := casem 
+
+ S m′
+
+
+7→
+
+≤0
+
+7→ casen
+
+{
+
+0
+S n′
+
+7→ ⊥
+7→ ≤S (p : m ′ ≤ n ′)
+
+
+} 
+
+
+
+
+
+
+In general, a case tree representing an inductive datatype in P
+is either a leaf node of the form
+c ∆ where c is a constructor name and ∆ is a telescope of types in P
+, an empty node ⊥, or an
+internal node of the form
+}
+{
+ˆ n 7→τn Q n
+ˆ 1 7→τ1 Q 1 ; . . . ; cn ∆
+casex c1 ∆
+ˆ i for arguments, τi are substitutions
+where x is a variable, ci are constructors with fresh variables ∆
+(these will be explained later), and Q i are again case trees.
+For constructing a case tree from the declaration of the inductive type, we work on an elaboration problem P of the form
+{
+}
+Γ ⊢ c1 ∆1 [Φ1 ]; . . . ; ck ∆k [Φk ]
+where:
+
+• Γ is the ‘outer’ telescope of datatype indices,
+• c1 , . . . , ck are the names of the constructors,
+• ∆i is the ‘inner’ telescope of arguments of ci , and
+• Φi is a set of constraints {w i j /? vi j : Ai j | j = 1 . . . l }.
+To transform the definition of an inductive datatype D to a case tree, the initial elaboration
+problem has for Γ the index telescope of D, c1 , . . . , ck all constructors of D, ∆i the argument
+telescope of ci , and Φi = {x j /? vi j : A j | j = 1 . . . l } where Γ = (x 1 : A1 ) . . . (xl : Al ) and
+vi1 , . . . , vil are the indices targeted by ci , i.e. ci : ∆i → D vi1 . . . vil . For example, for ≤ we start
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+3:20
+
+Gaëtan Gilbert, Jesper Cockx, Matthieu Sozeau, and Nicolas Tabareau
+
+with the following elaboration problem:
+}
+{
+≤0 (n ′ : N)
+[m /? 0 : N, n /? n ′ : N]
+(m n : N) ⊢
+≤S (m ′ n ′ : N)(p : m ′ ≤ n ′) [m /? S m ′ : N, n /? S n ′ : N]
+From this initial problem, the elaboration proceeds by successive case splitting on variables in
+Γ and simplification of constraints in Φi until there are only zero or one constructors left and
+all constraints have been solved. More specifically, the elaboration algorithm may perform the
+following steps:
+y If there are no constructors left, elaboration is done and returns the case tree ⊥:
+
+E
+
+Γ ⊢ {} ; ⊥
+D
+
+e If there is a single constructor left and all constraints are solved, elaboration checks if
+all remaining arguments of the constructor are in P
+. If this is the case, it returns a leaf
+node containing this constructor:
+∀(x : A) ∈ ∆. A : P
+{
+}
+Γ ⊢ c ∆ [] ; c ∆
+
+S
+
+eC
+ai
+If there is a constraint of the form y /? x where x is bound in ∆ and y
+bound in Γ, we can instantiate the variable x to y, removing it from ∆ in the process:
+{
+}
+Γ ⊢ c ∆1 (∆2 [y/x]) [Φ] ; Q
+(x : A) ∈ Γ
+{
+}
+?
+Γ ⊢ c ∆1 (x : A)∆2 [y / x : A, Φ] ; Q
+
+Si
+
+ify c
+ai
+If the left- and right-hand side of a constraint are applications of the
+same constructor, we can simplify the constraint:
+{
+}
+d : ∆′ → D w̄ ′
+Γ ⊢ c ∆ [v̄ /? ū : ∆ ′, Φ]; P ; Q
+{
+}
+Γ ⊢ c ∆ [d v̄ /? d ū : D w̄, Φ]; P ; Q
+
+Re
+
+ec
+
+ai
+
+If a constraint is trivially satisfied, it can be removed:
+{
+}
+Γ ⊢u =v :A
+Γ ⊢ c ∆ [Φ]; P ; Q
+{
+}
+Γ ⊢ c ∆ [v /? u : A, Φ]; P ; Q
+
+Re
+ec
+c
+If a constraint is unsolvable because the left- and right-hand side are
+applications of distinct constructors, the constructor does not contribute to this branch of
+the case tree and can be safely removed:
+{
+
+Γ ⊢ {P } ; Q
+
+Γ ⊢ c ∆ [d2 v̄ /? d1 ū : D w̄, Φ]; P
+S
+
+}
+
+; Q
+
+i Finally, if (x : D w̄) ∈ Γ and each constraint set Φi contains a constraint of the form
+x /? dj ū j : D w̄ where dj is a constructor of the datatype D, elaboration continues by
+performing a case split on x. For each constructor dj : ∆j′ → D w̄ j′ , we use proof-relevant
+unification [Cockx and Devriese 2018] to determine whether this constructor can be used at
+indices w̄. For each of the constructors for which unification succeeds positively, elaboration
+
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+Definitional Proof-Irrelevance without K
+
+3:21
+
+continues to construct a subtree for that constructor.
+(x : D w̄) ∈ Γ
+D : Ψ → Ty
+dj : ∆j′ → D w̄ j′
+for j = 1 . . . l
+i y(Γ∆j′ ⊢ w̄ = w̄ j′ : Ψ) ⇒ y (Γj , σ j , τ j ) for j = 1 . . . k (k ≤ l)
+i y(Γ∆j′ ⊢ w̄ = w̄ j′ : Ψ) ⇒
+for j = k + 1 . . . l
+{
+}
+Γj ⊢ ci ∆i σ j [Φi σ j ]|i = 1 . . . m ; Q j
+for j = 1 . . . k
+}
+{
+{
+}
+ˆ ′ 7→τ j Q j |j = 1 . . . k
+Γ ⊢ ci ∆i [Φi ]|i = 1 . . . m ; casex dj ∆
+i
+
+The elaboration algorithm repeats the steps above whenever they are applicable until it either
+produces a complete case tree, or gets stuck because no rules apply.
+We can make the above elaboration algorithm more powerful in various places by introducing
+additional squash operators:
+• If not all constructor arguments are in P
+, we can squash the types of those that are not.
+• If there are multiple constructors left but no unsolved constraints, we may take the disjoint
+sum of the constructor telescopes and squash the resulting type.
+• If there are unsolved constraints but it is not possible to split on any variable, we may turn
+each remaining constraint w /? v : A into a new constructor argument of type ∥v =A w ∥.
+However, each of these options may reduce the ways in which we can eliminate the resulting type,
+so they may not always be desirable.
+5.2 Generating the Constructors and the Eliminator
+To make practical use of the type constructed by the elaboration algorithm from the previous
+section, we also need terms representing the constructors and the eliminator for the translated
+type. For example, for m ≤ n we can define terms lz : (n : N) → 0 ≤ n and ls : (m n : N) →
+m ≤ n → S m ≤ S n by lz = λn. tt and ls = λm n p. p respectively. Note that these terms are
+type-correct since 0 ≤ n = sUnit and S m ≤ S n = m ≤ n. We can also define the eliminator
+≤_rect by performing the same case splits as in the translation of the type ≤:
+≤_rect : (P : (m n : N) → m ≤ n → Ty )(m ≤0 : (n : N) → P 0 n (lz n))
+(m ≤S : (m n : N)(H : m ≤ n) → P m n x → P (S m) (S n) (ls m n x))
+(m n : N)(x : m ≤ n) → P m n x
+≤_rect P m ≤0 m ≤S m n x
+0
+7→ m ≤0 n{
+
+
+
+} 
+
+
+
+0
+→
+7
+sEmpty_rect
+x
+= casem 
+′
+
+
+
+ S m 7→ casen S n ′ 7→ m m ′ n ′ x (≤_rect P m m m ′ n ′ x)
+≤0
+≤S
+≤S
+
+
+Since the eliminator is the defining property of a datatype, being able to construct the eliminator
+shows the correctness of the translation. In particular, the eliminator can be used to show that the
+generated type is equivalent to its inductive version.
+Constructing the constructors. Let c : ∆ → D w̄ be one of the constructors of D. By construction,
+the case tree of D will have a leaf of the form c ∆′ where the variables bound by ∆′ form a subset
+of those bound in ∆. We thus define the term c as λx 1 . . . x n . (x i 1 , . . . , x im ) where ∆ = (x 1 :
+A1 ) . . . (x n : An ) and ∆′ = (x i 1 : Ai′1 ) . . . (x im : Ai′m ).
+Beware, as it is not immediately obvious that this term is type-correct: Ai′ is not necessarily equal
+to Ai , since the variables in ∆\∆′ have been substituted in the process. However, since the S
+C
+i step only applies when both sides of the constraint are variables, this substitution is
+just a renaming. We can apply the same renaming to ∆′, thus ensuring that the term c is indeed
+of type ∆ → D w̄.
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+3:22
+
+Gaëtan Gilbert, Jesper Cockx, Matthieu Sozeau, and Nicolas Tabareau
+
+Constructing the eliminator. The eliminator D_rect for the elaborated datatype D : Γ → Ty
+with constructors ci : ∆i → D v̄i for i = 1 . . . k takes the following arguments:
+• The motive P : Γ → D Γ̂ → Ty
+• The methods
+mi
+
+: ∆i → (H 1 : Ψi1 → P w̄ i1 (x i j1 Ψ̂i1 )) → . . . →
+ˆ i)
+(Hqi : Ψiqi → P w̄ iqi (x i jqi Ψ̂iqi )) → P v̄i (ci ∆
+
+where (x i jp : Ψip → D w̄ ip ) ∈ ∆i for p = 1 . . . qi are the recursive arguments of the
+constructor ci .
+and produces a function of type Γ → (x : D Γ̂) → P Γ̂ x.
+To construct this eliminator, we proceed by induction on the case tree defining D: for each case
+split in the elaboration of D, we perform the same case split on the corresponding index in Γ. At
+each leaf, we are either in an empty node or a constructor node.
+• In an empty node, we have x : sEmpty, hence we can conclude by sEmpty_rect.
+• In a constructor node for constructor ci , x is a nested tuple consisting of the non-forced
+arguments of ci . Moreover, the remaining telescope of indices Γ′ contains the forced arguments of ci . We thus apply the motive mi to arguments for ∆i taken from x and Γ′. For the
+induction hypotheses Hp we call the eliminator recursively with arguments w̄ ip (x i jp Ψ̂ip )
+where x i jp is again taken from either x or Γ′. Note that this recursion is well-founded if and
+only if the recursive definition of the datatype itself is so.
+This finishes the construction of the eliminator. It can easily be checked that the eliminator we just
+constructed also has the appropriate computational behaviour:
+ˆ i)
+D_rect P m 1 . . . mk v̄i (ci ∆
+evaluates to
+ˆ i (λΨ̂i1 . D_rect w̄ i1 (x i j Ψ̂i1 )) . . . (λΨ̂iq . D_rect w̄ iq (x i j Ψ̂iq )).
+mi ∆
+i
+i
+i
+qi
+1
+6 IMPLEMENTATION IN Coq AND Agda
+6.1 Implementation in Coq
+The universe hierarchy. Coq comes with an infinite hierarchy of predicative universes Ty i
+and an impredicative universe P
+: Ty 1 . Cumulativity makes each universe a subtype of the
+next, with P
+a subtype of Ty 0 . We add to this P
+: Ty 1 but do not include P
+in
+the cumulativity relation. This lack of cumulativity is necessary to use relevance marks in the
+conversion (as already mentioned in Section 4.5).
+The lack of cumulativity can cause issues during the elaboration phase, as the system assumes
+cumulativity throughout. For instance, consider the type of the dependent eliminator for sEmpty:
+Definition sEmpty_rect_type := ∀ (P:sEmpty → Type) x, P x.
+During elaboration an existential variable ?T : Ty is generated for the type of x, then it must be
+unified with sEmpty : P
+. For this to be well-typed we must have cumulativity.
+The system works around this issue by allowing cumulativity of P
+during elaboration but
+not when checking definitions. In the above case the use of cumulativity disappears when the
+existential variable is instantiated so there is no error. When cumulativity is truly necessary the
+error is delayed until the kernel check.
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+Definitional Proof-Irrelevance without K
+
+3:23
+
+6.1.1 Conversion. Conversion in Coq is untyped so we use relevance marks as described in Section 4.5 to implement definitional proof irrelevance. Since Coq is a richer system than sMLTT there
+are a few additional cases. For instance, constants are annotated with their relevance as part of the
+context, and fixpoints are annotated as binders since they bind themselves in their bodies.
+The change to the conversion algorithm is simple: without P
+, we reduce terms to weak head
+normal form then if they have the same shape we recurse for each pair of subterms. With P
+,
+we just insert a check for irrelevance before the reduction step.
+Because we allow cumulativity during elaboration the generated relevance marks can be incorrect, leading to incompleteness of conversion during conversion. However the marks are fixed by
+the kernel.
+6.1.2 Inductive types. The extensions with sEmpty, squash, box and irrelevant pairs are subsumed
+by restrictions on the inductive types which may be defined.
+In the system without P
+, an inductive type may be defined at any universe level greater
+than the universes of the arguments of its constructors. As a special case, any inductive type may
+be defined in P
+but its elimination is restricted to P
+unless it satisfies singleton elimination:
+0 or 1 constructor with all arguments in P
+. Inductive types in P
+with restricted elimination
+are called “squashed”.
+Coq also provides “primitive records” with surjective pairing. They are inductive types with
+exactly one constructor which has at least one argument (such arguments are called fields of the
+record), and must not be squashed. We extend this to handle P
+by considering P
+as smaller
+than other universes when checking the level of an inductive type. This allows defining box types:
+Inductive Box (A:SProp) : Prop := box : A → Box A.
+Definition unbox A (x:Box A) : A := match x with box y ⇒ y end.
+The level P
+of the argument A is smaller than the level P
+of the inductive.
+Like with P
+, any inductive type may be defined in P
+but its elimination is restricted
+to P
+when it is not the empty type. This amounts to implicitly using the squash (which can
+be already defined using the impredicative encoding). For primitive records in P
+we allow
+fields in P
+. This provides a generalization to the unit type and dependent sums. To get other
+inductive types in P
+that can be eliminated into any type, the user has to use the automatic
+encoding described in Section 5, implemented on top of the Equations plugin (see Section 6.4).
+6.2 Example 1: Prime Numbers
+To illustrate a simple use of P
+in Coq, together with the automatic translation of inductive
+types into fixpoints described in Section 5, let us consider the definition of primality.
+First, we can define the n | m predicate, which states that the natural number n is a divisor of
+m.
+Inductive Divide : N → N → SProp:=
+| divide0 : ∀ n, Divide n 0
+| divideS : ∀ n m (e: S n ≤ S m), Divide (S n) (m − n) → Divide (S n) (S m).
+Infix ”|” := Divide.
+This definition satisfies the conditions described in Section 5, so the corresponding fixpoint definition can be automatically generated, together with its eliminator into Ty .
+Although we have definitional proof irrelevance for n | m, we can still extract the natural number that witnesses the fact that n is a divisor of m out of the proof that n | m, which is precisely
+the goal of the criterion developed in Section 5.
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+3:24
+
+Gaëtan Gilbert, Jesper Cockx, Matthieu Sozeau, and Nicolas Tabareau
+
+Definition divide_to_N : ∀ n m, n | m → N.
+together with the correctness of this definition.
+Lemma divide_to_N_correct n m (e:n | m): divide_to_N n m e * n = m.
+Note however that being an element of P
+implies both proof irrelevance and computational
+irrelevance, so an element of m | n is completely erased during compilation. It does not store the
+quotient, but the (mere) property that the euclidean division of n by m has no remainder. Thus,
+divide_to_N computes the quotient from m and n. Essentially finding the quotient by deconstructing the proof of n | m is no easier than by deconstructing n and m. It can be seen as a side condition
+to guarantee we have no missing case.
+Then, it is easy to define primality in P
+in a way that satisfies the conditions described in
+Section 5.
+Inductive is_gcd (a b g:N) : SProp :=
+is_gcd_intro : g | a → g | b → (∀ x, x | a → x | b → x | g) → is_gcd a b g.
+Inductive prime (p:N) : SProp :=
+prime_intro : 1 < p → (∀ n, 1 ≤ n → n < p → is_gcd n p 1) → prime p.
+This definition gives us definitional proof irrelevance for prime, without paying the price of the
+definition of a decision procedure into booleans (for instance using the sieve of Eratosthenes) and
+a proof that it corresponds to primality. Here, we have a direct definition instead, and the decision
+procedure is only a useful addition to prove primality of a particular natural number and may be
+implemented as a tactic.
+6.3 Example 2: The Setoid Model
+The previous example shows the use of P
+to define definitionally proof irrelevant predicates
+while still being able to extract relevant values out of them. We now turn to a more critical use of
+P
+to avoid higher coherence issues in syntactical models of type theory. As an example, using
+P
+, we can formally define in Coq the setoid translation presented on paper twenty years ago
+by Thorsten Altenkirch [Altenkirch 1999]. We define a setoid as a type carrier together with a
+notion of equality which is reflexive, symmetric, transitive, and definitionally proof irrelevant.
+Record Setoid :=
+{ carrier : Type;
+eq : carrier → carrier → SProp;
+refl : ∀ x, eq x x;
+sym : ∀ {x y}, eq x y → eq y x;
+trans : ∀ {x y z}, eq x y → eq y z → eq x z
+}.
+This way, we can define a category with families (CwF), as introduced by Peter Dybjer [Dybjer
+1996], where contexts are Setoid, types are setoid families (over a context) and terms are sections
+of setoid families. This CwF features dependent products Π, a universe, and identity types Eq. We
+can then prove that this CwF satisfies functional extensionality, thus providing a formal proof that
+functional extensionality is admissible in sMLTT.
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+Definitional Proof-Irrelevance without K
+
+3:25
+
+6.4 Extension of the Equations Plugin
+The Equations plugin of Coq [Mangin and Sozeau 2018] provides an implementation of dependentpattern matching compilation. We reuse the tools of Equations to automatically derive the translation of inductive definitions that fit in P
+to fixpoint definitions. Concretely, we have extended
+Equations with a new Derive Inversion command that tries to produce a case tree from an inductive definition and succeeds if and only if the resulting recursive definition can be typed in
+P
+.
+Using this tool, it is possible to automatically derive the definition of the recursive variants of
+≤ and Divide, along with their constructors. Coming back to the example of ≤fix , our framework
+provides automatically the two definitions corresponding to the two constructor of ≤:
+Definition ≤fix0 : ∀ n, 0 ≤fix n := fun n ⇒ I.
+Definition ≤fixS : ∀ m n, m ≤fix n → S m ≤fix S n := fun n m e ⇒ e.
+We are currently also working on implementing the automatic generation of the eliminator as
+described in Section 5.2.
+6.5 Implementation in Agda
+Aside from adding P
+to Coq, we also implemented a variant of the same concept for Agda.
+Since previously there was no P
+universe, the P
+universe is simply called Prop in Agda.
+This new universe has been integrated in the current development version of Agda on https://
+github.com/agda/agda and is planned to be released as part of Agda 2.6.0 in November 2018.
+User perspective. On the syntactic level, the main change to Agda is the addition of the new
+in Coq, Prop in Agda is predicative. For example,
+sort Prop next to the old sort Set. Unlike P
+(A : Prop) → A is not itself an element of Prop. Instead, there is a hierarchy of universes Prop0
+(= Prop), Prop1 , Prop2 , …analogous to the hierarchy of Seti . Like Set, Prop also supports universe
+polymorphism, so for each ℓ : Level we have the sort Prop ℓ. As an example, we can define the
+universe polymorphic squash type and its eliminator:
+data Squash {ℓ}(A : Set ℓ) : Prop ℓ where
+sq : A → Squash A
+unsquash : ∀{ℓ ℓ ′ }{A : Set ℓ}(P : Prop ℓ ′)(A → P) → Squash A → P
+unsquash P f (sq x) = f x
+Note that this is more powerful than the predicative encoding of the squash type described in
+Section 3.4 since we can eliminate it into any Propi .
+Like in the Coq implementation, there is no implicit conversion from Prop to Set. Instead, Prop
+can be embedded through the definition of a record type Box (A : Prop) : Set with one field
+unbox : A. More generally, when defining a record type in Seti , the fields can be in both Propj or
+Setj for any j ≤ i. On the other hand, for record types in Prop all fields must be in Prop themselves.
+Implementation details. Since Agda uses a type-directed conversion check internally and types
+are annotated with their sorts, adding the rule that any two elements of a type in P
+are equal
+was straightforward. In particular, the relevance marks used in the Coq implementation are not
+required here. In contrast, making Prop impredicative is currently problematic since Agda’s termination checker assumes predicativity. This was our main reason to implement the predicative
+hierarchy Propi instead.
+Interaction with irrelevant arguments. As mentioned in the introduction, Agda has another another facility for definitional proof irrelevance in the form of irrelevant function types [Abel and
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+3:26
+
+Gaëtan Gilbert, Jesper Cockx, Matthieu Sozeau, and Nicolas Tabareau
+
+Scherer 2012] and irrelevant fields. Prop can be used in situations where Agda’s pre-existing irrelevance cannot, for example:
+• We can use Prop to give a function an irrelevant return type.
+• We can define new datatypes and record types in Prop, such as Squash.
+• We can construct new types in Prop by pattern matching, such as ≤.
+• We can quantify over all types in Prop.
+In our implementation, it is allowed to use irrelevant arguments when constructing an element
+of a type in Prop. This allows us to convert irrelevant arguments into elements of the squash type:
+irrToSquash : {A : Set} → .A → Squash A
+irrToSquash x = sq x
+In fact, irrelevant functions and irrelevant fields can be encoded in terms of P
+by using the
+squash type: each irrelevant argument or field of type .A is turned into a squashed argument
+Squash A. This encoding uses the fact that Squash is an applicative functor with identity sq : A →
+Squash A and sequential application
+_<*>_ : {A B : Set} → Squash (A → B) → Squash A → Squash B
+sq f <*> sq x = sq (f x)
+For example, if д : .B → C then the expression λ f x . д (f x) of type .(A → B) → A → C is
+encoded by λ f x . д (f <*> sq x) of type Squash (A → B) → A → C.
+In addition to irrelevant functions and fields, Agda also provides experimental support for irrelevant definitions and irrelevant projections, which were already mentioned in the introduction. In
+contrast to irrelevant functions, not everything that’s possible with these features can be encoded
+in terms of Squash, even after fixing the bug mentioned in the introduction. In particular, they can
+be used to construct a function .choice : .A → A for any type A, but the corresponding statement
+Squash (Squash A → A) is not provable. If this were postulated as an axiom, we conjecture that
+these experimental ways of using irrelevance could be encoded in terms of Squash as well.
+7 CONCLUSION AND FUTURE WORK
+We have given a general way to extend a type theory with a predicative hierarchy of universes
+(or an impredicative universe) satisfying definitional proof irrelevance, while keeping decidability of type checking. We have shown various metatheoretical properties of our extension using
+syntactic translations into extensional type theories ETT and HTS. We have then described a new
+way to decide whether a proposition can be eliminated over a type using techniques coming from
+recent development on dependent pattern matching without UIP. We have implemented our approach both in Coq and in Agda, and illustrated its usefulness on several examples, in particular
+to formalize the setoid model of type theory, which can not be done without definitional proof
+irrelevance.
+Regarding future work, the main extension of our framework that we would like to address in
+a near future is the definition of a strict equality that remains compatible with univalence. The
+idea is to detect syntactically which types are mere sets—using again ideas coming from dependent pattern matching—in order to allow elimination of strict equality on those types. This should
+require the addition of a hierarchy of universes of mere (strict) sets, and maybe other hierarchies
+for higher homotopy levels as well, but it is not clear how to do it in a good way at the moment.
+A LEAN SUBJECT REDUCTION FAILURE
+axiom A : Type
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+Definitional Proof-Irrelevance without K
+
+3:27
+
+axiom r : A → A → Prop
+axiom C : A → Type
+axiom F : forall x, (forall y, r y x → C y) → C x
+lemma fix_F_eq1 (x : A) (acx : acc r x) :
+well_founded.fix_F F x acx =
+well_founded.fix_F F x (acc.intro x (λ y, acc.inv acx)) := eq.refl _
+lemma fix_F_eq2 (x : A) (acx : acc r x) :
+well_founded.fix_F F x (acc.intro x (λ y, acc.inv acx)) =
+F x (λ (y : A) (p : r y x), well_founded.fix_F F y (acc.inv acx p))
+:= eq.refl _
+lemma fix_F_eq3 (x:A) (acx : acc r x) :
+well_founded.fix_F F x acx =
+F x (λ (y : A) (p : r y x), well_founded.fix_F F y (acc.inv acx p))
+:= eq.trans (fix_F_eq1 x acx) (fix_F_eq2 x acx)
+lemma fix_F_eq4 (x:A) (acx : acc r x) :
+well_founded.fix_F F x acx =
+F x (λ (y : A) (p : r y x), well_founded.fix_F F y (acc.inv acx p))
+:= eq.refl _ −− fails
+ACKNOWLEDGMENTS
+The authors want to thank Simon Boulier for his implementation of the Setoid model.
+REFERENCES
+Andreas Abel, Joakim Öhman, and Andrea Vezzosi. 2018. Decidability of Conversion for Type Theory in Type Theory. Proc.
+ACM Program. Lang. 2, POPL, Article 23 (Jan. 2018), 29 pages. DOI:http://dx.doi.org/10.1145/3158111
+Andreas Abel and Gabriel Scherer. 2012. On Irrelevance and Algorithmic Equality in Predicative Type Theory. Logical
+Methods in Computer Science 8, 1 (03 2012). DOI:http://dx.doi.org/10.2168/lmcs-8(1:29)2012
+T. Altenkirch. 1999. Extensional equality in intensional type theory. In Proceedings. 14th Symposium on Logic in Computer
+Science (Cat. No. PR00158). 412–420. DOI:http://dx.doi.org/10.1109/LICS.1999.782636
+Thorsten Altenkirch, Paolo Capriotti, and Nicolai Kraus. 2016. Extending Homotopy Type Theory with Strict Equality. In
+CSL.
+Steven Awodey and Andrej Bauer. 2004. Propositions As [Types]. J. Log. and Comput. 14, 4 (Aug. 2004), 447–471. DOI:
+http://dx.doi.org/10.1093/logcom/14.4.447
+Simon Boulier, Pierre-Marie Pédrot, and Nicolas Tabareau. 2017. The Next 700 Syntactical Models of Type Theory. In
+Proceedings of Certified Programs and Proofs. ACM, 182–194.
+Edwin Brady, Conor McBride, and James McKinna. 2004. Inductive Families Need Not Store Their Indices. In Types for
+Proofs and Programs, Stefano Berardi, Mario Coppo, and Ferruccio Damiani (Eds.). Springer Berlin Heidelberg, Berlin,
+Heidelberg, 115–129.
+Paolo Capriotti. 2017. Models of type theory with strict equality. Ph.D. Dissertation. University of Nottingham.
+Jesper Cockx and Andreas Abel. 2018. Elaborating Dependent (Co)pattern matching. In Proceedings of the 23th ACM SIGPLAN Conference on Functional Programming (ICFP 2018). ACM Press, St. Louis, Missouri, United States.
+Jesper Cockx and Dominique Devriese. 2018. Proof-relevant unification: Dependent pattern matching with only the
+axioms of your type theory. Journal of Functional Programming 28 (2018), e12. DOI:http://dx.doi.org/10.1017/
+S095679681800014X
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+3:28
+
+Gaëtan Gilbert, Jesper Cockx, Matthieu Sozeau, and Nicolas Tabareau
+
+Jesper Cockx, Dominique Devriese, and Frank Piessens. 2014. Pattern matching without K. In ACM SIGPLAN Notices, Vol. 49.
+ACM, 257–268.
+Thierry Coquand. 2016. Universe of Bishop sets. (2016). www.cse.chalmers.se/~coquand/bishop.pdf.
+Peter Dybjer. 1996. Internal type theory. In Types for Proofs and Programs, Stefano Berardi and Mario Coppo (Eds.). Springer
+Berlin Heidelberg, Berlin, Heidelberg, 120–134.
+Martin Hofmann. 1995. Conservativity of equality reflection over intensional type theory. In International Workshop on
+Types for Proofs and Programs. Springer, 153–164.
+P. Letouzey. 2004. Programmation fonctionnelle certifiée – L’extraction de programmes dans l’assistant Coq. Ph.D. Dissertation.
+Université Paris-Sud.
+Cyprien Mangin and Matthieu Sozeau. 2018. Equations Reloaded. (2018). http://mattam82.github.io/Coq-Equations/
+Per Martin-Löf. 1975. An Intuitionistic Theory of Types: Predicative Part. In Logic Colloquium ’73, H.E. Rose and J.C.
+Shepherdson (Eds.). Studies in Logic and the Foundations of Mathematics, Vol. 80. Elsevier, 73 – 118. DOI:http://dx.doi.
+org/https://doi.org/10.1016/S0049-237X(08)71945-1
+Frank Pfenning. 2001. Intensionality, Extensionality, and Proof Irrelevance in Modal Type Theory. In Proceedings of the
+16th Annual IEEE Symposium on Logic in Computer Science (LICS ’01). IEEE Computer Society, Washington, DC, USA,
+221–. http://dl.acm.org/citation.cfm?id=871816.871845
+Aaron Stump. 2018. From realizability to induction via dependent intersection. Ann. Pure Appl. Logic 169, 7 (2018), 637–655.
+DOI:http://dx.doi.org/10.1016/j.apal.2018.03.002
+The Univalent Foundations Program. 2013. Homotopy Type Theory: Univalent Foundations of Mathematics. Institute for
+Advanced Study.
+Vladimir Voevodsky. 2011. Resising Rules - their use and semantic justification. www.math.ias.edu/~vladimir/Site3/
+Univalent_Foundations_files/2011_Bergen.pdf. (2011).
+Vladimir Voevodsky. 2013. A simple type system with two identity types. (2013). https://ncatlab.org/homotopytypetheory/
+files/HTS.pdf
+Benjamin Werner. 2008. On the Strength of Proof-Irrelevant Type Theories. 4 (09 2008), 1–20.
+
+Proc. ACM Program. Lang., Vol. 3, No. POPL, Article 3. Publication date: January 2019.
+
+

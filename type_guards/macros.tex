@@ -1,0 +1,84 @@
+% Macros and theorem environments.
+
+% ---------- Theorem environments ----------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{fact}[theorem]{Fact}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{convention}[theorem]{Convention}
+\newtheorem{assumption}[theorem]{Assumption}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% ---------- The source fragment ----------
+\newcommand{\Frag}{\ensuremath{\mathsf{PFI}}}          % the fragment
+\newcommand{\Ind}{\ensuremath{\mathcal{I}}}            % inductive type formers
+\newcommand{\Constr}{\ensuremath{\mathcal{C}}}         % data constructors
+\newcommand{\Fun}{\ensuremath{\mathcal{F}}}            % function constants
+\newcommand{\Pred}{\ensuremath{\mathcal{P}}}           % predicate constants
+\newcommand{\Ty}[1]{\ensuremath{\mathrm{Ty}(#1)}}      % types over variable set
+\newcommand{\GTy}{\ensuremath{\mathrm{GTy}}}           % ground types
+\newcommand{\ftv}[1]{\ensuremath{\mathrm{ftv}(#1)}}    % free type variables
+\newcommand{\fv}[1]{\ensuremath{\mathrm{fv}(#1)}}      % free variables
+\newcommand{\PProp}{\ensuremath{\mathsf{Prop}}}
+\newcommand{\arr}{\ensuremath{\rightarrow}}
+\newcommand{\imp}{\ensuremath{\rightarrow}}
+\newcommand{\biimp}{\ensuremath{\leftrightarrow}}
+\newcommand{\eqx}[1]{\ensuremath{\approx_{#1}}}        % fragment equality at a type
+\newcommand{\wfj}[3]{\ensuremath{#1;#2\vdash #3}}      % judgements
+
+% ---------- Theories and environments ----------
+\newcommand{\Env}{\ensuremath{E}}
+\newcommand{\StructAx}{\ensuremath{\mathrm{Struct}(\Env)}}
+\newcommand{\Th}{\ensuremath{\mathbb{T}(\Env)}}
+\newcommand{\ThOf}[1]{\ensuremath{\mathbb{T}(#1)}}
+\newcommand{\entg}{\ensuremath{\models_{\mathrm{g}}}}  % ground-instance entailment
+
+% Semantic brackets without stmaryrd.
+\newcommand{\llbracket}{[\![}
+\newcommand{\rrbracket}{]\!]}
+
+% ---------- FOL signature and translation ----------
+\newcommand{\Sig}{\ensuremath{\Sigma_{\Env}}}
+\newcommand{\SigE}{\ensuremath{\Sigma_{\Env}^{\eps}}}
+\newcommand{\T}{\ensuremath{\mathsf{T}}}               % typing predicate
+\newcommand{\TypeC}{\ensuremath{\mathsf{Type}}}        % FOL constant Type
+\newcommand{\enc}[1]{\ensuremath{\llbracket #1 \rrbracket}} % translation
+\newcommand{\Ax}{\ensuremath{\Theta(\Env)}}
+\newcommand{\AxE}{\ensuremath{\Theta_{\eps}(\Env)}}
+\newcommand{\Comp}{\ensuremath{\mathrm{Comp}(\Env)}}
+
+% ---------- Models ----------
+\newcommand{\MM}{\ensuremath{\mathfrak{M}}}
+\newcommand{\NN}{\ensuremath{\mathfrak{N}}}
+\renewcommand{\AA}{\ensuremath{\mathfrak{A}}}          % NB: overrides \AA (Angstrom), unused here
+\newcommand{\MN}{\ensuremath{\MM(\NN)}}
+\newcommand{\MNe}{\ensuremath{\MM_{\eps}(\NN)}}
+\newcommand{\Dom}{\ensuremath{D}}
+\newcommand{\Junk}{\ensuremath{J}}
+\newcommand{\den}[2]{\ensuremath{#1^{#2}}}             % denotation t^{M,v}
+
+% ---------- Guard omission ----------
+\newcommand{\tc}[1]{\ensuremath{\mathrm{tc}(#1)}}      % typing consequences of an atom
+\newcommand{\jt}{\ensuremath{\mathrm{jt}}}             % junk-true
+\newcommand{\jf}{\ensuremath{\mathrm{jf}}}             % junk-false
+\newcommand{\jtx}[2]{\ensuremath{\mathrm{jt}_{#1,#2}}}
+\newcommand{\jfx}[2]{\ensuremath{\mathrm{jf}_{#1,#2}}}
+
+% ---------- Erasure ----------
+\newcommand{\eps}{\ensuremath{\varepsilon}}
+\newcommand{\Er}{\ensuremath{\mathrm{er}}}
+
+% ---------- Misc ----------
+\newcommand{\tup}[1]{\ensuremath{\bar{#1}}}
+\newcommand{\seq}[2]{\ensuremath{#1_1,\dots,#1_{#2}}}
+\newcommand{\subst}[2]{\ensuremath{[#1/#2]}}
+\newcommand{\defeq}{\ensuremath{\mathrel{:=}}}
+\newcommand{\restr}[2]{\ensuremath{#1\upharpoonright#2}}

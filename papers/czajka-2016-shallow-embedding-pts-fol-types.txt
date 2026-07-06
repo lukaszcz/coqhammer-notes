@@ -1,0 +1,2887 @@
+A Shallow Embedding of Pure Type Systems into
+First-Order Logic
+Łukasz Czajka
+DIKU, University of Copenhagen, Copenhagen, Denmark
+luta@di.ku.dk
+
+Abstract
+We define a shallow embedding of logical proof-irrelevant Pure Type Systems (piPTSs) into minimal first-order logic. In logical piPTSs a distinguished sort ∗p of propositions is assumed. Given
+a context Γ and a Γ-proposition τ , i.e., a term τ such that Γ ` τ : ∗p , the embedding translates τ
+and Γ into a first-order formula FΓ (τ ) and a set of first-order axioms ∆Γ . The embedding is not
+complete in general, but it is strong enough to correctly translate most of piPTS propositions
+(by completeness we mean that if Γ ` M : τ is derivable in the piPTS then FΓ (τ ) is provable in
+minimal first-order logic from the axioms ∆Γ ). We show the embedding to be sound, i.e., if FΓ (τ )
+is provable in minimal first-order logic from the axioms ∆Γ , then Γ ` M : τ is derivable in the
+original system for some term M . The interest in the proposed embedding stems from the fact
+that it forms a basis of the translations used in the recently developed CoqHammer automation
+tool for dependent type theory.
+2012 ACM Subject Classification Theory of computation → Logic, Theory of computation →
+Type theory, Theory of computation → Automated reasoning
+Keywords and phrases pure type systems, first-order logic, hammers, proof automation, dependent type theory
+Digital Object Identifier 10.4230/LIPIcs.TYPES.2016.9
+Funding Supported by the European Union’s Horizon 2020 research and innovation programme
+under the Marie Skłodowska-Curie grant agreement number 704111.
+
+1
+
+Introduction
+
+In this paper we define a shallow embedding of any logical proof-irrelevant Pure Type System
+into untyped minimal first-order logic. Proof-irrelevant PTSs (piPTSs) extend ordinary PTSs
+with proof-irrelevance by incorporating it into the conversion rule. In logical piPTSs a
+distinguished sort ∗p of propositions is assumed and some restrictions are put on the rules
+and axioms of the system. The class of logical piPTSs is fairly broad. In particular, a
+proof-irrelevant version of the Calculus of Constructions with a separate set universe may be
+presented as a logical piPTS.
+Our embedding is shallow, which means that terms of type ∗p are translated directly to
+first-order formulas. The embedding (or an optimised variant of it) is intended to be used to
+translate dependent type theory goals to formalisms of automated theorem provers (ATPs)
+for first-order logic. Hence, it is important for efficiency (i.e. the success rate of the ATPs on
+translated problems) that the embedding be shallow.
+The interest in our embedding is justified by the fact that it is used as a basis of the
+translations employed in the recently developed CoqHammer tool, which is the first hammer
+for a proof assistant based on dependent type theory [15]. The embedding presented in this
+paper is only a small “core” version of the translation used in [15]. In particular, here we
+do not deal at all with inductive types. The translation in [15] handles most of the Coq
+© Łukasz Czajka;
+licensed under Creative Commons License CC-BY
+22nd International Conference on Types for Proofs and Programs (TYPES 2016).
+Editors: Silvia Ghilezan, Herman Geuvers, and Jelena Ivetić; Article No. 9; pp. 9:1–9:39
+Leibniz International Proceedings in Informatics
+Schloss Dagstuhl – Leibniz-Zentrum für Informatik, Dagstuhl Publishing, Germany
+
+9:2
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+logic and introduces many optimisations. Consequently, it is quite complex and not easily
+amenable to a direct theoretical investigation.
+The aim of this present paper is to isolate a “core” of the translation from [15] and prove
+its soundness: in a logical piPTS, for any context Γ and a Γ-proposition τ , i.e., a term τ such
+that Γ ` τ : ∗p , if ∆Γ `FOL FΓ (τ ), i.e., the translation FΓ (τ ) of τ is derivable in minimal
+first-order logic from the axioms ∆Γ which are the translation of Γ, then there exists a term M
+such that Γ ` M : τ in the piPTS. The terminology comes from the hammer and automated
+reasoning literature [9, 8], where this implication is referred to as soundness and usually
+formulated in terms of satisfiability. The implication in the other direction, i.e., if Γ ` M : τ
+then ∆Γ `FOL FΓ (τ ), is called completeness of the embedding. In type-theoretic literature,
+e.g. [2, 18], the terminology is flipped. We stick with automated reasoning terminology when
+referring to soundness or completeness.
+Our embedding is not complete, i.e., there exist a context Γ and a Γ-proposition τ such
+that Γ ` M : τ for some M , but ∆Γ 6`FOL FΓ (τ ). However, the presented embedding
+is “complete enough” to be practically usable, i.e., sufficiently many of the derivable Γpropositions are provable after the translation for the practical purpose of using an extended
+and optimised version of the embedding in a hammer tool for dependent type theory. Some
+empirical evidence for this claim is provided in [15, 14] where over 40% of the translations
+of Coq standard library theorems are reproved by first-order ATPs, using a (substantially)
+extended and optimised version of the present embedding. In this paper we do not attempt
+to rigorously justify or even formulate the “complete enough” claim, but only illustrate the
+(in)completeness on several examples.
+The soundness proof is the main result of this paper. We present the result in a general
+framework of logical proof-irrelevant Pure Type Systems to avoid unnecessary reliance on
+any particular variant of dependent type theory. Our soundness proof employs constructive
+proof-theoretic methods. Assuming the decidability of type checking in the original piPTS,
+our soundness proof implicitly provides an algorithm to transform a natural deduction proof
+of the translation of a piPTS proposition into a piPTS term inhabiting the proposition.
+
+1.1
+
+Motivation
+
+In order to give some motivation for our work, we now briefly describe the architecture of a
+hammer and the relation of the embedding in this paper to the translation used in [15]. For
+more background on hammers see e.g. [15, 9].
+The goal of a hammer is, given a context Γ and a Γ-proposition τ , to find a term M such
+that Γ ` M : τ . In practice, the context Γ consists of all declarations accessible at a given
+point from the proof assistant kernel (typically there are thousands or tens of thousands of
+them). Hammers work in three phases.
+1. Lemma selection which heuristically chooses a subset of the accessible declarations that
+are likely useful for the conjecture τ . These declarations, together with the declarations
+they depend on, form a context Γ0 ⊆ Γ. Typically, the size of Γ0 is on the order of
+hundreds of declarations.
+2. Translation of the conjecture τ together with the context Γ0 to the input formats of
+first-order automated theorem provers (ATPs) like Vampire [22] or Eprover [25], and
+running the ATPs on the translations.
+3. Proof reconstruction which uses the information obtained from a successful ATP run to
+re-prove the conjecture in the logic of the proof assistant or to directly reconstruct the
+proof term.
+
+Ł. Czajka
+
+9:3
+
+The reason for employing first-order ATPs is that they are currently the strongest and
+most optimised general-purpose automated theorem provers. They are capable of efficiently
+handling problems with hundreds of axioms, which is necessary for a hammer tool. The use of
+state-of-the-art first-order ATPs is the reason why shallowness of the embedding is essential,
+because the ATPs are heavily optimised for directly handling the primitives of first-order
+logic. For instance, a declaration x : τ , where τ = Πy : A.py → qy is a Γ-proposition
+but A is not (for an appropriate context Γ), should be translated directly to a formula of
+the form ∀y.TA (y) → p(y) → q(y) where p, q are first-order predicates and the first-order
+predicate TA (y) states that y has type A. In contrast, it would be much less efficient to use
+a deep embedding with Γ-propositions translated to first-order terms and using a binary
+“inhabitation” predicate T , where the above declaration x : τ would be translated to an axiom
+T (x, CΓ (τ )) and a conjecture τ 0 to ∃y.T (y, CΓ (τ 0 )), with CΓ (α) the translation of a type α to
+a first-order term. Such a translation would require the ATPs to synthesise first-order terms
+corresponding to proof terms which would impact the success rate, even if T (x, CΓ (τ )) was
+optimised to e.g. ∀yz.TA (y) → T (z, py) → T (xyz, qy).
+The translation in [15] is in fact not sound because of some optimisations. Also the ATPs
+employed in practice are classical. In the proof reconstruction phase in [15] the conjecture
+is actually re-proved in the logic of Coq using the lemmas which were needed in an ATP
+proof. This is feasible because there are typically only a few of these lemmas, so a much
+weaker method than a state-of-the-art ATP may be used in this final phase. Another issue is
+that the piPTS formalism does not exactly correspond to common variants of type theory
+because it assumes proof irrelevance. Since proof irrelevance is crucial to our translation, no
+soundness proof is possible for ordinary PTSs. However, we believe our soundness proof is
+still valuable for three main reasons. First, it contributes to the general understanding of the
+extended translation in [15], and in particular to understanding of which aspects of it are
+“safe” and which might be not. Second, the proof being constructive implicitly provides an
+algorithm to transform a natural deduction proof of the translation of a conjecture τ into
+a piPTS term inhabiting τ . A simplified explicit presentation of the algorithm is given in
+Algorithm 76. It could form a basis of a partial method for source-level proof reconstruction,
+i.e., a method for translating a proof found by an ATP back into a proof term in the logic of
+the proof assistant (possibly using the excluded middle axiom). In mature hammer systems
+optional source-level proof reconstruction increases success rates. Third, isolating a sound
+“core” of the translation from [15] might help in devising practical translations for other type
+theories than just the logic of Coq handled in [15].
+From the point of view of proof theory, what we here call completeness of the embedding
+is perhaps more interesting than soundness. However, all hammer tools essentially give up
+on completeness. From the automated reasoning perspective it is soundness, or at least
+understanding the reasons for the lack of it, which is more important.
+
+2
+
+First-order logic
+
+We define a proof notation system for minimal first-order intuitionistic logic. This system of
+notation is a restriction of the system λP1 from [28, Chapter 8].
+I Definition 1. An individual term (t, s) is a variable (x, y, z) or a function application
+(f (t1 , . . . , tn )). A formula (ϕ, ψ) is an atom (R(t1 , . . . , tn )), an implication (ϕ → ψ) or a
+universally quantified formula (∀x.ϕ). A proof term (M, N ) is a proof variable (X, Y, Z), an
+individual abstraction (λx.M ), a proof abstraction (λX : ϕ.M ), an application of a proof
+term (M N ) or of an individual term (M t). An environment (∆) is a finite set of proof
+
+TYPES 2016
+
+9:4
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+∆, X : ϕ ` X : ϕ
+∆, X : ϕ ` M : ψ
+∆ ` (λX : ϕ.M ) : ϕ → ψ
+
+∆`M :ϕ→ψ ∆`N :ϕ
+∆ ` MN : ψ
+
+∆`M :ϕ
+x∈
+/ FV(∆)
+∆ ` (λx.M ) : ∀xϕ
+
+∆ ` M : ∀xϕ
+∆ ` M t : ϕ[t/x]
+
+Figure 1 Rules of minimal first-order logic.
+
+variable declarations of the form X : ϕ. We usually write ∆, X : ϕ instead of ∆ ∪ {X : ϕ}.
+The system of first-order minimal logic is given by the rules in Figure 1. The relation of
+β-reduction on proof terms is defined as the contextual closure of the following rules.
+(λx.M )t →β
+
+M [t/x]
+
+(λX : ϕ.M )N
+
+→β
+
+M [N/X]
+
+We write ∆ `FOL M : ϕ to denote derivability in first-order minimal logic. We drop the
+subscript when obvious. We also omit the proof terms when irrelevant, writing e.g. ψ, θ ` ϕ.
+I Lemma 2. If ∆ ` M : ϕ and ∆ ` M : ϕ0 then ϕ = ϕ0 .
+For the proofs of the following two theorems see e.g. [28, Chapter 8].
+I Theorem 3 (Confluence and strong normalisation). If ∆ ` M : ϕ then M is confluent and
+strongly normalising (wrt. β-reduction).
+I Theorem 4 (Subject reduction). If ∆ ` M : ϕ and M →∗β M 0 then ∆ ` M 0 : ϕ.
+Proof terms in η-long normal form or η-lnf are defined inductively (wrt. an implicit
+environment).
+If N is an η-lnf of type α then λx.N is an η-lnf of type ∀x.α.
+If N is an η-lnf of type β then λX : α.N is an η-lnf of type α → β.
+If N1 , . . . , Nn are η-lnf or individual terms and XN1 . . . Nn is of an atom type, then
+XN1 . . . Nn is an η-lnf.
+I Lemma 5. If ∆ ` M : ϕ then there exists N in η-lnf such that ∆ ` N : ϕ.
+Proof. Take the β-normal form of M and η-expand it as much as possible, respecting the
+type and introducing no new β-redexes. The easy details are left to the reader.
+J
+The target of a formula is defined inductively: target(R(t1 , . . . , tn )) = R, target(ϕ →
+ψ) = target(ψ) and target(∀x.ϕ) = target(ϕ).
+I Lemma 6. If ∆ ` M : R(t1 , . . . , tn ) and M is in η-lnf then there is (X : ϕ) ∈ ∆ such that
+M = XN1 . . . Nk and target(ϕ) = R and each Ni is an individual term or a proof term in
+η-lnf.
+
+3
+
+Proof-irrelevant Pure Type Systems
+
+In this section we define proof-irrelevant Pure Type Systems. These extend Pure Type
+Systems with proof-irrelevance, incorporating it into the conversion rule. Our definition of
+proof-irrelevant Pure Type Systems is new. It is similar to the definition of a proof-irrelevant
+version of ECC from [30]. A related treatment of proof-irrelevance for some extensions of the
+Calculus of Constructions is also present in [5]. The study of the meta-theory of ordinary
+Pure Type Systems was initiated in [20].
+
+Ł. Czajka
+
+9:5
+
+(axiom)
+
+hi ` s1 : s2
+
+if (s1 , s2 ) ∈ A
+
+(start)
+
+Γ`A:s
+Γ, x : A ` x : A
+
+if x ∈ V s \ dom(Γ)
+
+(weakening)
+
+Γ`A:B Γ`C:s
+Γ, x : C ` A : B
+
+if x ∈ V s \ dom(Γ)
+
+(product)
+
+Γ ` A : s1 Γ, x : A ` B : s2
+Γ ` (Πx : A.B) : s3
+
+if (s1 , s2 , s3 ) ∈ R
+
+(application)
+
+Γ ` M : (Πx : A.B) Γ ` N : A
+Γ ` M N : B[N/x]
+
+(abstraction)
+
+Γ, x : A ` M : B Γ ` (Πx : A.B) : s
+Γ ` (λx : A.M ) : (Πx : A.B)
+
+(conversion)
+
+Γ`M :A Γ`B:s
+Γ`M :B
+
+if N ∼ x
+
+if B =βε A
+
+Figure 2 Rules of proof-irrelevant PTSs.
+
+I Definition 7. The set T of preterms of a proof-irrelevant Pure Type System (piPTS) is
+defined by the grammar:
+T ::= V s | S | T T | λV s : T .T | ΠV s : T .T | ε
+Here S is a set of sorts, and V s is a set of variables of sort s ∈ S. The constant ε represents
+an arbitrary proof. Its role is technical – it will never occur in well-typed terms. The
+set FV(M ) of free variables of a preterm M is defined in the usual way. To save on notation
+we sometimes treat FV(M ) as a list. We use x, y, z, . . . for variables, N, M, A, B, . . . for
+preterms, and s, s0 , s1 , s2 , . . . for sorts. We sometimes write xs to indicate that xs ∈ V s . We
+assume there exists a sort ∗p ∈ S of propositions.
+Note that we tag variables with the sorts of their types, like in [30, 24]. This already
+appears in [20, 18, 2]. We treat preterms up to α-equivalence, but we do not consider bound
+variables of different sorts to be α-convertible. For example, if s1 6= s2 then λxs1 : ∗p .xs1 6=α
+λxs2 : ∗p .xs2 . Also, whenever we write λx : A.M we assume x ∈
+/ FV(A).
+I Definition 8. The ε-reduction is defined as the contextual closure of the rewrite rules:
+x∗
+
+p
+
+→ε
+
+ε
+
+εM
+
+→ε
+
+ε
+
+λx : A.ε
+
+→ε
+
+ε
+
+I Definition 9. A term N is on the same level as a variable x, notation N ∼ x, if one of
+the following cases holds:
+p
+x ∈ V ∗ and N →∗ε ε, or
+p
+x∈
+/ V ∗ and N 6→∗ε ε.
+I Definition 10. We define restricted β-reduction as follows:
+(λx : A.M )N
+
+→β
+
+M [N/x]
+
+if N ∼ x
+
+The restriction N ∼ x is necessary to ensure confluence of βε-reduction on preterms. Without
+p
+p
+the restriction, for e.g. M = (λx∗ : A.x∗ )∗p we would have M →∗ε ε and M →β ∗p .
+
+TYPES 2016
+
+9:6
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+I Definition 11. The specification of a proof-irrelevant PTS is a triple (S, A, R), where S
+is a set of sorts, A is a set of axioms of the form (s1 , s2 ) with s1 , s2 ∈ S, and R is a set of
+rules of the form (s1 , s2 , s3 ) with s1 , s2 , s3 ∈ S. We often write (s1 , s2 ) for (s1 , s2 , s2 ) ∈ R.
+A context is a finite list of declarations of the form x : A, or more formally a function from a
+finite subset of the set of variables to the set of terms. We denote the empty context by hi. If
+Γ = x1 : A1 , . . . , xn : An then dom(Γ) = {x1 , . . . , xn } and Γ(xi ) = Ai . We denote contexts
+by Γ, Γ0 , etc. We write Γ0 ⊇ Γ if dom(Γ) ⊆ dom(Γ0 ) and Γ(x) = Γ0 (x) for x ∈ dom(Γ). A
+judgement has the form Γ ` A : B. We write Γ ` A : B : C if Γ ` A : B and Γ ` B : C. The
+proof-irrelevant PTS (piPTS) determined by the specification (S, A, R) is defined by the
+rules and axioms in Figure 2. We often identify a piPTS with its specification.
+I Definition 12. Let Γ be a context and A a preterm.
+1. Γ is legal if Γ ` M : N for some M, N ∈ T .
+2. A is a Γ-term if Γ ` A : B or Γ ` B : A for some B ∈ T .
+3. A is a Γ-subject if Γ ` A : B for some B ∈ T .
+4. A is a Γ-type if Γ ` A : s for some s ∈ S.
+5. A is a Γ-proposition if Γ ` A : ∗p .
+6. A is a Γ-proof if Γ ` A : B : ∗p ,
+7. A is legal if there exists Γ0 such that A is a Γ0 -term.
+In comparison to ordinary PTSs, as presented in [2, Section 5.2], we only change the
+application and conversion rules. The side condition in the application rule is necessary
+because we modify the notion of β-reduction. We need the side condition to prove standard
+lemmas about piPTSs, in particular the substitution lemma. However, for a class of logical
+piPTSs, defined below, this side condition may be omitted: Γ ` M : A iff Γ `− M : A
+where `− is the derivation system with the side condition in the application rule omitted
+(see Lemma 34). The conversion rule is changed to incorporate proof-irrelevance into the
+system – this is the major difference with ordinary PTSs. In contrast to [30] we do not a
+priori require x ∈ V s1 in the product rule.
+I Definition 13. Let λS = (S, A, R) be a piPTS.
+λS is functional if
+1. (s, s1 ), (s, s2 ) ∈ A implies s1 = s2 ,
+2. (s, s0 , s1 ), (s, s0 , s2 ) ∈ R implies s1 = s2 .
+λS is logical if
+1. it is functional,
+2. (∗p , ∗p , ∗p ) ∈ R,
+3. all rules in R involving ∗p have the form (s, ∗p , ∗p ) or (∗p , s, s),
+4. there is no s ∈ S with (s, ∗p ) ∈ A,
+5. there exists s ∈ S with (∗p , s) ∈ A.
+Functional PTSs are called singly-sorted in [2]. The notion of functional PTSs comes
+from [20], and also appears in [18]. A notion of logical PTSs similar to ours occurs in [12, 6],
+but it differs in some technical details. The restrictions in the definition of a logical piPTS
+ensure that the sort of propositions ∗p has the expected properties, which turn out to be
+needed in the soundness proof.
+I Example 14. A paradigmatic example of a logical piPTS is the calculus of constructions CCs with a separate impredicative set universe ∗s .
+S = {∗p , ∗s , }.
+
+Ł. Czajka
+
+9:7
+
+A = {(∗p , ), (∗s , )}.
+R = {(∗p , ∗p ), (∗s , ∗p ), (∗p , ∗s ), (∗s , ∗s ), (, ∗p ), (∗p , ), (, ∗s ), (∗s , ), (, )}.
+All (piPTS analogons of) systems of the lambda-cube [2, Definition 5.1.10] are also logical
+piPTSs if we take ∗p = ∗. But since they do not have a distinct sort ∗s for a set universe,
+translating them using our embedding does not make much sense – terms intuitively denoting
+set elements would be erased instead of translated to first-order terms.
+I Example 15. Let (S, A, R) be any logical piPTS. Let  be such that (∗p , ) ∈ A and let
+p
+α ∈ V  and x ∈ V ∗ . We have α : ∗p ` (α → α) : ∗p and α : ∗p ` ((α → α) → α → α) : ∗p ,
+because (∗p , ∗p , ∗p ) ∈ R. Hence by the abstraction rule α : ∗p ` (λx : α.x) : α → α and
+p
+α : ∗p ` (λx : α → α.x) : (α → α) → α → α. Also (λx : α.x) ∼ x, because x ∈ V ∗
+and λx : α.x →ε λx : α.ε →ε ε. So α : ∗p ` ((λx : α → α.x)(λx : α.x)) : α → α by the
+application rule.
+The meta-theory of piPTSs is similar to that of ordinary PTSs (see [2, Section 5.2]). The
+proofs follow the same pattern, except that there is one difficulty caused by the mismatch
+between βε-reduction in the conversion rule and β-reduction for which the subject reduction
+theorem holds. Below we only state a few results concerning piPTSs. We delegate the proofs
+and other details to Appendix A.
+The relation →ε (Definition 8) is confluent and strongly normalising. By nf ε (M ) we
+denote the normal form of M w.r.t. →ε . Note that FV(nf ε (M )) ⊆ FV(M ).
+I Lemma 16. If N ∼ x then nf ε (M [N/x]) = nf ε (M )[nf ε (N )/x].
+I Lemma 17 (Confluence of βε-reduction). If M →∗βε M1 and M →∗βε M2 then there
+exists M 0 such that M1 →∗βε M 0 and M2 →∗βε M 0 .
+I Lemma 18. If M =βε N then M →∗ε ε is equivalent to N →∗ε ε.
+I Lemma 19. If N does not contain ε and M →∗βε N then M →∗β N .
+I Lemma 20 (Free variable lemma). If Γ = x1 : A1 , . . . , xn : An and Γ ` B : C then:
+1. the x1 , . . . , xn are all distinct,
+2. FV(B), FV(C) ⊆ {x1 , . . . , xn },
+3. FV(Ai ) ⊆ {x1 , . . . , xi−1 } for i = 1, . . . , n.
+I Lemma 21 (Start lemma). Let Γ be a legal context.
+1. If (s1 , s2 ) ∈ A then Γ ` s1 : s2 .
+2. If (x : A) ∈ Γ then Γ ` x : A and there is s ∈ S with Γ1 ` A : s and x ∈ V s , where
+Γ = Γ1 , x : A, Γ2 .
+I Lemma 22 (Substitution lemma). If Γ, x : A, Γ0 ` B : C and Γ ` D : A and D ∼ x then
+Γ, Γ0 [D/x] ` B[D/x] : C[D/x].
+I Lemma 23 (Thinning lemma). If Γ ` A : B and Γ0 ⊇ Γ is a legal context then Γ0 ` A : B.
+I Lemma 24 (Generation lemma).
+1. If Γ ` s : A then there is s0 ∈ S with A =βε s0 and (s, s0 ) ∈ A.
+2. If Γ ` x : A then there are s ∈ S and B such that A =βε B and Γ ` B : s and (x : B) ∈ Γ
+and x ∈ V s .
+3. If Γ ` (Πx : A.B) : C then there is (s1 , s2 , s3 ) ∈ R with Γ ` A : s1 and Γ, x : A ` B : s2
+and C =βε s3 .
+4. If Γ ` (λx : A.M ) : C then there are s ∈ S and B such that Γ ` (Πx : A.B) : s and
+Γ, x : A ` M : B and C =βε Πx : A.B.
+
+TYPES 2016
+
+9:8
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+5. If Γ ` M N : C then there are A, B such that Γ ` M : (Πx : A.B) and Γ ` N : A and
+C =βε B[N/x] and N ∼ x.
+I Corollary 25. In a logical piPTS, if Γ ` (Πx : A.B) : ∗p then Γ, x : A ` B : ∗p .
+Proof. By the generation lemma there are s, s0 ∈ S such that (s, s0 , ∗p ) ∈ R and Γ, x : A `
+B : s0 . Because the piPTS is logical, we have s0 = ∗p .
+J
+I Lemma 26 (Correctness of types lemma). If Γ ` M : A then there is s ∈ S such that A = s
+or Γ ` A : s.
+I Lemma 27 (Uniqueness of types lemma).
+1. In a functional piPTS, if Γ ` A : B and Γ ` A : B 0 then B =βε B 0 .
+2. In a logical piPTS, if Γ ` M1 : A1 and Γ ` M2 : A2 and M1 =βε M2 and M1 6→∗ε ε and
+M2 6→∗ε ε then A1 =βε A2 .
+I Corollary 28. In a functional piPTS, if Πx : A.B is a Γ-term and Γ ` A : s then x ∈ V s .
+Proof. By the correctness of types and the generation lemmas Γ, x : A is a legal context. By
+0
+the start lemma Γ ` A : s0 and x ∈ V s for some s0 ∈ S. But s0 = s by the uniqueness of
+types lemma.
+J
+I Theorem 29 (Subject reduction theorem). If Γ ` A : B and A →∗β A0 then Γ ` A0 : B.
+Subject reduction obviously does not hold for βε-reduction, because ε is not meant to be
+typable. This generates a small difficulty in proving the following theorem. See Appendix A.
+I Theorem 30. Assume the piPTS is logical and M is a Γ-term. Then M is a Γ-proof if
+and only if M →∗ε ε.
+I Lemma 31. In a logical piPTS, if M is a Γ-term and M =βε N and Γ ` N : s then
+Γ ` M : s.
+I Lemma 32. In a logical piPTS, if Γ ` M : A and Γ, x : A is a legal context then M ∼ x.
+I Definition 33. Given a piPTS specification (S, A, R), we write Γ `− M : N if the
+judgement Γ ` M : N is derivable in the piPTS determined by the specification (i.e. using
+the rules in Figure 2), but with the side condition N ∼ x omitted in the application rule.
+I Lemma 34. In a logical piPTS, Γ `− M : N is equivalent to Γ ` M : N .
+I Remark. We have not investigated the normalisation or decidability properties of piPTSs.
+We expect that the (strong) normalisation of an ordinary PTS carries over to its proofirrelevant version. The same is expected about the decidability of type checking and type
+inference. The normalisation of our proof-irrelevant version of the Calculus of Constructions
+(CCs from Example 14) may probably be shown by adapting a proof-irrelevant model of the
+ordinary Calculus of Constructions. We do not attempt to answer these questions in the
+present paper.
+
+Ł. Czajka
+
+4
+
+9:9
+
+The embedding
+
+In this and the following section we assume a fixed logical piPTS λS = (S, A, R).
+By TFOL we denote the set of first-order terms, by FFOL the set of first-order formulas,
+by VFOL the set of first-order variables, and by ΣFOL the first-order signature. We assume
+that each piPTS variable is also a first-order variable and ε and all piPTS sorts are also firstorder constants. Further, we assume five functions Λ0 : VFOL × FFOL × TFOL → ΣFOL and
+Λ1 : VFOL ×TFOL ×TFOL → ΣFOL and Φ : FFOL → ΣFOL and G0 : VFOL ×FFOL ×TFOL ×S →
+ΣFOL and G1 : VFOL × TFOL × TFOL × S → ΣFOL returning unique fresh first-order constants.
+The functions are assumed to yield equal results for terms which differ only in the names of
+variables, e.g., if σ is a renaming then Λ1 (x, r, t) = Λ1 (σ(x), σ(r), σ(t)). The functions are
+assumed to give different results for terms which differ not only in the names of variables.
+The intention here is that Λ0 , Λ1 , Φ, G0 , G1 return “fresh” first-order symbol names to be
+used for translations of “lifted-out” lambda-expressions, propositions or dependent products.
+The functions should return equal results for translations of lambda-expressions differing only
+in the names of bound variables (the translations then differ only in the names of first-order
+variables). Note that such functions always exist – e.g. for Λ1 (x, r, t) one may simply choose
+a new symbol name for each new triple (x, r, t) with variable names standardised, e.g, by
+renaming to xi the i-th distinct variable in the triple, counting from the left.
+We assume that the first-order signature contains a unary relation symbol P , two binary
+relation symbols T and E, and a binary function symbol @. An atom P (t) is to be intuitively
+interpreted as “t is provable”, and T (u, t) is to be interpreted as “u has type t”. The symbol E
+represents equality. We prefer to work in minimal first-order logic without equality and add
+necessary equality axioms in the translation. Using first-order logic with equality would
+complicate the proof notation system λP1 and the definition of η-long normal forms. The
+symbol @ represents application. We usually write tu instead of @(t, u), and we assume
+application to be left-associative.
+~ , and M [N1 /x1 ] . . . [Nn /xn ] by M [N
+~ /~x],
+We often abbreviate e.g. M N1 . . . Nn by M N
+~
+~
+and Πx1 : A1 . . . Πxn : An .B by Π~x : A.B, and λx1 : A1 . . . λxn : An .M by λ~x : A.M . We
+sometimes treat a list of variables ~x as a set. When we write e.g. ~x = FV(ϕ, t) then ~x is the
+list of free variables occurring in ϕ, t in the fixed order from left to right.
+The embedding translates a context Γ and a Γ-proposition τ into a set of axioms ∆Γ and
+a first-order formula FΓ (τ ). The embedding uses two functions:
+1. FΓ which translates Γ-propositions to first-order formulas,
+2. CΓ which translates Γ-terms to first-order individual terms.
+I Definition 35. The functions FΓ and CΓ are defined by mutual induction on the structure
+of piPTS terms.
+The definition of FΓ is as follows.
+if Γ ` A : ∗p then FΓ (Πx : A.B) = FΓ (A) → FΓ,x:A (B),
+if Γ 0 A : ∗p then FΓ (Πx : A.B) = ∀x.T (x, CΓ (A)) → FΓ,x:A (B),
+if M is not a product then FΓ (M ) = P (CΓ (M )).
+The definition of CΓ is as follows. If M is a Γ-proof then CΓ (M ) = ε. Otherwise, we are
+in one of the following cases.
+M = s ∈ S. Then CΓ (s) = s.
+M = x is a variable. Then CΓ (x) = x.
+M = N Q. Then CΓ (N Q) = CΓ (N )CΓ (Q).
+
+TYPES 2016
+
+9:10
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+M = λx : A.N with Γ ` A : ∗p . Let ϕ = FΓ (A) and t = CΓ,x:A (N ) and ~y = FV(ϕ, t) \ {x}
+and f = Λ0 (x, ϕ, t). Then CΓ (λx : A.N ) = f~y . The idea here is to “lift-out” the
+translation of a complex lambda-expression M by introducing a name f for it. In ∆Γ
+there will be an axiom describing the functional behaviour of f .
+M = λx : A.N with Γ 0 A : ∗p . Let r = CΓ (A) and t = CΓ,x:A (N ) and ~y = FV(r, t) \ {x}
+and f = Λ1 (x, r, t). Then CΓ (λx : A.N ) = f~y .
+M = Πx : A.B and Γ ` M : ∗p . Let ϕ = FΓ (Πx : A.B) and ~y = FV(ϕ) and f = Φ(ϕ).
+Then CΓ (Πx : A.B) = f~y .
+M = Πx : A.B and Γ ` M : s with s =
+6 ∗p , and Γ ` A : ∗p . Let ϕ = FΓ (A) and
+t = CΓ,x:A (B) and ~y = FV(ϕ, t) \ {x} and f = G0 (x, ϕ, t, s). Then CΓ (Πx : A.B) = f~y .
+M = Πx : A.B and Γ ` M : s with s 6= ∗p , and Γ 0 A : ∗p . Let t1 = CΓ (A) and
+t2 = CΓ,x:A (B) and ~y = FV(t1 , t2 ) \ {x} and f = G1 (x, t1 , t2 , s). Then CΓ (Πx : A.B) = f~y .
+Note that it follows from the uniqueness of types lemma that all cases in the definition
+of FΓ (resp. CΓ ) are exclusive.
+I Example 36. Suppose the piPTS is CCs from Example 14. Let Γ = α : ∗s , p : α → ∗p
+and τ = Πx : α.px → px. Then Γ ` τ : ∗p and FΓ (τ ) = ∀x.T (x, α) → P (px) → P (px).
+In practice, the atom P (px) may often be further optimised to Pp (x) with Pp a first-order
+predicate corresponding to p. This optimisation is performed in [15]. For Q = λx.ΛX :
+T (x, α).ΛY : P (px).Y in η-lnf we have `FOL Q : FΓ (τ ). The first-order proof Q may be
+translated back into a piPTS proof term M = λx : α.λy : px.y. In CCs we have Γ ` M : τ .
+Now let Γ0 = α : ∗s , p : α → ∗p , a : α, q : pa → ∗p and τ 0 = Πx : pa.qx → qx. Then
+0
+Γ ` τ 0 : ∗p and FΓ0 (τ 0 ) = P (pa) → P (qε) → P (qε). For Q = ΛX : P (pa).ΛY : P (qε).Y in
+η-lnf we have `FOL Q : FΓ0 (τ 0 ). The proof Q may be translated back to a piPTS proof term
+M = λx : pa.λy : qx.y. In CCs we have Γ0 ` M : τ 0 .
+I Definition 37. The translation dΓe of a context Γ is defined inductively:
+dhie = ∅,
+dΓ, x : Ae = dΓe, FΓ (A) if Γ ` A : ∗p ,
+dΓ, x : Ae = dΓe, T (x, CΓ (A)) if Γ 0 A : ∗p .
+The set ∆Γ will consist of dΓe and a set of axioms ∆Ax . To precisely formulate the
+axioms we need a technical definition of a function AΓ such that for a FOL formula ϕ the
+formula AΓ (ϕ) is ϕ prepended with the declarations in Γ translated into guards.
+I Definition 38. The function A takes a legal context and a FOL formula and returns a
+FOL formula. It is defined by induction on the length of the context Γ:
+Ahi (ϕ) = ϕ,
+AΓ,x:A (ϕ) = AΓ (∀x.T (x, CΓ (A)) → ϕ) if Γ ` A : s and s 6= ∗p ,
+AΓ,x:A (ϕ) = AΓ (FΓ (A) → ϕ) if Γ ` A : ∗p .
+The A-length of a legal context Γ, denoted lenA (Γ), is defined inductively:
+lenA (hi) = 0,
+lenA (Γ, x : A) = lenA (Γ) + 2 if Γ ` A : s and s 6= ∗p ,
+lenA (Γ, x : A) = lenA (Γ) + 1 if Γ ` A : ∗p .
+The A-length of Γ indicates how many arguments need to be applied to a first-order proof
+of AΓ (ϕ) in order to obtain a proof of ϕ. It follows from the uniqueness of types lemma
+that AΓ and lenA (Γ) are well-defined for a legal context Γ.
+I Example 39. In CCs let Γ = α : ∗s , a : α, p : α → ∗p , q : pa and ϕ = P (pa). Then
+AΓ (ϕ) = ∀α.T (α, ∗s ) → ∀a.T (a, α) → ∀p.T (p, f α) → P (pa) → P (pa)
+
+Ł. Czajka
+
+9:11
+
+where f = G1 (x, α, ∗p , ). The A-length of Γ is 7, i.e., lenA (Γ) = 7.
+We need to define a set of axioms ∆Ax for our embedding. These will be axioms concerning
+the constants introduced in the translation via the functions Λ0 , Λ1 , Φ, G0 and G1 , and
+axioms for equality.
+I Definition 40. The set ∆Λ0 contains the following FOL formulas which describe the
+behaviour of the constants representing “lifted-out” lambda-expressions with propositional
+arguments.
+Given a variable x, a FOL formula ϕ and a FOL term t, let f = Λ0 (x, ϕ, t). Let Γ and
+A, B be such that:
+Γ ` A : ∗p , and
+λx : A.B is a Γ-term but not a Γ-proof, and
+ϕ = FΓ (A) and,
+t = CΓ,x:A (B).
+Let ~y = FV(ϕ, t) \ {x}. Then ∆Λ0 contains the FOL formula:
+AΓ (ϕ → E(f~y ε, t)).
+I Definition 41. The set ∆Λ1 contains the following FOL formulas which describe the behaviour of the constants representing “lifted-out” lambda-expressions with non-propositional
+arguments.
+Given a variable x and FOL terms r, t, let f = Λ1 (x, r, t). Let Γ and A, B be such that:
+Γ 0 A : ∗p , and
+λx : A.B is a Γ-term but not a Γ-proof, and
+r = CΓ (A), and
+t = CΓ,x:A (B).
+Let ~y = FV(r, t) \ {x}. Then ∆Λ1 contains the FOL formula:
+AΓ (∀x.T (x, r) → E(f~y x, t)).
+I Example 42. In CCs let Γ = α : ∗s and M = λx : α.x. Then Γ ` M : α → α : ∗s . We
+have CΓ (α) = α and CΓ,x:α (x) = x. Let f = Λ1 (x, α, x). Then ∆Λ1 contains the FOL formula
+∀α.T (α, ∗s ) → ∀x.T (x, α) → E(f αx, x).
+Recall that E represents equality.
+I Definition 43. The set ∆Φ contains the following FOL formulas which are axioms for the
+constants representing “lifted-out” propositions. Given a FOL formula ϕ, let f = Φ(ϕ) and
+~y = FV(ϕ). Then ∆Φ contains ∀~y .ϕ → P (f~y ).
+I Definition 44. The set ∆G0 contains the following FOL formulas which describe the behaviour of the constants representing “lifted-out” dependent product types with propositional
+source types.
+Given a variable x, a FOL formula ϕ, a FOL term t and a sort s 6= ∗p , let f = G0 (x, ϕ, t, s).
+Let Γ and A, B be such that:
+Γ ` A : ∗p , and
+Γ ` Πx : A.B : s, and
+ϕ = FΓ (A), and
+t = CΓ,x:A (B).
+Let ~y = FV(ϕ, t) \ {x} and z ∈
+/ FV(ϕ, t). Then ∆G0 contains:
+AΓ (∀z.T (z, f~y ) → ϕ → T (zε, t)).
+
+TYPES 2016
+
+9:12
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+I Definition 45. The set ∆G1 contains the following FOL formulas which describe the
+behaviour of the constants representing “lifted-out” dependent product types with nonpropositional source types.
+Given a variable x, FOL terms t1 , t2 , and a sort s =
+6 ∗p , let f = G1 (x, t1 , t2 , s). Let Γ and
+A, B be such that:
+Γ 0 A : ∗p , and
+Γ ` Πx : A.B : s, and
+t1 = CΓ (A), and
+t2 = CΓ,x:A (B).
+Let ~y = FV(t1 , t2 ) \ {x} and z ∈
+/ FV(t1 , t2 ). Then ∆G1 contains:
+AΓ (∀z.T (z, f~y ) → ∀x.T (x, t1 ) → T (zx, t2 )).
+I Example 46. In CCs let Γ = α : ∗s , p : α → ∗s . We have CΓ (α) = α and CΓ,x:α (px) = px
+and Γ ` Πx : α.px : ∗s . Let f = G1 (x, α, px, ∗s ). Then ∆G1 contains
+∀α.T (α, ∗s ) → ∀p.T (p, gα) → ∀z.T (z, f α) → ∀x.T (x, α) → T (zx, px)
+where g = G1 (x, α, ∗s , ) and ∆G1 also contains
+∀α.T (α, ∗s ) → ∀p.T (p, gα) → ∀z.T (z, gα) → ∀x.T (x, α) → T (zx, ∗s ).
+Also dΓe = T (α, ∗p ), T (p, gα). In [15] there is a distinction between a local context which
+contains variables bound locally by a λ or a Π, and a global environment which contains
+the preselected declarations accessible in the proof assistant kernel (Γ0 from Section 1.1).
+The guards are not generated for the declarations in the global environment. Assuming Γ
+here corresponds to the global environment (it is the context translated together with the
+conjecture), in [15] the last axiom above would be optimised to
+∀z.T (z, gα) → ∀x.T (x, α) → T (zx, ∗s ).
+I Definition 47. The set ∆τ0 contains the following FOL formulas which describe the types
+of the constants representing “lifted-out” lambda-expressions with propositional arguments.
+Given a variable x, a FOL formula ϕ, FOL terms t, u and a sort s 6= ∗p , let f = Λ0 (x, ϕ, t)
+and g = G0 (x, ϕ, u, s). Let Γ and A, B, M be such that:
+Γ ` A : ∗p , and
+Γ ` (λx : A.M ) : Πx : A.B : s, and
+ϕ = FΓ (A), and
+t = CΓ,x:A (M ), and
+u = CΓ,x:A (B).
+Let ~y = FV(ϕ, t) \ {x} and ~z = FV(ϕ, u) \ {x}. Then ∆τ0 contains the FOL formula:
+AΓ (T (f~y , g~z)).
+I Definition 48. The set ∆τ1 contains the following FOL formulas which describe the
+types of the constants representing “lifted-out” lambda-expressions with non-propositional
+arguments.
+Given a variable x, FOL terms r, t, u and a sort s 6= ∗p , let f = Λ1 (x, r, t) and g =
+G1 (x, r, u, s). Let Γ and A, B, M be such that:
+Γ 0 A : ∗p , and
+Γ ` (λx : A.M ) : Πx : A.B : s, and
+r = CΓ (A), and
+t = CΓ,x:A (M ), and
+
+Ł. Czajka
+
+9:13
+
+u = CΓ,x:A (B).
+Let ~y = FV(r, t) \ {x} and ~z = FV(r, u) \ {x}. Then ∆τ1 contains the FOL formula:
+AΓ (T (f~y , g~z)).
+I Definition 49. The set ∆E , which axiomatises the equality predicate E, contains the
+following FOL formulas:
+(reflexivity) ∀x.E(x, x),
+(symmetry) ∀xy.E(x, y) → E(y, x),
+(transitivity) ∀xyz.E(x, y) → E(y, z) → E(x, z),
+(congruence) ∀xyx0 y 0 .E(x, x0 ) → E(y, y 0 ) → E(xy, x0 y 0 ),
+(substitutivity for P ) ∀xx0 .E(x, x0 ) → P (x) → P (x0 ),
+(substitutivity for T ) ∀xyx0 y 0 .E(x, x0 ) → E(y, y 0 ) → T (x, y) → T (x0 , y 0 ).
+I Definition 50. We set ∆Ax = ∆Λ0 ∪ ∆Λ1 ∪ ∆Φ ∪ ∆G0 ∪ ∆G1 ∪ ∆τ0 ∪ ∆τ1 ∪ ∆E and
+∆Γ = ∆Ax ∪ dΓe.
+I Remark. Strictly speaking, the set ∆Ax is infinite, because ∆Λ0 , ∆Λ1 , ∆Φ , ∆G0 , ∆G1 , ∆τ0 , ∆τ1
+are. However, in practice one needs to add the axioms only for the constants f , contexts Γ
+and terms A, B, M that actually occur during the translation of a given conjecture and
+its context. There are only finitely many of them. Also, to make proof reconstruction
+computable we assume that for any constant f ∈ Λ1 (x, r, t) (and analogously for Λ0 , G0 , G1 ) it
+is possible to compute Γ, A, B satisfying the conditions in Definition 41. In practice, Γ, A, B
+may be associated to f during the translation when an axiom for f is first added.
+I Example 51. In CCs let Γ = α : ∗s , p : (α → α) → ∗p and
+τ = p(λx : α.x) → p((λx : α → α.x)(λx : α.x)).
+We have dΓe = T (α, ∗s ), T (p, τ1 α) and FΓ (τ ) = P (p(f α)) → P (p(gα(f α))) where f =
+Λ1 (x, α, x) and g = Λ1 (x, τ2 α, x) and τ2 = G1 (x, α, α, ∗s ) and τ1 = G1 (x, τ2 α, ∗s , ). The
+set ∆Ax contains, among others, the following axioms:
+∀α.T (α, ∗s ) → ∀p.T (p, τ1 α) → ∀x.T (x, τ2 α) → E(gαx, x),
+∀α.T (α, ∗s ) → T (f α, τ2 α).
+In practice, these may be optimised to:
+∀x.T (x, τ2 α) → E(gαx, x),
+T (f α, τ2 α).
+One may derive ∆Ax , dΓe `FOL E(gα(f α), f α). Using the axioms for equality from ∆E one
+may thus show ∆Ax , dΓe, P (p(f α)) `FOL P (p(gα(f α))). Hence ∆Ax , dΓe `FOL FΓ (τ ). Also
+there is M with Γ ` M : τ in CCs . The use of equality axioms from ∆E in the derivation
+of ∆Ax , dΓe `FOL FΓ (τ ) corresponds to the use of the conversion rule in the derivation of
+Γ ` M : τ.
+Now consider τ 0 = p(λx : α.x) → p(λx : α.(λx : α.x)x). Then
+FΓ (τ 0 ) = P (p(f α)) → P (p(hα))
+where h = Λ1 (x, α, f αx). In ∆Ax we have the axioms
+∀α.T (α, ∗s ) → ∀p.T (p, τ1 α) → ∀x.T (x, τ2 α) → E(hαx, f αx),
+∀α.T (α, ∗s ) → ∀p.T (p, τ1 α) → ∀x.T (x, α) → E(f αx, x).
+We have ∆Ax , dΓe 0 FΓ (τ 0 ), because ∆Γ 0FOL E(hα, f α) – only ∆Γ , x : α ` E(hαx, f αx).
+On the other hand, Γ ` (λD : p(λx : α.x).D) : τ 0 because λx : α.x =β λx : α.(λx : α.x)x.
+
+TYPES 2016
+
+9:14
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+I Example 52. In CCs let Γ = p : ∗p , q : p → ∗p and τ = Πx : p.Πy : p.qx → qy. Then dΓe =
+T (p, ∗p ), T (q, τ1 p) and FΓ (τ ) = P (p) → P (p) → P (qε) → P (qε) where τ1 = G0 (x, p, ∗p , ).
+The formula FΓ (τ ) is an intuitionistic tautology. Also Γ ` (λx : p.λy : p.λD : qx.D) : τ ,
+because qx =ε qy. This example shows that proof irrelevance is necessary for soundness.
+I Remark. The incompleteness of the embedding is due to the fact that not enough axioms
+are present in ∆Ax . After adding axioms expressing the ξ-rule of β-equality, axioms allowing
+to form new types, axioms corresponding to piPTS axioms, etc., one would probably obtain
+a complete embedding.
+I Remark. Assuming the decidability of type checking, the embedding is computable.
+Any renaming σ, i.e. a bijection on the set of variables which respects variable sorts,
+extends in a natural way to a function on first-order terms, formulas (renaming both free
+and bound variables), piPTS terms, and piPTS contexts.
+I Lemma 53. Let σ be a renaming.
+1. If Γ ` M : A then σ(Γ) ` σ(M ) : σ(A).
+2. Cσ(Γ) (σ(M )) = σ(CΓ (M )).
+3. Fσ(Γ) (σ(M )) = σ(FΓ (M )).
+4. Aσ(Γ) (σ(ϕ)) = σ(AΓ (ϕ)).
+
+5
+
+Soundness
+
+For the soundness theorem one would want to prove: if ∆Ax , dΓe ` FΓ (A) and Γ ` A : ∗p
+then there is M with Γ ` M : A. However, in the soundness proof we need a weaker notion
+than the function FΓ . The problem is that FΓ does not have the necessary substitution
+properties. For instance if N = Πz : A.B with Γ ` A : ∗p and Γ ` N : ∗p , then CΓ (N ) = f
+with f = Φ(FΓ (N )), and we have
+FΓ,x:∗p (Πy : x.x)[CΓ (N )/x]
+
+=
+=
+
+(P (x) → P (x))[CΓ (N )/x]
+P (f ) → P (f )
+
+while
+FΓ ((Πy : x.x)[N/x])
+
+= FΓ (Πy : N.N )
+= FΓ (N ) → FΓ,y:N (N )
+= (FΓ (A) → FΓ,z:A (B)) → (FΓ,y:N (A) → FΓ,y:N,z:A (B)).
+
+In the proof we would need these two expressions to be equal. An analogous problem occurs
+with CΓ . For example if Γ ` A : s and Γ 0 A → A : ∗p , then
+CΓ,x:A→A (λy : A.xy)[CΓ (λz : A.z)/x] = (f x)[CΓ (λz : A.z)/x] = f g
+where f = Λ1 (y, CΓ,x:A→A (A), xy) and g = Λ1 (z, CΓ (A), z), but
+CΓ,x:A→A ((λy : A.xy)[(λz : A.z)/x]) = CΓ,x:A→A ((λy : A.(λz : A.z)y)) = h
+where h = Λ1 (y, CΓ,x:A→A (A), g 0 y) and g 0 = Λ1 (z, CΓ,x:A→A,y:A (A), z).
+The problem is essentially that lambda-abstractions and dependent products may contain
+free variables. In our setting it does not seem possible to easily solve this problem by
+e.g. first translating all lambda-abstractions to supercombinators, i.e., terms of the form
+λx1 : A1 . . . λxn : An .t with FV(t) ⊆ {x1 , . . . , xn }, and changing the definition of CΓ to
+
+Ł. Czajka
+
+9:15
+
+translate multiple consecutive lambda-abstractions at once, thus eliminating the need for
+the free variables ~y in the axioms in ∆Λi . First of all, this is because for a translation to
+supercombinators to preserve typing additional assumptions on the piPTS would be necessary.
+Secondly, this would not help with the problem with dependent products exemplified above,
+which essentially stems from the fact that with our embedding a piPTS proposition may be
+translated using either F or C depending on where it occurs in a term.
+C
+We therefore use weaker relations F
+Γ and Γ instead of the functions FΓ and CΓ .
+Γ which expresses the fact that Γ may be
+I Definition 54. First, we define a relation Γ0
+obtained from Γ0 by repeated substitutions (in the sense of the substitution lemma) and
+context extensions. More precisely, we define
+as the transitive-reflexive closure of the
+relation given by the rule:
+Γ1 , x : A, Γ2
+We write Γ0
+
+Γ if Γ ⊇ Γ1 , Γ2 [N/x] is a legal context and Γ1 ` N : A and N ∼ x.
+
+~ Γ to make the terms and the variables substituted for explicit, e.g.,
+~
+x,N
+
+Γ1 , x : A, Γ2 , y : B, Γ3
+
+y,x,N1 ,N2 Γ1 , Γ2 [N2 /x], Γ3 [N1 /y][N2 /x]
+
+if Γ1 , x : A, Γ2 ` N1 : B and Γ1 ` N2 : A and N1 ∼ y and N2 ∼ x. Note that the order of
+the terms and the variables in the subscript is significant. If additionally Ni CΓi ti (the
+relation CΓ is defined below) for appropriate Γi , then we write Γ0 ~x,N~ ,~t Γ. For instance,
+Γ1 , x : A, Γ2 , y : B, Γ3
+
+x,y,N1 ,N2 ,t1 ,t2 Γ1 , Γ2 [N1 /x], Γ3 [N1 /x][N2 /y]
+
+if Γ1 ` N1 : A and Γ1 , Γ2 [N1 /x] ` N2 : B[N1 /x] and N1 ∼ x and N2 ∼ y and N1 CΓ1 t1 and
+N2 CΓ1 ,Γ2 [N1 /x] t2 .
+I Definition 55. The relation F
+Γ between Γ-propositions and first-order formulas, and the
+relation CΓ between Γ-subjects and first-order terms, are defined by mutual induction on
+the structure of piPTS terms.
+The definition of F
+Γ is as follows.
+F
+F
+if Γ ` A : ∗p and A F
+Γ ϕ and B Γ,x:A ψ then Πx : A.B Γ ϕ → ψ,
+F
+if Γ 0 A : ∗p and A CΓ t and B F
+Γ,x:A ϕ then Πx : A.B Γ ∀x.T (x, t) → ϕ,
+C
+F
+if A Γ t then A Γ P (t).
+The last case is not exclusive with the first two.
+The definition of CΓ is as follows. If M is a Γ-proof then M CΓ ε. Otherwise, we are in
+one of the following cases.
+M = s ∈ S. Then s CΓ s.
+M = x is a variable. Then x CΓ x.
+M = N Q. If N CΓ t1 and Q CΓ t2 then N Q CΓ t1 t2 .
+~ /~x] and there is Γ0 such that Γ0 ` A : ∗p and Γ0
+M = (λx : A.Q)[N
+~ ,~
+~
+x,N
+t Γ. Assume
+F
+C
+~
+~
+A[N /~x] Γ ϕ[~t/~x] and Q[N /~x] 
+t[~t/~x]. Let f = Λ0 (x, ϕ, t) and ~y = FV(ϕ, t) \
+~
+Γ,x:A[N /~
+x]
+
+{x}. Then M CΓ (f~y )[~t/~x].
+~ /~x] and there is Γ0 such that Γ0 0 A : ∗p and Γ0
+M = (λx : A.Q)[N
+~ ,~
+~
+x,N
+t Γ. Assume
+C
+~ /~x]  r[~t/~x] and Q[N
+~ /~x] C
+~
+A[N
+t[
+t
+/~
+x
+].
+Let
+f
+=
+Λ
+(x,
+r,
+t)
+and
+~
+y
+= FV(r, t) \
+1
+Γ
+~
+Γ,x:A[N /~
+x]
+
+{x}. Then M CΓ (f~y )[~t/~x].
+~ /~x] and there is Γ0 such that Γ0 ` (Πx : A.B) : ∗p and Γ0
+M = (Πx : A.B)[N
+~ x]. Let f = Φ(ϕ) and ~y = FV(ϕ). Then M CΓ (f~y )[~t/~x].
+Assume M F
+Γ ϕ[t/~
+
+~ ,~
+~
+x,N
+t Γ.
+
+TYPES 2016
+
+9:16
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+~ /~x]. and there is Γ0 such that Γ0 ` (Πx : A.B) : s with s =
+M = (Πx : A.B)[N
+6 ∗p and
+0
+p
+0
+F
+C
+~
+~
+~
+Γ ` A : ∗ and Γ
+x] Γ ϕ[t/~x] and B[N /~x] Γ,x:A[N~ /~x] t[~t/~x].
+~ ,~
+~
+x,N
+t Γ. Assume A[N /~
+Let f = G0 (x, ϕ, t, s) and ~y = FV(ϕ, t) \ {x}. Then M CΓ (f~y )[~t/~x],
+~ /~x] and there is Γ0 such that Γ0 ` (Πx : A.B) : s with s =
+M = (Πx : A.B)[N
+6 ∗p and
+~ /~x] C u1 [~t/~x] and B[N
+~ /~x] C
+Γ0 0 A : ∗p and Γ0 ~x,N~ ,~t Γ. Assume A[N
+u [~t/~x].
+Γ
+~ /~
+Γ,x:A[N
+x] 2
+Let f = G1 (x, u1 , u2 , s) and ~y = FV(u1 , u2 ) \ {x}. Then M CΓ (f~y )[~t/~x].
+Note that not all cases are mutually exclusive.
+I Lemma 56.
+1. If A is a Γ-proposition then A F
+Γ FΓ (A).
+2. If A is a Γ-subject then A CΓ CΓ (A).
+Proof. Induction on the definition of FΓ (A) and CΓ (A), using the generation lemma and
+Corollary 25.
+J
+I Definition 57. The relation  between contexts and first-order environments is defined
+inductively:
+hi  ∅,
+if Γ ` A : ∗p and A F
+Γ ϕ and Γ  ∆ then Γ, x : A  ∆, ϕ,
+if Γ 0 A : ∗p and A CΓ t and Γ  ∆ then Γ, x : A  ∆, T (x, t).
+The relation  is a “relaxed” analogon of the function d−e from Definition 37.
+0
+I Definition 58. We define the relation ψ A
+Γ;Γ0 ϕ by induction on Γ :
+ϕ A
+Γ;hi ϕ,
+0
+p
+C
+A
+ψ A
+Γ;Γ0 ,x:A ϕ if Γ, Γ ` A : s and s 6= ∗ and A Γ,Γ0 t and ∀x.T (x, t) → ψ Γ;Γ0 ϕ.
+0
+p
+F
+A
+ψ A
+Γ;Γ0 ,x:A ϕ if Γ, Γ ` A : ∗ and A Γ,Γ0 ψA and ψA → ψ Γ;Γ0 ϕ.
+A
+Intuitively, ψ Γ;Γ0 ϕ means that ϕ is ψ with prepended relaxed translations of the declarations in Γ0 into guards, like in AΓ0 (ψ) from Definition 38. The context Γ provides
+additional declarations for the purpose of typing – they are not translated into guards. By a
+“relaxed” translation of M we mean a first-order term t (resp. formula θ) satisfying M CΓ00 t
+00
+(resp. M F
+Γ00 θ) for appropriate Γ .
+
+I Lemma 59. If Γ is a legal context then Γ  dΓe and ϕ A
+hi;Γ AΓ (ϕ).
+Proof. Induction on Γ, using Lemma 56.
+
+J
+
+I Lemma 60. If Γ0
+
+0
+~ ,~
+~
+x,N
+t Γ and Γ , y : A is a legal context and y is fresh, i.e., it does not
+~ /~x].
+occur in Γ , Γ or any intermediate context, then Γ0 , y : A ~x,N~ ,~t Γ, y : A[N
+0
+
+Proof. Induction on the definition of Γ0
+I Lemma 61. If Γ0 ` A : B and Γ0
+
+J
+
+~ ,~
+~
+x,N
+t Γ.
+
+~
+
+~
+
+x] : B[N /~x].
+~ Γ then Γ ` A[N /~
+~
+x,N
+
+Proof. Follows by repeatedly applying the substitution and thinning lemmas.
+
+J
+
+From now on, whenever we write M F
+Γ t we implicitly assume that M is a Γ-proposition.
+Similarly, whenever we write M CΓ t we assume M is a Γ-subject. Note that it follows from
+the generation lemma and Lemma 61 that if e.g. Πx : A.B F
+Γ ϕ → ψ and Πx : A.B is a
+Γ-proposition, then A is a Γ-proposition and B is a (Γ, x : A)-proposition (and analogously
+for all other cases of Definition 55). So the assumption that the left-hand sides of F are
+F
+propositions is preserved for A F
+Γ ϕ and B Γ,x:A ψ. We will often use this observation
+implicitly. Because of page limits, proofs of many of the following helper lemmas have been
+moved to Appendix B.
+
+Ł. Czajka
+
+9:17
+
+I Lemma 62.
+0
+F
+1. If M F
+Γ ϕ and Γ ⊇ Γ is a legal context then M Γ0 ϕ.
+C
+0
+C
+2. If M Γ t and Γ ⊇ Γ is a legal context then M Γ0 t.
+0
+0
+A
+I Corollary 63. If ψ A
+Γ;Γ0 ϕ and Γ ⊇ Γ and Γ , Γ0 is a legal context then ψ Γ0 ;Γ0 ϕ.
+
+I Lemma 64. Assume N ∼ x. Then M →∗ε ε iff M [N/x] →∗ε ε.
+I Lemma 65. Assume Γ1 ` N : A and N CΓ1 t and N ∼ y.
+F
+1. If M F
+Γ1 ,y:A,Γ2 ϕ then M [N/y] Γ1 ,Γ2 [N/y] ϕ[t/y].
+C
+C
+2. If M Γ1 ,y:A,Γ2 u then M [N/y] Γ1 ,Γ2 [N/y] u[t/y].
+I Corollary 66.
+0
+1. If M F
+Γ0 ϕ and Γ
+2. If M CΓ0 ϕ and Γ0
+
+~ x] F ϕ[~t/~x].
+~ ,~
+Γ
+~
+x,N
+t Γ then M [N /~
+~ /~x] C ϕ[~t/~x].
+Γ
+then
+M
+[
+N
+~
+~
+Γ
+~
+x,N ,t
+p
+
+I Lemma 67. Assume y ∈ V ∗ .
+1. If M F
+/ FV(ϕ).
+Γ ϕ then y ∈
+2. If M CΓ t then y ∈
+/ FV(t).
+I Lemma 68.
+1. If M F
+Γ ϕ then FV(ϕ) = FV(nf ε (M )).
+C
+2. If M Γ t then FV(t) = FV(nf ε (M )).
+I Lemma 69. Assume Γ =ε Γ0 .
+0
+F
+0
+1. If M F
+Γ ϕ and M Γ0 ϕ then M =ε M .
+C
+0
+C
+0
+2. If M Γ t and M Γ0 t then M =ε M .
+I Lemma 70. If ψ ∈ ∆ and Γ  ∆ and ψ has target P , then there are Γ1 , Γ2 , ∆1 , ∆2 and C
+such that Γ = Γ1 , x : C, Γ2 and ∆ = ∆1 , ψ, ∆2 and Γ1  ∆1 and Γ1 ` C : ∗p and C F
+Γ1 ψ.
+I Lemma 71. If ψ ∈ ∆ and Γ  ∆ and ψ has target T , then ψ = T (x, t) and there are
+Γ1 , Γ2 and C such that Γ = Γ1 , x : C, Γ2 and C CΓ1 t.
+C
+A
+I Lemma 72. If C F
+Γ ϕ then C = Πx1 : A1 . . . Πxn : An .B with B Γ,Γ0 t and P (t) Γ;Γ0 ϕ
+and Γ0 = x1 : A1 , . . . , xn : An .
+
+I Definition 73. Assume ∆Ax , ∆ ` Q : ϕ and Γ  ∆. A Γ, ∆, A, ϕ-reconstruction of Q, or
+just a reconstruction of Q, is defined as follows, depending on the form of ϕ.
+p
+1. If A F
+Γ ϕ and Γ ` A : ∗ then any M such that Γ ` M : A is a Γ, ∆, A, ϕ-reconstruction
+of Q.
+2. If ϕ = T (t, t0 ) and A CΓ t0 and Γ ` A : s with s 6= ∗p then any M such that M CΓ t and
+Γ ` M : A is a Γ, ∆, A, ϕ-reconstruction of Q.
+3. If ϕ = E(t0 , t) and A CΓ t0 (resp. A CΓ t) and A is a Γ-subject then any Γ-subject M
+such that M CΓ t (resp. M CΓ t0 ) and M =βε A is a Γ, ∆, A, ϕ-reconstruction of Q.
+0
+0
+Note that if A F
+Γ ϕ then ϕ does not have the form T (t, t ) or E(t, t ), so the three above
+cases are actually exclusive. We stress that the notion of a reconstruction depends on
+the Γ, ∆, A, ϕ, but we often omit them when clear.
+A first-order proof term Q is reconstructible if for any Γ, ∆, A, ϕ, satisfying the appropriate
+conditions as above, a Γ, ∆, A, ϕ-reconstruction of Q exists.
+I Lemma 74. Suppose Γ  ∆ and ∆Ax , ∆ ` XQ1 . . . Qm : ψ, where each Qi is either an
+individual term or a reconstructible proof term. Let Γ0 = x1 : A1 , . . . , xn : An be such that
+m = lenA (Γ0 ) and Γ, Γ0 is a legal context. If (X : γ) ∈ ∆Ax , ∆ with ϕ A
+Γ;Γ0 γ, then there
+exist N1 , . . . , Nn and u1 , . . . , un such that ψ = ϕ[~u/~x] and Γ, Γ0 ~x,N~ ,~u Γ.
+
+TYPES 2016
+
+9:18
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+I Theorem 75 (Soundness of the embedding). Every first-order proof term Q in η-long
+normal form is reconstructible.
+The proof of the soundness of the embedding is a bit long and tedious because of the many
+cases that need to be considered. As mentioned before, the soundness proof implicitly defines
+an algorithm to transform a first-order proof term Q in η-lnf into its reconstruction. More
+precisely, given a proof term Q in η-lnf and Γ, ∆, A, ϕ satisfying the conditions in Definition 73,
+the algorithm constructs a Γ, ∆, A, ϕ-reconstruction M of Q. We first informally sketch this
+algorithm. The proof of Theorem 75 is essentially a proof of its correctness. Because any
+proof term may be β-reduced and η-expanded to a proof term in η-lnf (Lemma 5), this
+provides a general proof reconstruction method.
+I Algorithm 76. Assume ∆Ax , ∆ ` Q : ϕ and Γ  ∆. We assume that Γ  ∆ is given
+constructively, i.e., given (X : ϕ) ∈ ∆ it is possible to retrieve (x : C) ∈ Γ such that C F
+Γ ϕ,
+or ϕ = T (x, t) and C CΓ t (c.f. Definition 57 and Lemma 62). We have the following cases.
+For the sake of readability we do not treat all cases in full generality.
+p
+1. A F
+Γ ϕ and Γ ` A : ∗ . We seek M with Γ ` M : A. Consider possible forms of ϕ.
+ϕ = ϕ1 → ϕ2 . Then Q = λX : ϕ1 .Q0 (because Q is in η-lnf) and A = Πx : B.C (by
+F
+0
+0
+Definition 55) with B F
+Γ ϕ1 and C Γ,x:B ϕ2 . Recursively construct a Γ , ∆ , C, ϕ2 reconstruction M 0 of Q0 , where Γ0 = Γ, x : B and ∆0 = ∆, ϕ1 . Take M = λx : B.M 0 .
+ϕ = ∀x.T (x, t) → ψ. Then Q = λxλX : T (x, t).Q0 and A = Πx : B.C. Recursively
+construct a Γ0 , ∆0 , C, ψ-reconstruction M 0 of Q0 , where Γ0 = Γ, x : B and ∆0 =
+∆, T (x, t). Take M = λx : B.M 0 .
+ϕ = P (tA ) with A CΓ tA . Then Q = XD1 . . . Dk where (X : ψ) ∈ ∆Ax , ∆ and
+target(ψ) = P , and each Di is a first-order proof term in η-long normal form or an
+individual term. We consider possible forms of ψ.
+(X : ψ) ∈ ∆. For example, Q = XtD1 D2 where D1 , D2 are proof terms in
+η-lnf and ψ = ∀x.T (x, tB ) → ψ 0 → P (f x) and ∆Ax , ∆ ` D1 : T (t, tB ) and
+∆Ax , ∆ ` D2 : ψ 0 [t/x] and f is a variable. There is (z : C) ∈ Γ such that
+0
+C F
+Γ ψ and C = Πx : B.Πy : B .f x. Recursively construct a Γ, ∆, B, T (x, tB )reconstruction M1 of D1 and a Γ, ∆, B 0 , ψ 0 [t/x]-reconstruction M2 of D2 . Take
+M = zM1 M2 .
+(X : ψ) ∈ ∆E and ψ = ∀xx0 .E(x, x0 ) → P (x) → P (x0 ). Then Q = XttA D1 D2
+and ∆Ax , ∆ ` D1 : E(t, tA ) and ∆Ax , ∆ ` D2 : P (t). Recursively construct a
+Γ, ∆, A, E(t, tA )-reconstruction B of D1 and then a Γ, ∆, B, P (t)-reconstruction M 0
+of D2 . Take M = M 0 .
+(X : ψ) ∈ ∆Φ and e.g. ψ = ∀y.ψ 0 → P (f y) and FV(ψ 0 ) = {y} and f = Φ(ψ 0 ). Then
+tA = f t and Q = XtD with ∆Ax , ∆ ` D : ψ 0 [t/y]. Since A CΓ f t, by Definition 55
+there are Γ0 , N with Γ0 y,N,t Γ. So N CΓ t by Definition 54 and the thinning
+0
+0
+lemma. Also A F
+Γ ψ [t/y] (Definition 55). Recursively construct a Γ, ∆, A, ψ [t/y]reconstruction M of D. This is also a Γ, ∆, A, P (f t)-reconstruction of Q.
+2. ϕ = T (t, t0 ) and A CΓ t0 and Γ ` A : s with s 6= ∗p . We seek M such that M CΓ t and
+~ where (X : ψ) ∈ ∆Ax , ∆ and target(ψ) = T . Consider
+Γ ` M : A. We have Q = X D
+possible forms of ψ.
+(X : ψ) ∈ ∆. Then ψ = T (x, t0 ) and t = x and there is (x : C) ∈ Γ such that C CΓ t0 .
+Take M = x.
+(X : ψ) ∈ ∆G1 and e.g. ψ = ∀z.T (z, f ) → ∀x.T (x, r1 ) → T (zx, r2 ) where f =
+G1 (x, r1 , r2 , s) and FV(r1 , r2 ) ⊆ {x}. Then Q = XuD1 wD2 and t = uw and
+t0 = r2 [w/x] and ∆Ax , ∆ ` D1 : T (u, f ) and ∆Ax , ∆ ` D2 : T (w, r1 ). We may
+
+Ł. Czajka
+
+9:19
+
+compute Γ0 , C with C = Πx : C1 .C2 and C1 CΓ0 r1 and C2 CΓ0 ,x:C1 r2 and C CΓ0 f
+(see Remark 4). One shows that Γ = Γ0 may be assumed in the case FV(r1 , r2 ) ⊆ {x}.
+Recursively construct a Γ, ∆, C, T (u, f )-reconstruction M1 of D1 and a Γ, ∆, C1 , r1 reconstruction M2 of D2 . Take M = M1 M2 .
+(X : ψ) ∈ ∆τ1 and e.g. ψ = T (f, g) where f = Λ1 (x, r, t) and g = G1 (x, r, u, s) with
+FV(r, t, u) ⊆ {x}. We may compute C, N such that C CΓ r and N CΓ,x:C t, so
+λx : C.N CΓ f . Take M = λx : C.N .
+(X : ψ) ∈ ∆E . Then ψ = ∀xyx0 y 0 .E(x, x0 ) → E(y, y 0 ) → T (x, y) → T (x0 , y 0 ) and
+Q = Xuu0 tt0 D1 D2 D3 where ∆Ax , ∆ ` D1 : E(u, t) and ∆Ax , ∆ ` D2 : E(u0 , t0 ) and
+∆Ax , ∆ ` D3 : T (u, u0 ). Recursively construct a Γ, ∆, A, E(u0 , t0 )-reconstruction A0
+of D2 , then a Γ, ∆, A, T (u, u0 )-reconstruction M 0 of D3 , then a Γ, ∆, M 0 , E(u, t)reconstruction N of D1 . Take M = N .
+3. ϕ = E(t0 , t1 ) and e.g. A CΓ t0 . We need to find M with M CΓ t1 and M =βε A.
+~ where (X : ψ) ∈ ∆Ax , ∆ and
+Since E(t0 , t1 ) is an atom and Q is in η-lnf, Q = X D
+target(ψ) = E. Consider possible forms of ψ.
+(X : ψ) ∈ ∆Λ1 and e.g. ψ = ∀x.T (x, r1 ) → E(f x, r2 ) where f = Λ1 (x, r1 , r2 ) and
+FV(r1 , r2 ) ⊆ {x}. Then Q = XuD and t0 = f u and t1 = r2 [u/x] and ∆Ax , ∆ `
+D : T (u, r1 ). We may compute C, N such that C1 CΓ r1 and C2 CΓ,x:C1 r2 and
+λx : C.N CΓ f . Recursively construct a Γ, ∆, C, r1 -reconstruction M1 of D. Then
+(λx : C.N )M1 CΓ f u and A CΓ f u, so A =βε N [M1 /x], using Lemma 69. Also
+N [M1 /x] CΓ r2 [u/x]. Take M = N [M1 /x].
+(X : ψ) ∈ ∆E and ψ = ∀xyx0 y 0 .E(x, x0 ) → E(y, y 0 ) → E(xy, x0 y 0 ). Then Q =
+Xuwu0 w0 D1 D2 and ∆Ax , ∆ ` D1 : E(u, u0 ) and ∆Ax , ∆ ` D2 : E(w, w0 ) and t0 = uw
+and t1 = u0 w0 . Since A CΓ uw, we have A = A1 A2 with A1 CΓ u and A2 CΓ w. Recursively construct a Γ, ∆, A1 , E(u, u0 )-reconstruction B1 of D1 and a Γ, ∆, A2 , E(w, w0 )reconstruction B2 of D2 . Take M = B1 B2 .
+Cases omitted in the above sketch are trivial or similar to other cases considered.
+Together with Lemma 56, Lemma 59 and Lemma 5, Theorem 75 gives us the following.
+I Corollary 77. If ∆Ax , dΓe ` FΓ (A) and Γ ` A : ∗p then there exists M such that Γ ` M : A.
+We now give a rigorous proof of the soundness of the embedding.
+Proof of Theorem 75. We show that every first-order proof term Q in η-lnf is reconstructible.
+We proceed by induction on the size of Q. First of all, note that because of Lemma 68 for
+p
+C
+any M , Γ and x ∈ V ∗ and ϕ, t, ∆ with M F
+/ FV(ϕ, t, ∆).
+Γ ϕ, M Γ t, Γ  ∆, we have x ∈
+p
+Hence we may assume that if x ∈ V ∗ then x does not occur free in any individual term used
+in Q.
+We need to consider the three cases in Definition 73.
+1. Assume ∆Ax , ∆ ` Q : ϕ and Γ  ∆ and Γ ` A : ∗p and A F
+Γ ϕ. We need to find M with
+Γ ` M : A. We consider possible forms of ϕ.
+F
+ϕ = ϕ1 → ϕ2 . Then A = Πx : B.C and Γ ` B : ∗p and B F
+Γ ϕ1 and C Γ,x:B ϕ2
+0
+0
+and Q = λX : ϕ1 .Q . Hence ∆Ax , ∆, X : ϕ1 ` Q : ϕ2 . Note that Γ, x : B  ∆, X : ϕ1 .
+Also Γ, x : B ` C : ∗p by Corollary 25. Thus by the inductive hypothesis there is M 0
+with Γ, x : B ` M 0 : C. Because Γ ` (Πx : B.C) : ∗p , by the abstraction rule we obtain
+Γ ` (λx : B.M 0 ) : (Πx : B.C). Hence take M = λx : B.M 0 .
+ϕ = ∀x.T (x, t) → ψ. Then A = Πx : B.C and Γ 0 B : ∗p and B CΓ t and
+0
+0
+C F
+Γ,x:B ψ. Hence Q = λxλX : T (x, t).Q , so ∆Ax , ∆, X : T (x, t) ` Q : ψ. Note that
+Γ, x : B  ∆, X : T (x, t). By Corollary 25 we have Γ, x : B ` C : ∗p . Thus by the
+
+TYPES 2016
+
+9:20
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+inductive hypothesis there is M 0 with Γ, x : B ` M 0 : C. Since Γ ` A : ∗p , by the
+abstraction rule we obtain Γ ` (λx : B.M 0 ) : A. Hence take M = λx : B.M 0 .
+ϕ = P (tA ) with A CΓ tA . Then Q = XD1 . . . Dk where (X : ψ) ∈ ∆Ax , ∆ and
+target(ψ) = P , and each Di is a first-order proof term in η-long normal form or an
+individual term. By the inductive hypothesis all proof terms among D1 , . . . , Dk are
+reconstructible. We consider possible forms of ψ.
+(X : ψ) ∈ ∆. By Lemma 70 there are Γ1 , Γ2 , ∆1 , ∆2 and C such that Γ1  ∆1 and
+Γ = Γ1 , x : C, Γ2 and ∆ = ∆1 , ψ, ∆2 and Γ1 ` C : ∗p and C F
+Γ1 ψ. By Lemma 72
+we have C = Πx1 : A1 . . . Πxn : An .B and P (t) A
+ψ
+and
+B CΓ1 ,Γ0 t where
+Γ1 ,Γ0
+Γ0 = x1 : A1 , . . . , xn : An . We may assume that x1 , . . . , xn ∈
+/ dom(Γ). Hence Γ, Γ0 is
+a legal context and Γ ⊇ Γ1 , so P (t) A
+ψ
+by
+Corollary
+63.
+By Lemma 74 there are
+Γ;Γ0
+N1 , . . . , Nn and u1 , . . . , un such that ϕ = P (tA ) = P (t)[~u/~x], i.e. tA = t[~u/~x], and
+~ /~x] C t[~u/~x] = tA
+Γ, Γ0 ~x,N~ ,~u Γ. By Lemma 62 we have B CΓ,Γ0 t. Hence B[N
+Γ
+~ /~x].
+by Corollary 66. Since also A C tA , by Lemma 69 we obtain A =ε B[N
+Γ
+
+Because Γ, Γ0
+~ ,~
+~
+x,N
+u Γ we must have Γ ` Ni : Ai [N1 /x1 ] . . . [Ni−1 /xi−1 ] and
+Ni ∼ xi for i = 1, . . . , n. Recall that Γ ` x : Πx1 : A1 . . . Πxn : An .B. Hence,
+~ /~x]. Thus
+using the application rule n times we conclude that Γ ` xN1 . . . Nn : B[N
+Γ ` xN1 . . . Nn : A by the conversion rule.
+(X : ψ) ∈ ∆E and ψ = ∀xx0 .E(x, x0 ) → P (x) → P (x0 ). Then k = 4, D1 = t1 ,
+D2 = t2 are individual terms, and ∆Ax , ∆ ` D3 : E(t1 , t2 ) and ∆Ax , ∆ ` D4 : P (t1 )
+and P (t2 ) = P (tA ). Hence t2 = tA . Because D3 is reconstructible (by induction),
+there is a Γ-term B with B CΓ t1 and B =βε A. By Lemma 31 we have Γ ` B : ∗p .
+Since ∆Ax , ∆ ` D4 : P (t1 ) and B CΓ t1 and Γ ` B : ∗p and Γ  ∆, because D4 is
+reconstructible there is M with Γ ` M : B. By the conversion rule also Γ ` M : A.
+(X : ψ) ∈ ∆Φ and ψ = ∀~y .ψ 0 → P (f~y ) and ~y = FV(ψ 0 ) and f = Φ(ψ 0 ). Then
+tA = f ~t and ∆Ax , ∆ ` X~tDk : P (f ~t) and ∆Ax , ∆ ` Dk : ψ 0 [~t/~y ] for some individual
+terms t1 , . . . , tn (without loss of generality we may assume that FV(ti ) ∩ FV(ψ 0 ) =
+∅). Since A CΓ f ~t, by the definition of CΓ there exist B, C and N1 , . . . , Nm
+and u1 , . . . , um and Γ0 such that Γ0 ` (Πx : B.C) : ∗p and Γ0
+~ ,~
+~
+x,N
+u Γ and
+~ /~x] F ψ 0 [~u/~x] and (Πx : B.C)[N
+~ /~x] C (f~y )[~u/~x] = f ~t.
+A = (Πx : B.C)[N
+Γ
+Γ
+Let u0i = ui [ui+1 /xi+1 ] . . . [um /xm ]. Because f ~t = (f~y )[u01 /x1 , . . . , u0m /xm ] and ~y =
+FV(ψ 0 ) = {y1 , . . . , yn }, without loss of generality we may assume u0i = ti and xi = yi
+for i ≤ n, and xi ∈
+/ FV(ψ 0 ) for i > n. Then ψ 0 [~u/~x] = ψ 0 [u01 /x1 , . . . , u0m /xm ] =
+0 0
+0
+~ /~x] : ∗p .
+ψ [u1 /y1 , . . . , un /yn ] = ψ 0 [~t/~y ]. By Lemma 61 we have Γ ` (Πx : B.C)[N
+~ /~x] F ψ 0 [~t/~y ] and ∆Ax , ∆ ` Dk : ψ 0 [~t/~y ], because Dk
+Since also A = (Πx : B.C)[N
+Γ
+is reconstructible there exists M such that Γ ` M : A.
+2. Assume ∆Ax , ∆ ` Q : T (t, t0 ) and Γ  ∆ and Γ ` A : s and s 6= ∗p and A CΓ t0 . We
+need to find M with M CΓ t and Γ ` M : A. Since T (t, t0 ) is an atom and Q is in η-lnf,
+~ where (X : ψ) ∈ ∆Ax , ∆ and target(ψ) = T and D
+~ is a sequence of
+we have Q = X D
+first-order individual terms and reconstructible (by induction) proof terms in η-lnf. We
+consider possible forms of ψ.
+(X : ψ) ∈ ∆. By Lemma 71 we have ψ = T (x, r) and there are Γ1 , Γ2 and C such that
+Γ = Γ1 , x : C, Γ2 and C CΓ1 r. Then t = x and t0 = r. By Lemma 62 we have C CΓ t0 .
+Since also A CΓ t0 , by Lemma 69 we obtain A =ε C. Because Γ ` x : C and Γ ` A : s,
+by the conversion rule Γ ` x : A.
+(X : ψ) ∈ ∆G1 and ψ = AΓ0 (∀z.T (z, f~y ) → ∀x.T (x, r1 ) → T (zx, r2 )) where f =
+G1 (x, r1 , r2 , s) and ~y = FV(r1 , r2 ) \ {x} and z ∈
+/ FV(r1 , r2 ) and Γ0 = x1 : A1 , . . . , xn :
+~ 1 wP2 and there are C1 , C2 such that r1 = CΓ0 (C1 ) and r2 =
+An . Then Q = X RuP
+
+Ł. Czajka
+
+9:21
+
+CΓ0 ,x:C1 (C2 ) and Γ0 ` (Πx : C1 .C2 ) : s and s 6= ∗p and Γ0 0 C1 : ∗p . Note that ψ is
+closed, because ~y = FV(r1 , r2 ) \ {x} ⊆ dom(Γ0 ) by Lemma 68. Hence, by Lemma 53
+we may assume dom(Γ) ∩ dom(Γ0 ) = ∅, possibly renaming the variables in Γ0 , ψ, r1 , r2
+and Πx : C1 .C2 . Hence Γ, Γ0 is a legal context. Let ψ 0 = ∀z.T (z, f~y ) → ∀x.T (x, r1 ) →
+T (zx, r2 ). By Lemma 59 and Corollary 63 we have ψ 0 A
+Γ;Γ0 ψ. By Lemma 74 there are
+~ : ψ 0 [~u/~x]. Note
+N1 , . . . , Nn and u1 , . . . , un such that Γ, Γ0 ~x,N~ ,~u Γ and ∆Ax , ∆ ` X R
+~ /~x]. By Lemma 56
+that z ∈
+/ ~y . Hence ∆Ax , ∆ ` P1 : T (u, (f~y )[~u/~x]). Let C 0 = Ci [N
+i
+
+and Lemma 60 and Corollary 66 we have C10 CΓ r1 [~u/~x] and C20 CΓ,x:C [N~ /~x] r2 [~u/~x].
+1
+
+Also Γ, Γ0 ` (Πx : C1 .C2 ) : s by the thinning lemma, and Γ, Γ0 0 C1 : ∗p by the
+generation, thinning and uniqueness of types lemmas. Hence Πx : C10 .C20 CΓ (f~y )[~u/~x].
+We also have Γ ` (Πx : C10 .C20 ) : s (and s 6= ∗p ) by Lemma 61. Because P1 is
+reconstructible, there is M1 with Γ ` M1 : (Πx : C10 .C20 ) and M1 CΓ u. Note that
+x∈
+/ FV(r1 ) by Lemma 68, because C1 CΓ0 r1 and x ∈
+/ dom(Γ0 ). Since also z ∈
+/ FV(r1 ),
+0
+we have ∆Ax , ∆ ` P2 : T (w, r1 [~u/~x]). Since Γ, Γ 0 C1 : ∗p and Γ, Γ0 ` (Πx : C1 .C2 ) : s,
+by the generation lemma and Lemma 61 we have Γ ` C10 : s0 for some s0 ∈ S, s0 6= ∗p .
+Since also C10 CΓ r1 [~u/~x], because P2 is reconstructible there is M2 with M2 CΓ w and
+Γ ` M2 : C10 . By Lemma 32 we have M2 ∼ x. Hence Γ ` M1 M2 : C20 [M2 /x] by the
+application rule. Because M1 is not a Γ-proof (recall that Γ ` M1 : (Πx : C10 .C20 ) : s
+with s =
+6 ∗p ), neither is M1 M2 by Theorem 30. Hence M1 M2 CΓ uw = t. Since
+0
+C
+C2 Γ,x:C 0 r2 [~u/~x], by Lemma 65 we have C20 [M2 /x] CΓ r2 [~u/~x][u/x] = t0 . Since also
+1
+A CΓ t0 , we have C20 [M2 /x] =ε A by Lemma 69. Thus Γ ` M1 M2 : A by the conversion
+rule. Therefore, we may take M = M1 M2 .
+(X : ψ) ∈ ∆G0 . This case is analogous to the previous one.
+(X : ψ) ∈ ∆τ1 and ψ = AΓ0 (T (f~y , g~z)) where f = Λ1 (x, r, u) and g = G1 (x, r, w, s)
+and ~y = FV(r, u) \ {x} and ~z = FV(r, w) \ {x} and Γ0 = x1 : A1 , . . . , xn : An . Then
+~ and there are C1 , C2 , N such that r = CΓ0 (C1 ) and u = CΓ0 ,x:C (N ) and
+Q = XR
+1
+w = CΓ0 ,x:C1 (C2 ) and Γ0 ` (λx : C1 .N ) : Πx : C1 .C2 : s and Γ0 0 C1 : ∗p . By
+Lemma 53 we may assume that dom(Γ) ∩ dom(Γ0 ) = ∅, possibly renaming the variables
+in Γ0 , ψ, r, u, w and Πx : C1 .C2 and λx : C1 .N . Hence Γ, Γ0 is a legal context. Let
+ψ 0 = T (f~y , g~z). By Lemma 59 and Corollary 63 we have ψ 0 A
+Γ;Γ0 ψ. By Lemma 74
+~ :
+there are N1 , . . . , Nn and u1 , . . . , un such that Γ, Γ0 ~x,N~ ,~u Γ and ∆Ax , ∆ ` X R
+ψ 0 [~u/~x]. We thus have t = (f~y )[~u/~x] and t0 = (g~z)[~u/~x]. By the generation lemma, the
+thinning lemma and the uniqueness of types lemma Γ, Γ0 0 C1 : ∗p . By the generation
+~ /~x] C r[~u/~x] and
+lemma C1 is a Γ0 -subject and N is a Γ0 , x : C1 -subject. Hence C1 [N
+Γ
+C
+~ /~x] 
+N [N
+u[~u/~x] by Lemma 56 and Corollary 66. Hence by Definition 55
+~ /~
+Γ,x:C1 [N
+x]
+~ /~x] C (f~y )[~u/~x]. Also Γ ` (λx : C1 .N )[N
+~ /~x] : C[N
+~ /~x]
+we have (λx : C1 .N )[N
+Γ
+C
+~
+by Lemma 60, where C = Πx : C1 .C2 . We have C2 [N /~x] 
+u[~u/~x] by
+~ /~
+Γ,x:C1 [N
+x]
+
+Lemma 56 and Corollary 66. Also Γ, Γ0 ` C : s by the thinning lemma. Thus
+~ /~x] C (g~z)[~u/~x] = t0 by Definition 55. Since also A C t0 , by Lemma 69 we
+C[N
+Γ
+Γ
+~ /~x]. Thus Γ ` (λx : C1 .N )[N
+~ /~x] : A by the conversion rule. So we
+obtain A =ε C[N
+~ /~x].
+may take M = (λx : C1 .N )[N
+(X : ψ) ∈ ∆τ0 . This case is analogous to the previous one.
+(X : ψ) ∈ ∆E . Then ψ = ∀xyx0 y 0 .E(x, x0 ) → E(y, y 0 ) → T (x, y) → T (x0 , y 0 ) and
+Q = Xuu0 tt0 D1 D2 D3 where ∆Ax , ∆ ` D1 : E(u, t) and ∆Ax , ∆ ` D2 : E(u0 , t0 ) and
+∆Ax , ∆ ` D3 : T (u, u0 ). Since A CΓ t0 , because D2 is reconstructible there exists a
+Γ-term A0 such that A0 CΓ u0 and A0 =βε A. Since Γ ` A : s (s 6= ∗p ), by Lemma 31
+we have Γ ` A0 : s. Hence, because D3 is reconstructible there exists M 0 such that
+
+TYPES 2016
+
+9:22
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+M 0 CΓ u and Γ ` M 0 : A0 . Because D1 is reconstructible there is a Γ-subject M with
+M CΓ t and M =βε M 0 . By the uniqueness of types lemma and Theorem 30 we have
+M 0 6→∗ε ε, hence also M 6→∗ε ε by Lemma 18. Since M is a Γ-subject, there is B with
+Γ ` M : B. Then B =βε A0 by the second point in the uniqueness of types lemma.
+Since Γ ` A : s and B =βε A0 =βε A, we have Γ ` M : A by the conversion rule.
+Therefore, we have found M with M CΓ t and Γ ` M : A, as desired.
+3. Assume ∆Ax , ∆ ` Q : E(t0 , t1 ) and Γ  ∆ and M CΓ tq with q ∈ {0, 1}. We need to
+find N with N CΓ t1−q and N =βε M . Since E(t0 , t1 ) is an atom and Q is in η-lnf,
+~ where (X : ψ) ∈ ∆Ax , ∆ and target(ψ) = E and D
+~ is a sequence of first-order
+Q = XD
+individual terms and reconstructible (by induction) proof terms in η-lnf. We consider
+possible forms of ψ.
+(X : ψ) ∈ ∆Λ0 and ψ = AΓ0 (ϕ → E(f~y ε, r)) where Γ0 = x1 : A1 , . . . , xn : An and
+dom(Γ) ∩ dom(Γ0 ) = ∅ (we may assume this by Lemma 53) and f = Λ0 (x, ϕ, r) and
+~y = FV(ϕ, r) \ {x} and there are B, C1 , C2 with ϕ = FΓ0 (C1 ) and r = CΓ0 ,x:C1 (C2 )
+and Γ0 ` (λx : C1 .C2 ) : B and Γ0 ` C1 : ∗p and Γ0 ` B : s and s 6= ∗p . We have
+ψ = AΓ0 ,x:C1 (E(f~y ε, r)). We may assume x ∈
+/ dom(Γ), so Γ, Γ0 , x : C1 is a legal
+context. Thus by Lemma 59 and Corollary 63 we obtain E(f~y ε, r) A
+Γ;Γ0 ,x:C1 ψ.
+Hence by Lemma 74 there are N1 , . . . , Nn , U and u1 , . . . , un , u such that E(t0 , t1 ) =
+E(f~y ε, r)[~u/~x][u/x] and Γ, Γ0 , x : C1 ~x,x,N~ ,U,~u,u Γ. Note that then also Γ, Γ0 ~x,N~ ,~u Γ
+~ /~x]. We have C1 F 0 ϕ and C2 C 0
+and Γ, Γ0 , x : C1
+Γ, x : C1 [N
+r by
+~
+~
+x,N ,~
+u
+
+Γ,Γ
+
+Γ,Γ ,x:C1
+
+~ /~x] F ϕ[~u/~x] and C2 [N
+~ /~x] C
+Lemma 56 and Lemma 62. Hence C1 [N
+r[~u/~x]
+Γ
+~ /~
+Γ,x:C [N
+x]
+1
+
+by Corollary 66. Also Γ, Γ0 ` (λx : C1 .C2 ) : B : s and Γ, Γ0 ` C1 : ∗p by the
+~ /~x] : B[N
+~ /~x] : s by Lemma 61, i.e.,
+thinning lemma. Hence Γ ` (λx : C1 .C2 )[N
+~
+(λx : C1 .C2 )[N /~x] is not a Γ-proof (by the uniqueness of types lemma, recalling that
+~ /~x] C (f~y )[~u/~x]. Since Ni C ui and Ni is a Γ-term and
+s 6= ∗p ). Thus (λx : C1 .C2 )[N
+Γ
+Γ
+x∈
+/ dom(Γ), by Lemma 68 and the free variable lemma we obtain x ∈
+/ FV(u1 , . . . , un ).
+0
+Also x ∈
+/ ~y . Hence (f~y )[~u/~x] = (f~y )[~u/~x][u/x]. Because Γ, Γ , x : C1 ~x,x,N~ ,U,~u,u Γ,
+~ /~x] : ∗p . Hence U is a Γ-proof, and thus U C
+we have U ∼ x and Γ ` U : C1 [N
+Γ
+~
+~ /~x])U ,
+ε. Because (λx : C1 .C2 )[N /~x] is not a Γ-proof, neither is ((λx : C1 .C2 )[N
+~ /~x])U C ((f~y )[~u/~x][u/x])ε = t0 . We
+by Theorem 30. Therefore ((λx : C1 .C2 )[N
+Γ
+C
+~ /~x][U/x]  r[~u/~x][u/x] = t1 by Corollary 66. Note that ((λx :
+also have C2 [N
+Γ
+~ /~x])U =β C2 [N
+~ /~x][U/x]. First assume q = 0, i.e., M C t0 . Using Lemma 69
+C1 .C2 )[N
+Γ
+~
+we obtain M =βε C2 [N /~x][U/x] CΓ t1 . Now assume q = 1, i.e., M CΓ t1 . Using
+~ /~x])U C t0 . Also ((λx : C1 .C2 )[N
+~ /~x])U
+Lemma 69 we obtain M =βε ((λx : C1 .C2 )[N
+Γ
+~ /~x][U/x] are Γ-subjects, by the generation lemma, the application rule (recall
+and C2 [N
+that U ∼ x) and the subject reduction theorem.
+(X : ψ) ∈ ∆Λ1 . This case is analogous to the case (X : ψ) ∈ ∆Λ0 .
+(X : ψ) ∈ ∆E and ψ = ∀x.E(x, x). This case follows from reflexivity of =βε .
+(X : ψ) ∈ ∆E and ψ = ∀xy.E(x, y) → E(y, x). This case follows directly from the
+inductive hypothesis.
+(X : ψ) ∈ ∆E and ψ = ∀xyz.E(x, y) → E(y, z) → E(x, z). This case follows from the
+inductive hypothesis and the transitivity of =βε .
+(X : ψ) ∈ ∆E and ψ = ∀xyx0 y 0 .E(x, x0 ) → E(y, y 0 ) → E(xy, x0 y 0 ). Then Q =
+Xuwu0 w0 D1 D2 and ∆Ax , ∆ ` D1 : E(u, u0 ) and ∆Ax , ∆ ` D2 : E(w, w0 ) and t0 = uw
+and t1 = u0 w0 . Assume q = 0, i.e., M CΓ uw (the case q = 1 is analogous). Then
+M = M1 M2 with M1 CΓ u and M2 CΓ w. Since M is a Γ-subject, by the generation
+lemma Γ ` M1 : Πz : A.B and Γ ` M2 : A and M2 ∼ z for some A, B. Because D1 , D2
+are reconstructible there are Γ-subjects N1 , N2 such that Ni =βε Mi and N1 CΓ u0
+
+Ł. Czajka
+
+9:23
+
+and N2 CΓ w0 . Because nf ε (M ) 6= ε, also nf ε (M1 ) 6= ε. Hence by the second point
+in the uniqueness of types lemma, the generation lemma and the conversion rule
+Γ ` N1 : Πz : A.B. Without loss of generality we may assume nf ε (M2 ) 6= ε, because
+otherwise u0 = w0 = ε and we may take N2 = M2 . If nf ε (M2 ) 6= ε then analogously
+as with M1 we conclude Γ ` N2 : A. Note that also N2 ∼ z, because M2 ∼ z and
+M2 =βε N2 . Hence N1 N2 is a Γ-subject by the application rule. Using Theorem 30 we
+may also conclude that N1 N2 is not a Γ-proof. Thus M =βε N1 N2 CΓ u0 w0 = t1 . J
+
+6
+
+Conclusions and related work
+
+Below we make a few remarks on the embedding, the soundness proof and related work.
+I Remark. In the literature there are various translations of languages with dependent types
+to less expressive logics, but as far as we know none of them are both shallow, include the
+Calculus of Constructions as the source formalism, and target first-order logic. The paper [16]
+defines a deep embedding of the Calculus of Constructions into a higher-order logic and
+shows it complete. In [17] a similar deep embedding of LF into a fragment of higher-order
+logic is shown sound and complete. The paper [21] shows how to simulate dependent types
+in higher-order logic.
+In [27] a translation from first-order logic with dependent types into ordinary first-order
+logic is shown sound by model-theoretic methods. The aim of [27] is also to use the translation
+with first-order ATPs. The logic is much simpler than dependent type theory – it allows
+dependent types, but not function types, i.e., no λ-abstraction or partial application is
+possible.
+The paper [29] defines a sound and complete deep embedding Tri of Martin-Löf’s type
+theory into first-order logic. The embedding is deep in the sense that e.g. b ∈ B is translated
+to In(b, B), so b is not erased. For a fragment F2 , which essentially disallows dependent
+function types as arguments, the translation may be optimized to a shallow one, i.e., In(b, B)
+is optimised to Inh(B). This restriction corresponds to disallowing quantifiers on the left side
+of implication, which makes it possible to prove soundness and completeness of the embedding.
+In contrast to our approach, since there is no separate sort of propositions, all terms inhabiting
+types are erased, not only those intuitively representing proofs of propositions.
+The general ideas behind the translations in [29, 27] are broadly similar to ours, but our
+work is not a direct extension of any of them.
+The paper [19] defines a translation Tr from λP to FOL in order to show a conservativity
+result. The general idea of Tr, to translate a dependent type Πx : A.B into a quantification
+and an implication, is similar to how we translate piPTS propositions. Essentially, the
+translation Tr is defined only for terms that “originate from” an embedding of FOL into λP ,
+not on arbitrary λP -terms.
+In [26] an essentially deep embedding from LF to the higher-order hereditary Harrop
+language is shown sound and complete. It is deep because even in its optimised variant the
+proof terms are retained as additional arguments. On the other hand, it allows to omit more
+type guards than our translation.
+The report [1] defines and proves sound a translation from a fragment of the dependently
+typed F? language to intuitionistic first-order logic. The soundness proof uses a broadly
+similar method to the one in this paper, using induction on first-order proof terms in η-long
+normal form. However, the considered language fragment is essentially simpler and the
+soundness proof does not have to deal with the problems mentioned at the beginning of
+
+TYPES 2016
+
+9:24
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+Section 5, or with proof irrelevance. On the other hand, the target fragment of first-order
+logic is richer and includes conjunction and falsity.
+I Remark. Our soundness proof relies on proof-irrelevance incorporated into the piPTS
+conversion rule. Proof-irrelevance is necessary for the soundness of a shallow embedding.
+It is an open question if the embedding is sound for the Calculus of Constructions with
+proof-irrelevance expressed by axioms.
+I Remark. Note the use of the function AΓ in the axioms in ∆Λ0 , ∆Λ1 , ∆G0 and ∆G1 . In
+contrast, for the axioms in ∆Φ the use of AΓ is not necessary – we may simply quantify over
+the free variables without requiring them a priori to have the right types. This is because
+they all occur in the target atom P (f~y ) which in the soundness proof is assumed to encode a
+well-typed term. This is not necessarily true for the axioms which use AΓ , and our soundness
+proof cannot be easily adapted to avoid the use of AΓ .
+Nonetheless, we expect that the use of AΓ could be avoided without compromising
+soundness. For instance, the axioms in ∆Λ1 could be ∀~y x.T (x, r) → E(f~y x, t) or even
+∀~y x.E(f~y x, t). We expect the embedding to remain sound after this modification, because we
+would essentially omit the type information only for free variables of subterms that are “lifted
+out” of already well-typed terms. The problems that arise in the study of such a modified
+embedding are broadly similar to problems that arise in the study of systems of illative
+combinatory logic [3, 13] or the “liberal” Pure Type Systems from [10]. Domain-free Pure
+Type Systems [7], domain-free variants of the Calculus of Inductive Constructions [4], the
+Implicit Calculus of Constructions [23] and generally the work on ignoring computationally
+irrelevant information also seem related.
+In fact, in the practical translation from [15] we omit type information for free variables
+of the terms “lifted-out” by the translation. This may increase the success rate in some
+circumstances, as then the formulas are simpler and the ATPs do not need to prove too
+many well-typedness conditions. See [15, Section 5.6].
+I Remark. In [8, 11] it is shown that in a translation from (polymorphic) many-sorted classical
+first-order logic to untyped classical first-order logic much of the type information may be
+omitted using monotonicity inference. The methods of the cited papers are model-theoretic,
+so they are probably not useful in our setting. Nonetheless, it is an interesting problem to
+investigate the possibility of adapting monotonicity inference to embeddings of constructive
+dependent type theory into first-order logic.
+References
+1
+2
+3
+4
+5
+6
+7
+
+A. Aguirre. Towards a provably correct encoding from F ∗ to SMT. Technical report,
+INRIA, 2016.
+H. Barendregt. Lambda calculi with types. In Handbook of Logic in Computer Science,
+volume 2, pages 118–310. Oxford University Press, 1992.
+H. Barendregt, M. Bunder, and W. Dekkers. Systems of illative combinatory logic complete
+for first-order propositional and predicate calculus. J. Symb. Logic, 58(3):769–788, 1993.
+B. Barras and B. Grégoire. On the role of type decorations in the calculus of inductive
+constructions. In CSL 2005, pages 151–166, 2005.
+G. Barthe. The relevance of proof-irrelevance. In ICALP’98, pages 755–768, 1998.
+G. Barthe, J. Hatcliff, and M.H. Sørensen. A notion of classical pure type system. Electr.
+Notes Theor. Comput. Sci., 6:4–59, 1997.
+G. Barthe and M.H. Sørensen. Domain-free pure type systems. J. Funct. Program.,
+10(5):417–452, 2000.
+
+Ł. Czajka
+
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+
+9:25
+
+J. Blanchette, S. Böhme, A. Popescu, and N. Smallbone. Encoding monomorphic and
+polymorphic types. Logical Methods in Computer Science, 12(4), 2016.
+J. Blanchette, C. Kaliszyk, L. Paulson, and J. Urban. Hammering towards QED. J.
+Formalized Reasoning, 9(1):101–148, 2016.
+M. Bunder and W. Dekkers. Pure type systems with more liberal rules. J. Symb. Logic,
+66(4):1561–1580, 2001.
+K. Claessen, A. Lillieström, and N. Smallbone. Sort it out with monotonicity. In CADE
+2011, pages 207–221. Springer, 2011.
+T. Coquand and H. Herbelin. A-translation and looping combinators in pure type systems.
+J. Funct. Program., 4(1):77–88, 1994.
+Ł. Czajka. Higher-order illative combinatory logic. J. Symb. Logic, 73(3):837–872, 2013.
+Ł. Czajka and C. Kaliszyk. Goal translation for a hammer for Coq (extended abstract). In
+HaTT 2016, volume 210 of EPTCS, pages 13–20, 2016.
+Ł. Czajka and C. Kaliszyk. Hammer for Coq: Automation for dependent type theory. J.
+Autom. Reasoning, 61(1-4):423–453, 2018.
+A. Felty. Encoding the calculus of constructions in a higher-order logic. In LICS ’93, pages
+233–244, 1993.
+A. Felty and D. Miller. Encoding a dependent-type lambda-calculus in a logic programming
+language. In CADE ’90, pages 221–235, 1990.
+H. Geuvers. Logics and Type Systems. PhD thesis, University of Nijmegen, 1993.
+H. Geuvers and E. Barendsen. Some logical and syntactical observations concerning the
+first-order dependent type system lambda-P. Mathematical Structures in Computer Science,
+9(4):335–359, 1999.
+H. Geuvers and M.-J. Nederhof. Modular proof of strong normalization for the Calculus of
+Constructions. J. Funct. Program., 1(2):155–189, 1991.
+B. Jacobs and T. Melham. Translating dependent type theory into higher order logic. In
+TLCA ’93, pages 209–229, 1993.
+L. Kovács and A. Voronkov. First-order theorem proving and Vampire. In CAV 2013,
+pages 1–35, 2013.
+A. Miquel. The implicit calculus of constructions. In TLCA 2001, pages 344–359, 2001.
+A. Miquel and B. Werner. The not so simple proof-irrelevant model of CC. In TYPES
+2002, volume 2646 of LNCS. Springer, 2003.
+S. Schulz. System description: E 1.8. In LPAR 2013, pages 735–743, 2013.
+Z. Snow, D. Baelde, and G. Nadathur. A meta-programming approach to realizing dependently typed logic programming. In PPDP ’10, pages 187–198, 2010.
+K. Sojakova and F. Rabe. Translating a dependently-typed logic to first-order logic. In
+WADT 2008, pages 326–341, 2008.
+M.H. Sørensen and P. Urzyczyn. Lectures on the Curry-Howard Isomorphism, volume 149
+of Studies in Logic and the Foundations of Mathematics. Elsevier, 2006.
+T. Tammet and J.M. Smith. Optimized encodings of fragments of type theory in first order
+logic. In TYPES ’95, pages 265–287, 1995.
+B. Werner. On the strength of proof-irrelevant type theories. Logical Methods in Computer
+Science, 4(3:13):1–20, 2008.
+
+TYPES 2016
+
+9:26
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+A
+
+Properties of proof-irrelevant Pure Type Systems
+
+In this appendix we develop the meta-theory of proof-irrelevant Pure Type Systems. The
+development follows [2, Section 5.2] and is mostly standard, except for one difficulty caused
+by the mismatch between βε-reduction used in the conversion rule and β-reduction for which
+the subject reduction theorem holds.
+First, we need some lemmas concerning ε-reduction, β-reduction and βε-reduction. Note
+that →ε is not closed under substitutions. As a result, neither is →β , because it depends
+p
+p
+p
+p
+on →ε through the side condition N ∼ x. For example, M = (λx∗ : A.x∗ )y ∗ →β y ∗ . But
+p
+p
+M [∗p /y ∗ ] 6→β ∗p because ∗p 6∼ x∗ . However, both relations are closed under substitutions
+if the condition N ∼ x is required when substituting N for x.
+I Lemma 78. If M →ε M 0 and N ∼ x then M [N/x] →∗ε M 0 [N/x].
+p
+
+Proof. Induction on M . The assumption N ∼ x is needed when x ∈ V ∗ and M = x →ε
+ε.
+J
+I Lemma 79 (Confluence and strong normalisation of ε-reduction). ε-reduction is confluent
+and strongly normalising.
+Proof. It is obvious that ε-reduction is strongly normalising. One also easily checks that the
+reflexive closure of →ε has the diamond property.
+J
+I Corollary 80. If M →∗ε M 0 and M ∼ x then M 0 ∼ x.
+I Lemma 16. If N ∼ x then nf ε (M [N/x]) = nf ε (M )[nf ε (N )/x].
+Proof. Note that M [N/x] →∗ε nf ε (M )[nf ε (N )/x] by Lemma 78. It suffices to show that the
+latter term is in ε-normal form. Otherwise, nf ε (M ) must have a subterm of the form xt
+p
+or λy.x, and nf ε (N ) = ε. But then x ∈ V ∗ , which contradicts the fact that nf ε (M ) is in
+ε-normal form.
+J
+I Lemma 81. If M ∼ x and N ∼ y then M [N/y] ∼ x.
+Proof. Follows directly from Lemma 16.
+
+J
+
+I Lemma 82. If M →β M 0 and N ∼ x then M [N/x] →β M 0 [N/x].
+Proof. Induction on M , using Lemma 81.
+
+J
+
+I Lemma 83. If M →∗βε M 0 and N →∗βε N 0 and N ∼ x then M [N/x] →∗βε M 0 [N 0 /x].
+Proof. Using Lemma 78 and Lemma 82 repeatedly we obtain M [N/x] →∗βε M 0 [N/x]. Since
+N →∗βε N 0 , we have M 0 [N/x] →∗βε M 0 [N 0 /x].
+J
+I Lemma 84. If M →β M1 and M →ε M2 then there is M 0 with M1 →∗ε M 0 and M2 →βε
+M 0.
+Proof. Induction on M . The interesting case is when M = (λx : A.B)C →β B[C/x] = M1 .
+Then C ∼ x. First assume M2 = (λx : A.B)C 0 with C →ε C 0 . Then C 0 ∼ x by Corollary 80.
+Hence M2 →β B[C 0 /x]. We also have B[C/x] →∗ε B[C 0 /x], so we may take M 0 = B[C 0 /x].
+Now assume M2 = (λx : A.B 0 )C with B →ε B 0 . Then B[C/x] →∗ε B 0 [C/x] by Lemma 78.
+Also M2 →β B 0 [C/x], so we may take M 0 = B 0 [C/x]. Finally, assume M2 = εC where B = ε
+and λx : A.B →ε ε. Then M1 = B[C/x] = ε. Since M2 = εC →ε ε, we may take M 0 = ε.
+The remaining cases are easy.
+J
+
+Ł. Czajka
+
+9:27
+
+I Corollary 85. If M →∗β M1 and M →∗ε M2 then there is M 0 with M1 →∗ε M 0 and
+M2 →∗βε M 0 .
+I Lemma 86. If M →β N →∗ε ε then M →∗ε ε.
+Proof. Induction on the length of the reduction N →∗ε ε.
+If M = (λx.M 0 )Q and N = M 0 [Q/x] and Q ∼ x then nf ε (N ) = nf ε (M 0 )[nf ε (Q)/x]
+by Lemma 16. Hence nf ε (M 0 )[nf ε (Q)/x] = ε. This is possible if either nf ε (M 0 ) = ε, or
+p
+nf ε (M 0 ) = x and nf ε (Q) = ε. If nf ε (M 0 ) = ε then M →∗ε ε. In the other case x ∈ V ∗
+because Q ∼ x and Q →∗ε ε. Hence also M →∗ε ε.
+If M = M 0 Q and N = N 0 Q then M 0 →β N 0 →∗ε ε. Then M 0 →∗ε ε by the inductive
+hypothesis, and thus M →∗ε ε.
+Otherwise M = λx.M 0 and N = λx.N 0 and M 0 →β N 0 . Then M 0 →β N 0 →∗ε ε, so by
+the inductive hypothesis M 0 →∗ε ε. Hence M →∗ε ε.
+J
+I Corollary 87. If M →∗βε M 0 then M ∼ x iff M 0 ∼ x.
+I Lemma 88 (Postponement of ε-reduction). If M →∗βε M 0 then there exists N such that
+M →∗β N →∗ε M 0 .
+Proof. One shows: if M →ε N →β M 0 then there is N 0 with M →β N 0 →∗ε M 0 . This follows
+easily, using Lemma 78, because ε-reduction cannot create or duplicate β-redexes.
+J
+I Corollary 89 (β-reduction requests ε-reduction). If M →∗β M1 and M →∗ε M2 then there
+are M20 , M 0 with M1 →∗ε M 0 and M2 →∗β M20 →∗ε M 0 .
+I Lemma 90 (Confluence of β-reduction). If M →∗β M1 and M →∗β M2 then there exists M 0
+such that M1 →∗β M 0 and M2 →∗β M 0 .
+Proof. By a straightforward adaptation of the Tait–Martin-Löf method. The parallel
+reduction relation →1 is defined as follows:
+x →1 x, s →1 s, ε →1 ε,
+if M →1 M 0 and N →1 N 0 and N ∼ x then (λx : A.M )N →1 M 0 [N 0 /x],
+if M →1 M 0 and N →1 N 0 then M N →1 M 0 N 0 ,
+if A →1 A0 and M →1 M 0 then λx : A.M →1 λx : A0 .M 0 ,
+if A →1 A0 and M →1 M 0 then Πx : A.M →1 Πx : A0 .M 0 .
+One then shows:
+1. if M →1 M 0 and N →1 N 0 and N ∼ x then M [N/x] →1 M 0 [N 0 /x],
+2. if M →1 M1 and M →1 M2 then there exists M 0 with M1 →1 M 0 and M2 →1 M 0 .
+The first point is shown by induction on M , using Lemma 81 when M = (λy : A.M1 )M2 →1
+M10 [M20 /y] = M 0 . The second point is shown by a standard argument, using the first point
+and Corollary 87. Confluence of β-reduction then follows from the second point, because
+→β ⊆ →1 ⊆ →∗β .
+J
+I Lemma 17 (Confluence of βε-reduction). If M →∗βε M1 and M →∗βε M2 then there
+exists M 0 such that M1 →∗βε M 0 and M2 →∗βε M 0 .
+Proof. This follows from the confluence of β- and ε-reduction and the fact that β-reduction
+requests ε-reduction. More precisely, one shows that →∗β · →∗ε has the diamond property.
+See Figure 3.
+J
+I Corollary 91. If M =βε M 0 and N ∼ x and N =βε N 0 then M [N/x] =βε M 0 [N 0 /x].
+
+TYPES 2016
+
+9:28
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+/·
+
+∗
+
+·
+
+β
+
+∗
+ε
+
+/·
+β ∗
+
+β ∗
+
+
+·
+
+/ ·
+
+∗
+β
+
+ε ∗
+∗
+ε
+
+ε ∗
+
+ε ∗
+
+
+·
+
+
+·
+
+β ∗
+
+∗
+β
+
+/·
+
+∗
+ε
+
+/ ·
+
+/ ·
+
+ε ∗
+
+∗
+ε
+
+/ ·
+
+Figure 3 Confluence of βε-reduction.
+
+Note that confluence of βε-reduction on arbitrary preterms would fail if we did not restrict
+p
+p
+β-reduction as in Definition 10. For example, for M = (λx∗ : A.x∗ )∗p we would have
+M →∗ε ε and M →β ∗p .
+I Lemma 18. If M =βε N then M →∗ε ε is equivalent to N →∗ε ε.
+Proof. Suppose M →∗ε ε. By confluence of βε-reduction N →∗βε ε. So N →∗β N 0 →∗ε ε by
+Lemma 88. Now by repeatedly applying Lemma 86 we obtain N →∗ε ε.
+J
+I Lemma 19. If N does not contain ε and M →∗βε N then M →∗β N .
+Proof. By postponement of ε-reduction there is M 0 with M →∗β M 0 →∗ε N . Because N does
+not contain ε, we must in fact have M 0 = N .
+J
+Proofs of most of the following lemmas for ordinary PTSs may be found e.g. in [2,
+Section 5.2]. The proofs for piPTSs are essentially the same or very similar. We only briefly
+indicate how to carry out the proofs and note the differences with the standard proofs.
+I Lemma 20 (Free variable lemma). If Γ = x1 : A1 , . . . , xn : An and Γ ` B : C then:
+1. the x1 , . . . , xn are all distinct,
+2. FV(B), FV(C) ⊆ {x1 , . . . , xn },
+3. FV(Ai ) ⊆ {x1 , . . . , xi−1 } for i = 1, . . . , n.
+Proof. Induction on the derivation Γ ` B : C.
+
+J
+
+I Lemma 21 (Start lemma). Let Γ be a legal context.
+1. If (s1 , s2 ) ∈ A then Γ ` s1 : s2 .
+2. If (x : A) ∈ Γ then Γ ` x : A and there is s ∈ S with Γ1 ` A : s and x ∈ V s , where
+Γ = Γ1 , x : A, Γ2 .
+Proof. Since Γ is legal, Γ ` B : C for some B, C. The lemma follows by induction on the
+length of the derivation of Γ ` B : C.
+J
+I Lemma 22 (Substitution lemma). If Γ, x : A, Γ0 ` B : C and Γ ` D : A and D ∼ x then
+Γ, Γ0 [D/x] ` B[D/x] : C[D/x].
+Proof. Induction on the derivation of Γ, x : A, Γ0 ` B : C. We need the assumption D ∼ x
+and Corollary 91 to treat the conversion rule. For the application rule we need Lemma 81. J
+
+Ł. Czajka
+
+9:29
+
+I Lemma 23 (Thinning lemma). If Γ ` A : B and Γ0 ⊇ Γ is a legal context then Γ0 ` A : B.
+Proof. Induction on the derivation of Γ ` A : B.
+
+J
+
+I Lemma 24 (Generation lemma).
+1. If Γ ` s : A then there is s0 ∈ S with A =βε s0 and (s, s0 ) ∈ A.
+2. If Γ ` x : A then there are s ∈ S and B such that A =βε B and Γ ` B : s and (x : B) ∈ Γ
+and x ∈ V s .
+3. If Γ ` (Πx : A.B) : C then there is (s1 , s2 , s3 ) ∈ R with Γ ` A : s1 and Γ, x : A ` B : s2
+and C =βε s3 .
+4. If Γ ` (λx : A.M ) : C then there are s ∈ S and B such that Γ ` (Πx : A.B) : s and
+Γ, x : A ` M : B and C =βε Πx : A.B.
+5. If Γ ` M N : C then there are A, B such that Γ ` M : (Πx : A.B) and Γ ` N : A and
+C =βε B[N/x] and N ∼ x.
+Proof. Completely analogous to the standard proof for ordinary PTSs, using the thinning
+lemma.
+J
+I Lemma 26 (Correctness of types lemma). If Γ ` M : A then there is s ∈ S such that A = s
+or Γ ` A : s.
+Proof. Induction on the derivation Γ ` M : A. The non-obvious case is when the application
+rule is used. Then M = M1 M2 and A = C[M2 /x] and Γ ` M1 : (Πx : B.C) and Γ ` M2 : B
+and M2 ∼ x. By the inductive hypothesis there is s0 ∈ S such that Γ ` (Πx : B.C) : s0 .
+By the generation lemma there is s ∈ S such that Γ, x : B ` C : s. Since Γ ` M2 : B and
+M2 ∼ x, by the substitution lemma we obtain Γ ` C[M2 /x] : s, so Γ ` A : s. Note that the
+side condition M2 ∼ x in the application rule was necessary to carry out the proof.
+J
+I Theorem 29 (Subject reduction theorem). If Γ ` A : B and A →∗β A0 then Γ ` A0 : B.
+Proof. Completely analogous to the standard proof, using the generation, correctness of
+types and substitution lemmas, and Corollary 91. To be able to apply the substitution
+lemma and Corollary 91 the side condition in the application rule is necessary.
+J
+Subject reduction obviously does not hold for βε-reduction, because ε is not meant to be
+typable. The following lemma is a direct consequence of subject reduction.
+I Lemma 92. If Γ ` M : A and A =βε s then Γ ` M : s.
+Proof. By confluence of βε-reduction and Lemma 19 we have A →∗β s. By the correctness
+of types lemma Γ ` A : s0 or A = s0 . If A = s0 then s = s0 and we are done. So assume
+Γ ` A : s0 . Then Γ ` s : s0 by the subject reduction theorem. Hence Γ ` M : s by the
+conversion rule.
+J
+The mismatch between the β-reduction in the subject reduction theorem and the βεconversion in the conversion rule generates some difficulties in the meta-theory of piPTSs.
+In ordinary functional PTSs, it is a direct consequence of the subject reduction theorem
+and the uniqueness of types lemma (to be stated below) that if Γ ` B : s and B =β B 0 and
+Γ ` A0 : B 0 then Γ ` B 0 : s. This can also be easily established for functional piPTSs, by a
+similar proof. But we would want a stronger analogous property with βε-conversion instead
+of β-conversion. Then the standard argument breaks down, because subject reduction does
+not hold for βε-reduction.
+
+TYPES 2016
+
+9:30
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+In particular, we are interested in showing that in a logical piPTS if M is a Γ-proof then
+M →∗ε ε. This presents a difficulty already when M = x. Then we have Γ ` x : A : ∗p for
+p
+some A. But from this we cannot immediately conclude x ∈ V ∗ because the derivation
+of Γ ` x : A may end with the conversion rule. From the generation lemma we may only
+conclude that there are s ∈ S and B =βε A such that Γ ` B : s and (x : B) ∈ Γ and x ∈ V s .
+It would suffice if from Γ ` B : s and Γ ` A : ∗p and B =βε A we could conclude s = ∗p .
+But this does not seem completely straightforward to establish without subject reduction
+for βε-reduction. We will ultimately show this property using a slight sharpening of the
+uniqueness of types lemma for logical piPTSs.
+Our next aim is to show that in a logical piPTS a Γ-type does not ε-reduce to ε. For this
+we need the following technical definition.
+I Definition 93. We define the relation B Γ C inductively:
+if B =βε C then B Γ C,
+if there exist N and C 0 such that Γ ` N : A and N ∼ x and B[N/x] =βε C 0
+Πx : A.B Γ C.
+I Lemma 94. If Γ ` B : s and B =βε B 0
+
+Γ C then B
+
+Γ C then
+
+Γ C.
+
+Proof. If B 0 =βε C then this is obvious. Otherwise B 0 = Πx : A0 .B0 and Γ ` N : A0
+and N ∼ x and B0 [N/x] =βε C 0
+Γ C. By the confluence of βε-reduction we have
+B = Πx : A1 .B1 with A1 =βε A0 and B1 =βε B0 . Since N ∼ x, by Corollary 91 we obtain
+B1 [N/x] =βε B0 [N/x] =βε C 0 . Because Γ ` B : s, by the generation lemma Γ ` A1 : s0 for
+some s0 ∈ S. Hence Γ ` N : A1 by the conversion rule. Thus B Γ C.
+J
+I Lemma 95. In a logical piPTS, if Γ ` B : ∗p and B =βε B 0
+such that Γ ` C 0 : ∗p and C 0 =βε C.
+
+Γ C, then there exists C
+
+0
+
+Proof. Induction on the definition of B 0 Γ C. If B 0 =βε C then this is obvious. Otherwise
+B 0 = Πx : A1 .B1 and Γ ` N : A1 and N ∼ x and B1 [N/x] =βε C1
+Γ C. By the
+confluence of βε-reduction B = Πx : A0 .B0 with A0 =βε A1 and B0 =βε B1 . Because
+Γ ` (Πx : A0 .B0 ) : ∗p and the piPTS is logical, by the generation lemma Γ ` A0 : s
+for some s ∈ S and Γ, x : A0 ` B0 : ∗p . Since Γ ` N : A1 , by the conversion rule
+Γ ` N : A0 . Hence Γ ` B0 [N/x] : ∗p by the substitution lemma. By Corollary 91 we also
+have B0 [N/x] =βε B1 [N/x]. Thus Γ ` B0 [N/x] : ∗p and B0 [N/x] =βε C1 and C1 Γ C. We
+may therefore apply the inductive hypothesis to obtain C 0 with Γ ` C 0 : ∗p and C 0 =βε C. J
+I Lemma 96. In a logical piPTS, if Γ ` M : s then M 6→∗ε ε.
+Proof. By induction on M we show that if (?) below holds for M then M 6→∗ε ε. Then
+taking n = 0 in (?) gives us the lemma.
+(?) There exist A1 , . . . , An and N1 , . . . , Nn such that
+Γ, x1 : A1 , . . . , xn : An ` M : B
+and Ni ∼ xi and Γ ` Ni : Ai [N1 /x1 ] . . . [Ni−1 /xi−1 ] for i = 1, . . . , n and
+B[N1 /x1 ] . . . [Nn /xn ]
+
+Γ s.
+
+Assume (?) and M →∗ε ε. Let Γ0 = Γ, x1 : A1 , . . . , xn : An . There are three possibilities.
+
+Ł. Czajka
+
+9:31
+
+p
+
+1. M = x ∈ V ∗ . Then by the generation lemma there is B 0 with B 0 =βε B and Γ0 ` B 0 : ∗p .
+Using the substitution lemma repeatedly we obtain Γ ` B 0 [N1 /x1 ] . . . [Nn /xn ] : ∗p . Using
+Corollary 91 repeatedly we obtain
+B 0 [N1 /x1 ] . . . [Nn /xn ] =βε B[N1 /x1 ] . . . [Nn /xn ]
+
+Γ s.
+
+Hence by Lemma 95 there is C with Γ ` C : ∗p and C =βε s. By Lemma 19 and the
+confluence of βε-reduction we have C →∗β s. Hence by the subject reduction theorem we
+obtain Γ ` s : ∗p . This contradicts the fact that the piPTS is logical.
+2. M = M1 M2 with M1 →∗ε ε. By the generation lemma there exist A0 and B0 such that
+Γ0 ` M1 : (Πx : A0 .B0 ) and Γ0 ` M2 : A0 and B =βε B0 [M2 /x] and M2 ∼ x. Let
+M20 = M2 [N1 /x1 ] . . . [Nn /xn ]. Using the substitution lemma repeatedly we obtain
+Γ ` M20 : A0 [N1 /x1 ] . . . [Nn /xn ].
+Also M20 ∼ x by repeated use of Lemma 81. By the correctness of types and generation
+lemmas there is s0 with Γ0 , x : A0 ` B0 : s0 . Using the substitution lemma repeatedly
+with the Ni ’s and M20 we obtain
+Γ ` B0 [N1 /x1 ] . . . [Nn /xn ][M20 /x] : s0 .
+Using Corollary 91 repeatedly we also obtain
+B0 [M2 /x][N1 /x1 ] . . . [Nn /xn ] =βε B[N1 /x1 ] . . . [Nn /xn ]
+
+Γ s.
+
+By α-conversion we may assume x ∈
+/ FV(N1 , . . . , Nn ). Thus
+B0 [M2 /x][N1 /x1 ] . . . [Nn /xn ] = B0 [N1 /x1 ] . . . [Nn /xn ][M20 /x].
+Hence
+(Πx : A0 .B0 )[N1 /x1 ] . . . [Nn /xn ]
+
+Γ s.
+
+Now applying the inductive hypothesis yields a contradiction.
+3. M = λx : A0 .M 0 with M 0 →∗ε ε. By the generation lemma there are s0 ∈ S and B0
+such that Γ0 ` (Πx : A0 .B0 ) : s and Γ0 , x : A0 ` M 0 : B0 and B =βε Πx : A0 .B0 .
+By the confluence of βε-reduction we have B = Πx : C0 .D0 with A0 =βε C0 and
+p
+p
+p
+p
+B0 =βε D0 . Let A∗0 = A0 [N1 /x1 ] . . . [Nn /xn ] and analogously for B0∗ , C0∗ and D0∗ .
+p
+p
+p
+∗
+Since B[N1 /x1 ] . . . [Nn /xn ] = Πx : C0∗ .D0∗
+Γ s, there is N with Γ ` N : C0 and
+∗p
+∗p
+∗p
+N ∼ x and D0 [N/x] =βε C Γ s (the case Πx : C0 .D0 =βε s is impossible by the
+p
+p
+confluence of βε-reduction). By repeated use of Corollary 91 we have A∗0 =βε C0∗
+p
+p
+and B0∗ [N/x] =βε D0∗ [N/x]. Since Γ0 ` (Πx : A0 .B0 ) : s0 , by the generation lemma
+there are s1 , s2 ∈ S with Γ0 ` A0 : s1 and Γ0 , x : A0 ` B0 : s2 . By repeated use of
+p
+p
+p
+p
+the substitution lemma Γ ` A∗0 : s1 . Since also C0∗ =βε A∗0 and Γ ` N : C0∗ , by
+p
+the conversion rule we have Γ ` N : A∗0 . Now by repeated use of the substitution
+p
+p
+lemma we obtain Γ ` B0∗ [N/x] : s2 . Since also B0∗ [N/x] =βε C
+s, by Lemma 94
+p
+∗
+0
+0
+we obtain B0 [N/x] Γ s. Therefore, because Γ , x : A0 ` M : B0 and N ∼ x and
+Γ ` N : A0 [N1 /x1 ] . . . [Nn /xn ] and B0 [N1 /x1 ] . . . [Nn /xn ][N/x] Γ s, we may apply the
+inductive hypothesis to conclude M 0 6→∗ε ε. This gives a contradiction.
+J
+A simpler proof of Lemma 96 would be possible if we changed the definitions in one of
+the following two ways.
+
+TYPES 2016
+
+9:32
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+(1) In the definition of a logical piPTS, require (s, ∗p , ∗p ) ∈ R for any s ∈ S.
+(2) In the definition of a piPTS, add the side condition x ∈ V s1 in the product rule, and
+restrict ε-reduction of lambda-abstractions to:
+λxs : A.ε
+
+→ε
+
+ε
+
+if (s, ∗p , ∗p ) ∈ R
+
+Then we could prove (?) below by a relatively straightforward induction, without relying on
+Lemma 99. Lemma 96 would then easily follow from (?).
+(?) In a logical piPTS, if Γ ` M : C and M →∗ε ε then there is C 0 with C 0 =βε C and
+Γ ` M : C 0 : ∗p .
+However, none of the changes (1) or (2) seem to allow avoiding the use of Lemma 99 in the
+proof of Lemma 100.
+I Definition 97. An n-ary term context C[1 , . . . , n ] is a term with n holes into which
+some terms N1 , . . . , Nn may be substituted possibly capturing their free variables, yielding
+C[N1 , . . . , Nn ]. For example, C[1 , 2 ] = λxy.1 2 is a term context, and C[x, xy] =
+λxy.x(xy).
+We write Γ1 =ε Γ2 if Γ1 = x1 : A1 , . . . , xn : An and Γ2 = x1 : A01 , . . . , xn : A0n and
+Ai =ε A0i . The following simple lemma will be used implicitly.
+I Lemma 98. If M =ε M 0 then there are x1 , . . . , xn and an n-ary term context C[1 , . . . , n ]
+such that M = C[N1 , . . . , Nn ] and M 0 = C[N10 , . . . , Nn0 ] and Ni →∗ε ε and Ni0 →∗ε ε.
+Proof. Follows from confluence of ε-reduction.
+
+J
+
+For logical piPTSs we need a somewhat sharpened version of the uniqueness of types
+lemma.
+I Lemma 27 (Uniqueness of types lemma).
+1. In a functional piPTS, if Γ ` A : B and Γ ` A : B 0 then B =βε B 0 .
+2. In a logical piPTS, if Γ ` M1 : A1 and Γ ` M2 : A2 and M1 =βε M2 and M1 6→∗ε ε and
+M2 6→∗ε ε then A1 =βε A2 .
+Proof. We show the second point. The proof of the first point is similar but simpler,
+and it is also completely analogous to the standard uniqueness of types proof for ordinary
+functional PTSs.
+So assume the piPTS is logical. First, we show the following condition (?).
+(?) If Γ1 ` M1 : A1 and Γ2 ` M2 : A2 and M1 =ε M2 and Γ1 =ε Γ2 and M1 6→∗ε ε and
+M2 6→∗ε ε then A1 =βε A2 .
+We proceed by induction on M1 . We have the following possibilities.
+M1 = s = M2 . By the generation lemma there are s1 , s2 ∈ S such that A1 =βε s1 and
+A2 =βε s2 and (s, s1 ), (s, s2 ) ∈ A. Hence s1 = s2 because the piPTS is functional. Thus
+A1 =βε A2 .
+M1 = x = M2 . By the generation lemma there exist C1 , C2 such that A1 =βε C1 and
+A2 =βε C2 and (x : C1 ) ∈ Γ1 and (x : C2 ) ∈ Γ2 . Since Γ1 =ε Γ2 , we have C1 =ε C2 .
+Thus A1 =βε A2 .
+M1 = Πx : B1 .C1 and M2 = Πx : B2 .C2 with B1 =ε B2 and C1 =ε C2 . By the
+generation lemma there exist (s1 , s2 , s3 ), (s01 , s02 , s03 ) ∈ R such that Γ1 ` B1 : s1 and
+Γ1 , x : B1 ` C1 : s2 and Γ2 ` B2 : s01 and Γ2 , x : B2 ` C2 : s02 and A1 =βε s3 and
+A2 =βε s03 . Note that B1 6→∗ε ε and B2 6→∗ε ε and C1 6→∗ε ε and C2 6→∗ε ε, by Lemma 96.
+Hence, by the inductive hypothesis and the confluence of βε-reduction s1 = s01 and
+s2 = s02 . Thus s3 = s03 because the piPTS is functional. Hence A1 =βε A2 .
+
+Ł. Czajka
+
+9:33
+
+M1 = λx : B1 .N1 and M2 = λx : B2 .N2 and B1 =ε B2 and N1 =ε N2 . By the generation
+lemma there exist s1 , s2 ∈ S and C1 , C2 such that Γi ` Bi : si and Γi , x : Bi ` Ni : Ci
+and Ai =βε Πx : Bi .Ci . Note that Ni 6→∗ε ε because Mi 6→∗ε ε. Hence, by the inductive
+hypothesis C1 =βε C2 . Hence A1 =βε A2 , because also B1 =ε B2 .
+M1 = N1 N10 and M2 = N2 N20 and N1 =ε N2 and N10 =ε N20 . By the generation lemma
+there exist x1 , x2 , B1 , B2 , C1 , C2 such that Γi ` Ni : (Πxi : Bi .Ci ) and Γi ` Ni0 : Bi and
+Ni0 ∼ xi and Ai =βε Ci [Ni0 /xi ]. Note that Ni 6→∗ε ε because Mi 6→∗ε ε. Hence, by the
+inductive hypothesis Πx1 : B1 .C1 =βε Πx2 : B2 .C2 . Thus x1 = x2 and C1 =βε C2 by
+confluence of βε-reduction. Hence C1 [N10 /x1 ] =βε C2 [N20 /x2 ] by Corollary 91. Therefore
+A1 =βε A2 .
+We have thus shown (?). Now assume Γ ` Mi : Ai and M1 =βε M2 and Mi 6→∗ε ε. By
+confluence of βε-reduction and by Lemma 88 there are N1 , N2 with Mi →∗β Ni and N1 =ε N2 .
+By the subject reduction theorem Γ ` Ni : Ai . Because Mi →∗β Ni and Mi 6→∗ε ε, Lemma 86
+implies that Ni 6→∗ε ε. Hence by (?) we obtain A1 =βε A2 .
+J
+I Lemma 99. In a logical piPTS, if Γ ` B : s and B =βε B 0 and Γ ` A0 : B 0 then Γ ` B 0 : s.
+Proof. By the correctness of types lemma there are two cases.
+B 0 = s0 . Then B →∗β s0 by confluence of βε-reduction and Lemma 19. Hence Γ ` s0 : s
+by the subject reduction theorem, i.e., Γ ` B 0 : s.
+Γ ` B 0 : s0 . Note that B 6→∗ε ε and B 0 6→∗ε ε by Lemma 96. Hence, by the second point
+of the uniqueness of types lemma and by confluence of βε-reduction s = s0 . Therefore
+Γ ` B 0 : s.
+J
+I Lemma 100. In a logical piPTS, if Γ ` M : C : ∗p then M →∗ε ε.
+Proof. Induction on M . We have the following cases.
+M = s. By the generation lemma there is s0 ∈ S such that C =βε s0 . By confluence
+of βε-reduction and Lemma 19 we have C →∗β s0 . By the subject reduction theorem
+Γ ` s0 : ∗p . This is a contradiction, because the piPTS is logical.
+M = x. By the generation lemma there are s ∈ S and B such that B =βε C and Γ ` B : s
+and (x : B) ∈ Γ and x ∈ V s . By Lemma 99 we obtain Γ ` C : s, and thus s = ∗p by the
+p
+uniqueness of types lemma. So x ∈ V ∗ . Hence M = x →ε ε.
+M = Πx : A.B. By the generation lemma there is s0 ∈ S with C =βε s0 . Like in the case
+M = s, using confluence of βε-reduction, Lemma 19 and the subject reduction theorem,
+we derive a contradiction.
+M = λx : A.N . By the generation lemma there are s ∈ S and B such that Γ ` (Πx :
+A.B) : s and Γ, x : A ` N : B and C =βε Πx : A.B. By Lemma 99 we have Γ ` C : s,
+and thus s = ∗p by the uniqueness of types lemma. Since Γ ` (Πx : A.B) : ∗p , by the
+generation lemma there is (s1 , s2 , ∗p ) ∈ R such that Γ, x : A ` B : s2 . Because the piPTS
+is logical s2 = ∗p . Hence Γ, x : A ` N : B : ∗p . By the inductive hypothesis N →∗ε ε.
+Hence M = λx : A.N →∗ε λx : A.ε →ε ε.
+M = M1 M2 . By the generation lemma there are A, B such that Γ ` M1 : (Πx : A.B) and
+Γ ` M2 : A and C =βε B[M2 /x] and M2 ∼ x. By the correctness of types lemma and
+the generation lemma there is (s1 , s2 , s3 ) ∈ R such that Γ ` (Πx : A.B) : s3 and Γ, x :
+A ` B : s2 . Since Γ ` M2 : A and M2 ∼ x, by the substitution lemma Γ ` B[M2 /x] : s2 .
+By Lemma 99 we have Γ ` C : s2 , and thus s2 = ∗p by the uniqueness of types lemma.
+Hence s3 = ∗p because the piPTS is logical. Thus Γ ` M1 : (Πx : A.B) : ∗p , and by the
+inductive hypothesis we conclude M1 →∗ε ε. Therefore M = M1 M2 →∗ εM2 →ε ε.
+J
+I Lemma 101. In a logical piPTS, if Γ ` M : C and M →∗ε ε then Γ ` C : ∗p .
+
+TYPES 2016
+
+9:34
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+Proof. Induction on M . There are three possibilities.
+p
+M = x ∈ V ∗ . By the generation lemma there exists B such that B =βε C and Γ ` B : ∗p .
+By Lemma 99 we have Γ ` C : ∗p .
+M = λx : A.M 0 with M 0 →∗ε ε. By the generation lemma there exist s ∈ S and B
+such that Γ ` (Πx : A.B) : s and Γ, x : A ` M 0 : B and C =βε Πx : A.B. By the
+generation lemma there is (s1 , s2 , s) ∈ R with Γ ` A : s1 and Γ, x : A ` B : s2 . Since
+Γ, x : A ` M 0 : B and M 0 →∗ε ε, by the inductive hypothesis and the uniqueness of types
+lemma we obtain s2 = ∗p . Because the piPTS is logical also s = ∗p . Then Γ ` C : ∗p by
+Lemma 99.
+M = M1 M2 with M1 →∗ε ε. By the generation lemma there are A, B such that Γ `
+M1 : (Πx : A.B) and Γ ` M2 : A and C =βε B[M2 /x] and M2 ∼ x. By the inductive
+hypothesis Γ ` M1 : (Πx : A.B) : ∗p . By the generation lemma there is (s1 , s2 , ∗p ) ∈ R
+such that Γ ` A : s1 and Γ, x : A ` B : s2 . Because the piPTS is logical, s2 = ∗p .
+By the substitution lemma we thus obtain Γ ` B[M2 /x] : ∗p . By Lemma 99 we have
+Γ ` C : ∗p .
+J
+I Theorem 30. Assume the piPTS is logical and M is a Γ-term. Then M is a Γ-proof if
+and only if M →∗ε ε.
+Proof. Follows from the correctness of types lemma, Lemma 96, Lemma 100 and Lemma 101.
+J
+I Lemma 31. In a logical piPTS, if M is a Γ-term and M =βε N and Γ ` N : s then
+Γ ` M : s.
+Proof. By the correctness of types lemma either Γ ` M : s0 or M = s0 for some s0 ∈ S. If
+Γ ` M : s0 then M 6→∗ε ε and N 6→∗ε ε by Lemma 96, so s0 = s by the uniqueness of types
+lemma and confluence of βε-reduction. If M = s0 then N →∗β M = s0 by confluence of
+βε-reduction and Lemma 19. Hence Γ ` M : s by the subject reduction theorem.
+J
+I Lemma 102. In a logical piPTS, if M is a Γ-proof and Γ ` M : A then Γ ` A : ∗p .
+Proof. Since M is a Γ-proof, M →∗ε ε by Theorem 30. Hence Γ ` A : ∗p by Lemma 101. J
+I Lemma 32. In a logical piPTS, if Γ ` M : A and Γ, x : A is a legal context then M ∼ x.
+Proof. Since Γ, x : A is a legal context, by the start lemma there is s ∈ S with x ∈ V s and
+Γ ` A : s. First, assume s = ∗p . Since then Γ ` M : A : ∗p , the term M is a Γ-proof, and
+p
+thus M →∗ε ε by Theorem 30. So M ∼ x ∈ V ∗ . If s 6= ∗p then M is not a Γ-proof, by
+Lemma 102 and the uniqueness of types lemma. Hence, then also M ∼ x ∈ V s .
+J
+I Lemma 34. In a logical piPTS, Γ `− M : N is equivalent to Γ ` M : N .
+Proof. The implication from right to left follows by induction on the length of the derivation
+of Γ ` M : N . For the other direction we proceed by induction on the length of the derivation
+of Γ `− M : N . Lemma 32 is needed to handle the application rule.
+J
+
+B
+
+Proofs for Section 5
+
+I Lemma 62.
+0
+F
+1. If M F
+Γ ϕ and Γ ⊇ Γ is a legal context then M Γ0 ϕ.
+2. If M CΓ t and Γ0 ⊇ Γ is a legal context then M CΓ0 t.
+
+Ł. Czajka
+
+9:35
+
+C
+Proof. Induction on the definition of M F
+Γ ϕ and M Γ t. We show a few cases. The other
+cases are similar, trivial, or follow directly from the inductive hypothesis.
+p
+F
+F
+M = Πx : A.B F
+Γ ϕ1 → ϕ2 = ϕ. Then Γ ` A : ∗ and A Γ ϕ1 and B Γ,x:A ϕ2 . By
+p
+Corollary 28 we have x ∈ V ∗ . By the variable convention we may assume x ∈
+/ dom(Γ0 ).
+0
+p
+0
+By the thinning lemma Γ ` A : ∗ . Hence Γ , x : A ⊇ Γ, x : A is a legal context. So
+F
+B F
+Γ0 ,x:A ϕ2 by the inductive hypothesis. Also A Γ0 ϕ1 by the inductive hypothesis.
+F
+Thus Πx : A.B Γ0 ϕ1 → ϕ2 .
+p
+C
+F
+M = Πx : A.B F
+Γ ∀x.T (x, t) → ψ = ϕ. Then Γ 0 A : ∗ and A Γ t and B Γ,x:A ψ.
+s
+By Corollary 28 we have x ∈ V . By the variable convention we may assume x ∈
+/ dom(Γ0 ).
+Since Πx : A.B is a Γ-subject, by the correctness of types and the generation lemmas
+Γ ` A : s for some s ∈ S. So Γ0 ` A : s by the thinning lemma. Hence Γ0 , x : A ⊇ Γ, x : A
+C
+is a legal context. So B F
+Γ0 ,x:A ψ by the inductive hypothesis. Also A Γ0 t by the
+p
+0
+inductive hypothesis. We also have Γ 0 A : ∗ , because otherwise s = ∗p by the
+uniqueness of types lemma. Thus Πx : A.B F
+Γ0 ∀x.T (x, t) → ψ.
+M CΓ ε and M is a Γ-proof. Then M is a Γ0 -proof by the thinning lemma, so M CΓ0 ε.
+M = M1 M2 CΓ t1 t2 = t and M1 CΓ t1 and M2 CΓ t2 . We have Mi CΓ0 ti by the
+inductive hypothesis. Note that M is not a Γ0 -proof, because otherwise M →∗ε ε by
+Theorem 30 and thus M would also be a Γ-proof. Hence M1 M2 CΓ0 t1 t2 .
+~ /~x] C (f~y )[~t/~x] = t and Γ0 ` (λx : A.M 0 ) : B and Γ0 0 A : ∗p
+M = (λx : A.M 0 )[N
+Γ
+~ /~x] C r[~t/~x] and
+and f = Λ1 (x, r, t) and ~y = FV(r, t) \ {x} and Γ0 ~x,N~ ,~t Γ and A[N
+Γ
+0
+~ /~x] C
+~
+M 0 [N
+t[
+t
+/~
+x
+].
+Then
+also
+Γ
+Γ
+by
+the
+definition
+of
+. By the
+0
+~ ~
+~
+Γ,x:A[N /~
+x]
+
+~
+x,N ,t
+0
+
+~ /~x] ⊇ Γ, x : A[N
+~ /~x] is a
+variable convention we may assume x ∈
+/ dom(Γ ), so Γ0 , x : A[N
+C
+0 ~
+C
+~
+~
+~
+legal context. Thus A[N /~x] Γ0 r[t/~x] and M [N /~x] Γ0 ,x:A[N~ /~x] t[t/~x] by the inductive
+hypothesis. Additionally, like in the case M = M1 M2 , using Theorem 30 we conclude
+~ /~x] C 0 (f~y )[~t/~x] = t.
+that M is not a Γ0 -proof. Hence M = (λx : A.M 0 )[N
+J
+Γ
+I Lemma 64. Assume N ∼ x. Then M →∗ε ε iff M [N/x] →∗ε ε.
+Proof. By Lemma 16 we have nf ε (M [N/x]) = nf ε (M )[nf ε (N )/x]. Thus if nf ε (M ) = ε then
+also nf ε (M [N/x]) = ε. Conversely, if nf ε (M [N/x]) = ε and nf ε (M ) 6= ε then nf ε (M ) = x
+p
+and nf ε (N ) = ε. Then also x ∈ V ∗ , because N ∼ x. This is impossible because then
+x →ε ε.
+J
+I Lemma 65. Assume Γ1 ` N : A and N CΓ1 t and N ∼ y.
+F
+1. If M F
+Γ1 ,y:A,Γ2 ϕ then M [N/y] Γ1 ,Γ2 [N/y] ϕ[t/y].
+2. If M CΓ1 ,y:A,Γ2 u then M [N/y] CΓ1 ,Γ2 [N/y] u[t/y].
+C
+Proof. By induction on the definition of M F
+Γ1 ,y:A,Γ2 ϕ and M Γ1 ,y:A,Γ2 u. Again, we
+show a few cases.
+Let Γ = Γ1 , y : A, Γ2 and Γ0 = Γ1 , Γ2 [N/y]. Note that because we implicitly assume M
+is a Γ-subject (Γ-proposition), by the substitution lemma M [N/y] is also a Γ0 -subject (Γ0 proposition). Also note that M is a Γ-proof iff M [N/y] is a Γ0 -proof. Indeed, this follows
+from Lemma 64 and Theorem 30.
+p
+F
+F
+M = Πx : C.B F
+Γ ϕ1 → ϕ2 = ϕ. Then Γ ` C : ∗ and C Γ ϕ1 and B Γ,x:C ϕ2 . By
+the substitution lemma Γ0 ` C[N/y] : ∗p . By the inductive hypothesis C[N/y] F
+Γ0 ϕ1 [t/y]
+F
+and B[N/y] Γ0 ,x:C[N/y] ϕ2 [t/y]. Hence (Πx : C.B)[N/y] = Πx : C[N/y].B[N/y] F
+Γ0
+ϕ1 [t/y] → ϕ2 [t/y] = ϕ[t/y].
+M is a Γ-proof and M CΓ ε. Then by the substitution lemma M [N/y] is also a Γ0 -proof.
+Hence M [N/y] CΓ0 ε.
+
+TYPES 2016
+
+9:36
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+M = y CΓ y = u. By the substitution lemma y is a Γ0 -subject, so Γ0 is a legal context.
+We also have N CΓ1 t and Γ1 ⊆ Γ0 . Hence M [N/y] = N CΓ0 t = u[t/y] by Lemma 62.
+M = M1 M2 CΓ u1 u2 and M1 CΓ u1 and M2 CΓ u2 . By the inductive hypothesis
+Mi [N/y] CΓ0 ui [t/y]. Recall that M [N/y] is not a Γ0 -proof, by the discussion in the
+second paragraph of the proof of this lemma. Therefore M [N/y] = M1 [N/y]M2 [N/y] CΓ0
+u1 [t/y]u2 [t/y] = u[t/y].
+~ /~x] C (f~y )[~t/~x] = u and Γ0 ` (λx : A.M 0 ) : B and Γ0 0 A : ∗p and
+M = (λx : A.M 0 )[N
+Γ
+~ /~x] C r1 [~t/~x] and
+f = Λ1 (x, r1 , r2 ) and ~y = FV(r1 , r2 ) \ {x} and Γ0 ~x,N~ ,~t Γ and A[N
+Γ
+0 ~
+C
+0
+~
+t
+/~
+x
+M [N /~x] 
+r
+[
+].
+Then
+by
+definition
+also
+Γ
+Γ
+.
+Moreover,
+we
+0
+2
+~
+~
+~
+~
+x,y,N ,N,t,t
+
+Γ,x:A[N /~
+x]
+
+~ /~x][N/y] C 0 r1 [~t/~x][t/y] and M 0 [N
+~ /~x][N/y] C
+obtain A[N
+r [~t/~x][t/y] by
+Γ
+~ /~
+Γ0 ,x:A[N
+x][N/y] 2
+the inductive hypothesis. Hence, recalling that M [N/y] is not a Γ0 -proof,
+~ /~x][N/y] C 0 (f~y )[~t/~x][t/y] = u[t/y].
+M [N/y] = (λx : A.M 0 )[N
+Γ
+
+J
+
+p
+
+I Lemma 67. Assume y ∈ V ∗ .
+1. If M F
+/ FV(ϕ).
+Γ ϕ then y ∈
+C
+2. If M Γ t then y ∈
+/ FV(t).
+C
+Proof. Induction on the definition of M F
+Γ ϕ and M Γ t. Note that if y is a Γ-subject
+then y is a Γ-proof, by the generation and start lemmas. Hence, the case M = y CΓ y = t is
+impossible.
+J
+
+I Lemma 68.
+1. If M F
+Γ ϕ then FV(ϕ) = FV(nf ε (M )).
+2. If M CΓ t then FV(t) = FV(nf ε (M )).
+C
+Proof. Induction on the definition of M F
+Γ ϕ and M Γ t, using Lemma 67. We show a few
+cases. The other cases are similar, trivial, or follow directly from the inductive hypothesis.
+p
+F
+F
+M = Πx : A.B F
+Γ ϕ1 → ϕ2 = ϕ. Then Γ ` A : ∗ and A Γ ϕ1 and B Γ,x:A ϕ2 .
+By the inductive hypothesis FV(nf ε (A)) = FV(ϕ1 ) and FV(nf ε (B)) = FV(ϕ2 ). Note
+that nf ε (M ) = Πx : nf ε (A).nf ε (B), so FV(nf ε (M )) = FV(nf ε (A)) ∪ (FV(nf ε (B)) \ {x}).
+p
+Since Γ ` A : ∗p , we have x ∈ V ∗ by Corollary 28. Thus x ∈
+/ FV(ϕ2 ) by Lemma 67, so
+FV(ϕ2 ) = FV(nf ε (B)) \ {x}. Hence FV(nf ε (M )) = FV(nf ε (A)) ∪ (FV(nf ε (B)) \ {x}) =
+FV(ϕ1 ) ∪ FV(ϕ2 ) = FV(ϕ).
+p
+C
+F
+M = Πx : A.B F
+Γ ∀x.T (x, t) → ψ = ϕ. Then Γ ` A : ∗ and A Γ t and B Γ,x:A ψ.
+By the inductive hypothesis FV(nf ε (A)) = FV(t) and FV(nf ε (B)) = FV(ψ). Note that
+nf ε (M ) = Πx : nf ε (A).nf ε (B), so FV(nf ε (M )) = FV(nf ε (A)) ∪ (FV(nf ε (B)) \ {x}) =
+(FV(nf ε (A)) ∪ FV(nf ε (B))) \ {x} (by the variable convention we may assume x ∈
+/ FV(A)).
+Thus FV(ϕ) = (FV(t) ∪ FV(ψ)) \ {x} = FV(nf ε (M )).
+If M is a Γ-proof and M CΓ ε = t, then nf ε (M ) = ε by Theorem 30, so FV(nf ε (M )) =
+FV(t).
+M = x CΓ x = t. Then M is not a Γ-proof, so nf ε (x) = x by Theorem 30. Hence
+FV(nf ε (M )) = FV(t).
+M = M1 M2 CΓ t1 t2 = t and M1 CΓ t1 and M2 CΓ t2 . In this case M is not
+a Γ-proof, so M 6→∗ε ε. Hence nf ε (M ) = nf ε (M1 )nf ε (M2 ). Thus FV(nf ε (M )) =
+FV(nf ε (M1 ), nf ε (M2 )) = FV(t1 , t2 ) = FV(t), using the inductive hypothesis.
+~ /~x] C (f~y )[~t/~x] and Γ0 ` (λx : A.M 0 ) : B and Γ0 0 A : ∗p and
+M = (λx : A.M 0 )[N
+Γ
+~ x] C r[~t/~x] and
+f = Λ1 (x, r, t) and ~y = FV(r, t) \ {x} and Γ0
+~ ,~
+Γ
+~
+x,N
+t Γ and A[N /~
+~ /~x] C
+~ /~x])) = FV(r[~t/~x])
+~
+M 0 [N
+t[
+t
+/~
+x
+].
+By
+the
+inductive
+hypothesis
+FV(nf
+(A[
+N
+ε
+~
+Γ,x:A[N /~
+x]
+
+Ł. Czajka
+
+9:37
+
+~ /~x])) = FV(t[~t/~x]). By the variable convention we may assume x ∈
+and FV(nf ε (M 0 [N
+/
+FV(A, N1 , . . . , Nn ), so
+FV(nf ε (M ))
+
+~ /~x].M 0 [N
+~ /~x]))
+= FV(nf ε (λx : A[N
+~
+~
+= FV(r[t/~x], t[t/~x]) \ {x}.
+
+Let {xi1 , . . . , xik } = FV(r, t) ∩ {x1 , . . . , xn } and let t0i = ti [ti+1 /xi+1 ] . . . [tn /xn ] for i =
+1, . . . , n. We then have r[~t/~x] = r[t0i1 /xi1 , . . . , t0ik /xik ] and t[~t/~x] = t[t0i1 /xi1 , . . . , t0ik /xik ].
+Thus
+FV(r[~t/~x], t[~t/~x]) = (FV(r, t) \ {xi1 , . . . , xik }) ∪ FV(t0i1 , . . . , t0ik ).
+Hence
+FV(nf ε (M )) = ((FV(r, t) \ {xi1 , . . . , xik }) ∪ FV(t0i1 , . . . , t0ik )) \ {x}.
+On the other hand, also t = (f~y )[~t/~x] = (f~y )[t0i1 /xi1 , . . . , t0ik /xik ] and ~y = FV(r, t) \ {x}.
+By the inductive hypothesis FV(ti ) = FV(nf ε (Ni )), so x ∈
+/ FV(ti ). Hence also x ∈
+/ FV(t0i ).
+Therefore
+FV(t)
+
+= (FV(r, t) \ {x, xi1 , . . . , xik }) ∪ FV(t0i1 , . . . , t0ik )
+= ((FV(r, t) \ {xi1 , . . . , xik }) ∪ FV(t0i1 , . . . , t0ik )) \ {x}
+= FV(nf ε (M )).
+
+J
+
+I Lemma 69. Assume Γ =ε Γ0 .
+0
+F
+0
+1. If M F
+Γ ϕ and M Γ0 ϕ then M =ε M .
+C
+0
+C
+0
+2. If M Γ t and M Γ0 t then M =ε M .
+C
+Proof. Induction on the definition of M F
+Γ ϕ and M Γ t. We show a few cases. The other
+cases are similar, trivial, or follow directly from the inductive hypothesis.
+0
+F
+M = Πx : A.B and M 0 = Πx : A0 .B 0 and ϕ = ϕ1 → ϕ2 . Then A F
+Γ ϕ1 and A Γ ϕ1
+F
+0
+F
+0
+and B Γ,x:A ϕ2 and B Γ0 ,x:A0 ϕ2 . By the inductive hypothesis A =ε A . Hence
+Γ, x : A =ε Γ0 , x : A0 , so B =ε B 0 by the inductive hypothesis. Therefore M =ε M 0 .
+t = ε and M is a Γ-proof and M 0 is a Γ0 -proof. By Theorem 30 we have M →∗ε ε and
+M 0 →∗ε ε, so M =ε M 0 .
+t = t1 t2 and M = M1 M2 and M 0 = M10 M20 and Mi CΓ ti and Mi0 CΓ0 ti . By the inductive
+hypothesis Mi =ε Mi0 . Hence M =ε M 0 .
+t = (f~y )[~t/~x] = (f y~0 )[~t0 /x~0 ] and f = Λ1 (x, r, u) = Λ1 (x0 , r0 , u0 ) and ~y = FV(r, u) \ {x} and
+~ /~x] and M 0 = (λx : A0 .B 0 )[N
+~ 0 /x~0 ] and there
+y~0 = FV(r0 , u0 ) \ {x0 } and M = (λx : A.B)[N
+0
+0
+0
+is a bijection σ : V → V such that σ(yi ) = yi and σ(x ) = x and σ(r ) = r and σ(u0 ) =
+~ /~x] C r[~t/~x] and B[N
+~ /~x] C
+~ 0 /x~0 ] C 0
+u. We also have A[N
+u[~t/~x] and A0 [N
+Γ
+Γ
+~ /~
+Γ,x:A[N
+x]
+~ 0 /x~0 ] C
+r0 [~t0 /x~0 ] and B 0 [N
+u0 [~t0 /x~0 ]. Let pi = ti [ti+1 /xi+1 ] . . . [tn /xn ] and
+~ 0 /x
+~0 ]
+Γ0 ,x:A0 [N
+
+p0i = t0i [t0i+1 /x0i+1 ] . . . [t0m /x0m ]. We have
+(f~y )[p1 /x1 , . . . , pn /xn ] = (f y~0 )[p01 /x01 , . . . , p0m /x0m ].
+Without loss of generality we may assume that there is k ≤ n such that xi = yi and
+x0i = yi0 and pi = p0i for i ≤ k (this may be always achieved by taking the “missing” pi s
+(p0i s) to be equal to yi s (yi0 s)), and xi ∈
+/ ~y = FV(r, u) \ {x} for i > k. We may also assume
+there is k ≤ k 0 ≤ m such that x0i = yi0 for k < i ≤ k 0 and x0i ∈
+/ y~0 = FV(r0 , u0 ) \ {x0 } for
+0
+0
+0
+i > k . Then pi = yi for k < i ≤ k . Hence, in fact we may assume k = k 0 , by taking the
+missing pi s equal to yi s.
+
+TYPES 2016
+
+9:38
+
+A Shallow Embedding of Pure Type Systems into First-Order Logic
+
+By the variable convention we may also assume x, x0 ∈
+/ {x1 , . . . , xn , x01 , . . . , x0m }. Hence
+0
+0
+0
+for i > k we have xi ∈
+/ FV(r, u) and xi ∈
+/ FV(r , u ). Recall that σ −1 (yi ) = yi0 . Since also
+0
+0
+pi = pi and xi = σ(xi ) for i ≤ k:
+r[~t/~x]
+
+=
+=
+=
+=
+=
+
+r[p1 /x1 , . . . , pk /xk ]
+r[p01 /σ(x01 ), . . . , p0k /σ(x0k )]
+σ −1 (r)[p01 /x01 , . . . , p0k /x0k ]
+r0 [p01 /x01 , . . . , p0k /x0k ]
+r0 [~t0 /x~0 ]
+
+u[~t/~x]
+
+=
+=
+=
+=
+=
+
+u[p1 /x1 , . . . , pk /xk ]
+u[p01 /σ(x01 ), . . . , p0k /σ(x0k )]
+σ −1 (u)[p01 /x01 , . . . , p0k /x0k ]
+u0 [p01 /x01 , . . . , p0k /x0k ]
+u0 [~t0 /x~0 ].
+
+and
+
+~ /~x] =ε A0 [N
+~ 0 /x~0 ] and thus also Γ, x : A[N
+~ /~x] =ε
+So by the inductive hypothesis A[N
+0
+0 ~ 0 ~0
+0 ~ 0 ~0
+~
+Γ , x : A [N /x ], so B[N /~x] =ε B [N /x ] by applying the inductive hypothesis again.
+This implies that M =ε M 0 .
+J
+I Lemma 74. Suppose Γ  ∆ and ∆Ax , ∆ ` XQ1 . . . Qm : ψ, where each Qi is either an
+individual term or a reconstructible proof term. Let Γ0 = x1 : A1 , . . . , xn : An be such that
+m = lenA (Γ0 ) and Γ, Γ0 is a legal context. If (X : γ) ∈ ∆Ax , ∆ with ϕ A
+Γ;Γ0 γ, then there
+exist N1 , . . . , Nn and u1 , . . . , un such that ψ = ϕ[~u/~x] and Γ, Γ0 ~x,N~ ,~u Γ.
+Proof. Induction on n. If n = 0 then m = 0 and ψ = ϕ, so we are done. Thus suppose
+Γ0 = Γ00 , xn+1 : An+1 .
+First assume Γ, Γ00 ` An+1 : s and s 6= ∗p . Then An+1 CΓ,Γ0 t and ∀xn+1 .T (xn+1 , t) →
+0
+0
+ϕ A
+Γ;Γ0 γ and lenA (Γ0 ) = lenA (Γ0 ) − 2. Also
+0
+
+∆Ax , ∆ ` XQ1 . . . Qm−2 : ∀xn+1 .T (xn+1 , r) → ψ 0
+and Qm−1 = un+1 is an individual term and Qm = D is a reconstructible proof term such that
+∆Ax , ∆ ` D : T (un+1 , r) and ψ = ψ 0 [un+1 /xn+1 ]. By the inductive hypothesis there exist
+N1 , . . . , Nn and u1 , . . . , un such that r = t[~u/~x] and ψ 0 = ϕ[~u/~x] and Γ, Γ00 ~x,N~ ,~u Γ. Then
+~ /~x] by Lemma 60. Also An+1 [N
+~ /~x] C r by Corollary 66.
+Γ, Γ0
+Γ, xn+1 : An+1 [N
+~
+~
+x,N ,~
+u
+
+Γ
+
+~ /~x] : s by Lemma 61. Because we also have
+Since Γ, Γ00 ` An+1 : s, we have Γ ` An+1 [N
+∆Ax , ∆ ` D : T (un+1 , r) and D is reconstructible, by 2 in Definition 73 there is Nn+1
+~ /~x]. Also Nn+1 ∼ xn+1 by Lemma 32.
+with Nn+1 CΓ un+1 and Γ ` Nn+1 : An+1 [N
+Thus Γ, Γ0 ~x,xn+1 ,N~ ,Nn+1 ,~u,un+1 Γ by definition of . Moreover, ψ = ψ 0 [un+1 /xn+1 ] =
+ϕ[u1 /x1 ] . . . [un+1 /xn+1 ].
+0
+0
+A
+0
+Now assume Γ, Γ00 ` An+1 : ∗p . Then An+1 F
+Γ,Γ00 ϕ and ϕ → ϕ Γ;Γ00 γ and lenA (Γ0 ) =
+lenA (Γ0 ) − 1. Also
+∆Ax , ∆ ` XQ1 . . . Qm−1 : α → ψ
+and Qm = D is a reconstructible proof term such that ∆Ax , ∆ ` D : α. By the inductive
+hypothesis there are N1 , . . . , Nn and u1 , . . . , un such that α = ϕ0 [~u/~x], ψ = ϕ[~u/~x] and
+~ /~x] by Lemma 60. Also An+1 [N
+~ /~x] F
+Γ, Γ00 ~x,N~ ,~u Γ. Then Γ, Γ0 ~x,N~ ,~u Γ, xn+1 : An+1 [N
+Γ
+
+Ł. Czajka
+
+9:39
+
+~ /~x] : ∗p
+ϕ0 [~u/~x] = α by Corollary 66. Since Γ, Γ00 ` An+1 : ∗p , we have Γ ` An+1 [N
+by Lemma 61. Because we also have ∆Ax , ∆ ` D : α and D is reconstructible, by 1 in
+~ /~x]. Because Nn+1 is a Γ-proof, we
+Definition 73 there is Nn+1 with Γ ` Nn+1 : An+1 [N
+C
+have Nn+1 Γ ε. Also Nn+1 ∼ xn+1 by Lemma 32. Thus Γ, Γ0
+~ ,Nn+1 ,~
+~
+x,xn+1 ,N
+u,ε Γ
+∗p
+by definition of . Moreover, because xn+1 ∈ V
+we have xn+1 ∈
+/ FV(ψ), and thus
+ψ = ϕ[u1 /x1 ] . . . [un /xn ][ε/xn+1 ].
+J
+
+TYPES 2016
+
+

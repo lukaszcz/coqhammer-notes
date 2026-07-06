@@ -1,0 +1,87 @@
+\section{Related work}
+\label{sec:related}
+
+\paragraph{Soundness of the CoqHammer translation.}
+The implemented translation is described in
+\cite{CzajkaKaliszyk2018}, which states plainly that it ``is
+neither sound nor complete'' and confines the theoretical
+discussion to \S5.6, including the guard counterexample revisited
+in \cref{rem:jar-counterexample}.  The rigorous core is
+\cite{Czajka2016}: a shallow embedding of proof-irrelevant Pure
+Type Systems into \emph{minimal intuitionistic} first-order logic,
+proved sound by a constructive, proof-theoretic reconstruction
+argument over $\eta$-long normal derivations.  Our
+\cref{sec:translation} complements that result with a classical,
+model-theoretic soundness theorem for a CIC-style fragment with
+inductive types, in which the guard predicate is interpreted as set
+membership.  The two approaches are genuinely different in kind:
+the reconstruction argument yields proof terms but, as
+\cite[\S6]{Czajka2016} notes, is incompatible with the
+model-theoretic methods of monotonicity inference, whose adaptation
+to dependent type theory is posed there as an open problem.
+\Cref{sec:erasure} answers that problem for the monomorphic
+fragment.  The set-theoretic models we rely on are those of
+Werner, Aczel and Lee--Werner
+\cite{Werner1997,Aczel1998,LeeWerner2011}.
+
+\paragraph{Type encodings and monotonicity.}
+Type guards and tags for encoding sorted logics in untyped
+first-order logic go back a long way; systematic soundness analyses
+appear in Claessen, Lillieström and Smallbone \cite{Claessen2011},
+who introduced monotonicity inference with the naked-variable
+calculus and its SAT-based refinement, and in Blanchette, B\"ohme,
+Popescu and Smallbone \cite{Blanchette2016}, who extended the
+framework to polymorphism, introduced the lightweight and
+featherweight encodings, and mechanised the monomorphic metatheory
+in Isabelle/HOL \cite{BlanchettePopescu2013}.  Couchot and Lescuyer
+\cite{CouchotLescuyer2007} and Leino and R\"ummer
+\cite{LeinoRummer2010} studied guard- and tag-style encodings of
+polymorphism for SMT and intermediate verification languages.  Our
+\cref{sec:erasure} transplants the monotonicity method to the
+guarded unsorted problems produced from dependent type theory; the
+technical novelties forced by the setting are the sorted-core
+extraction and relativisation (\cref{thm:relativisation}), the
+single-domain merge in \cref{thm:erasure-main}, the explicit
+inhabitation side condition (many-sorted logic assumes nonempty
+sorts, CIC does not --- \cref{prop:nec-inhab}), and the internal
+infinity criterion via the translation's own injectivity and
+discrimination axioms (\cref{lem:ind-infinity}), which closes the
+introspection soundness gap noted in
+\cite[\S7.4]{Blanchette2016}.
+
+\paragraph{Monomorphisation.}
+Heuristic monomorphisation for Sledgehammer is defined in
+\cite[\S5.6, \S7.1]{Blanchette2016}, with the iteration and size
+bounds we adopt; its incompleteness is remarked there without
+proof.  Bobot and Paskevich \cite{BobotPaskevich2011} proved that
+complete monomorphisation is uncomputable for polymorphic
+first-order logic and designed the symbol-discrimination
+transformation \textsf{Dis}, whose keep-the-generic-formula design
+mirrors our keep policy.  \Cref{thm:undecidable} adapts their
+combinatory-logic reduction to $\CICm$ with a semantic notion of
+consequence, adding the decidability analysis of the instance-set
+fragment (Horn saturation over reflected types) in full.  Empirical
+comparisons across seventeen provers \cite{Desharnais2022} found
+monomorphic encodings superior even to native polymorphic prover
+support (cf.\ the polymorphic extensions of Vampire
+\cite{BhayatReger2020}); this motivates investing in
+monomorphisation for CoqHammer rather than waiting for TF1-native
+back ends.  For dependent type theory, Lean-auto
+\cite{QianEtAl2025} instantiates ``constant instances'' including
+dependent arguments during its preprocessing, which corresponds to
+our general instantiations (\cref{rem:tier2}); its published
+description argues correctness informally, while our
+\cref{thm:mono-sound} gives the semantic soundness statement and
+proof for the CIC fragment.  Premise selection for hammers in
+dependent type theory \cite{ZhuEtAl2025} is orthogonal: it chooses
+$P$, we transform it.
+
+\paragraph{Arity and predicate optimisations.}
+The flattening steps (S3)--(S4) are folklore for hammers and were
+analysed for higher-order-to-first-order translations by Meng and
+Paulson \cite{MengPaulson2008}; CoqHammer performs them with
+bridging axioms \cite[\S5.5]{CzajkaKaliszyk2018}.  The contribution
+of \cref{sec:specialization} is the uniform soundness principle
+covering them together with guard specialisation and type-argument
+fusion, and the faithfulness theorem for the bridge-free versions
+on the first-order core.

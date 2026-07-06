@@ -1,0 +1,195 @@
+\section{Tightness of the criteria}
+\label{sec:tightness}
+
+Each clause of the criteria excludes something, and each exclusion is
+necessary: relaxing it admits a consistent environment whose transformed
+translation refutes a goal not entailed by the source theory.  We record
+one counterexample per exclusion.  In all four propositions ``unsound''
+means: the transformed problem
+$\Theta' \cup \Comp \cup \{\neg G'\}$ is unsatisfiable although
+$\Th \not\entg \phi_0$ --- the negation of the guarantee provided by
+\cref{thm:guards-sound,thm:erasure-soundness,thm:composition}.
+
+\begin{proposition}[Equations do not cover: uncovered guards cannot be
+  dropped]
+  \label{prop:tight-uncovered}
+  Let $\Env_1$ have inductive types $\mathit{unit}$ (constructor
+  $\mathit{tt}$) and $\mathit{bool}$ (constructors
+  $\mathit{true}, \mathit{false}$), no functions or predicates, and the
+  single premise $L = \forall x{:}\mathit{unit}.\ x \eqx{\mathit{unit}}
+  \mathit{tt}$.  Let $\phi_0 = \mathit{true} \eqx{\mathit{bool}}
+  \mathit{false}$.  Then $\Env_1$ is consistent,
+  $\ThOf{\Env_1} \not\entg \phi_0$, and replacing $\enc{L} =
+  \forall x.\ \T(x, \widehat{\mathit{unit}}) \imp x = \hat{\mathit{tt}}$
+  by the unguarded $\forall x.\ x = \hat{\mathit{tt}}$ makes the problem
+  unsatisfiable.
+\end{proposition}
+
+\begin{proof}
+  Consistency and non-entailment: the ground structure $\NN$ with
+  $\NN_{\mathit{unit}} = \{\bullet\}$,
+  $\NN_{\mathit{bool}} = \{0,1\}$ and the evident constructor
+  interpretations satisfies $\ThOf{\Env_1}$ (injectivity, distinctness
+  and exhaustiveness hold in the standard interpretations; $L$ holds) and
+  falsifies $\phi_0$.  Unsatisfiability of the transformed problem: from
+  $\forall x.\ x = \hat{\mathit{tt}}$ instantiate $x$ with
+  $\hat{\mathit{true}}$ and $\hat{\mathit{false}}$ (both closed terms) to
+  get $\hat{\mathit{true}} = \hat{\mathit{tt}} =
+  \hat{\mathit{false}}$; the discrimination axiom
+  $\hat{\mathit{true}} \neq \hat{\mathit{false}}$ of $\mathrm{ID}$
+  yields $\bot$, so the problem is unsatisfiable regardless of the goal.
+  The criterion of \cref{def:jtjf} rejects the step: the body
+  $x = \hat{\mathit{tt}}$ is an equation, $\tc{x = \hat{\mathit{tt}}} =
+  \emptyset$ (\cref{def:tc}), and no rule applies.  Hence the clause
+  $\tc{\text{equation}} = \emptyset$ cannot be relaxed to let a variable's
+  occurrence in an equation count as a cover.
+\end{proof}
+
+This is the fragment form of the classic finite-exhaustion unsoundness of
+unguarded translations \cite{MengPaulson2008,CzajkaKaliszyk2018}: a
+one-element type exports its extensionality to the whole untyped domain.
+
+\begin{proposition}[Existential guards need $\jf$, not $\jt$]
+  \label{prop:tight-exists}
+  Let $\Env_2$ have the single inductive type $\mathit{void}$ with no
+  constructors and no premises, and let
+  $\phi_0 = \exists x{:}\mathit{void}.\ \top$.  Then $\Env_2$ is
+  consistent, $\ThOf{\Env_2} \not\entg \phi_0$, and rewriting the goal
+  translation $\enc{\phi_0} = \exists x.\ \T(x,\widehat{\mathit{void}})
+  \wedge \top$ to $\exists x.\ \top$ --- which the \emph{universal}
+  judgment would license, since $\jtx{x}{\widehat{\mathit{void}}}(\top)$
+  holds --- makes the problem unsatisfiable.
+\end{proposition}
+
+\begin{proof}
+  The ground structure with $\NN_{\mathit{void}} = \emptyset$ satisfies
+  $\ThOf{\Env_2}$ --- exhaustiveness for $\mathit{void}$ is
+  $\forall z{:}\mathit{void}.\ \bot$, vacuously true --- and falsifies
+  $\phi_0$.  The transformed problem contains
+  $\neg \exists x.\ \top$, which is unsatisfiable on its own (domains are
+  nonempty).  The criterion rejects the step:
+  \cref{thm:guard-equivalence}(ii) demands
+  $\jfx{x}{\widehat{\mathit{void}}}(\top)$, and no rule derives
+  $\jf(\top)$.  Hence the $\forall$/$\exists$ asymmetry of
+  \cref{thm:guard-equivalence} is essential: junk-truth of the body makes
+  a guarded \emph{universal} redundant but makes a guarded
+  \emph{existential} strictly stronger than its unguarded form.
+\end{proof}
+
+\begin{proposition}[Result-only type arguments are not erasable]
+  \label{prop:tight-nil}
+  Let $\Env_3$ have inductive types $\mathit{nat}$ (constructors
+  $\mathit{zero}$, $\mathit{succ}$), $\mathit{unit}$, $\mathit{bool}$
+  (as above), a function constant
+  $\mathit{card} : \forall\alpha.\ () \arr \mathit{nat}$ (no term
+  arguments), and premises
+  \[
+    L_1 = \mathit{card}\langle\mathit{unit}\rangle()
+          \eqx{\mathit{nat}} \mathit{succ}(\mathit{zero}),
+    \qquad
+    L_2 = \mathit{card}\langle\mathit{bool}\rangle()
+          \eqx{\mathit{nat}} \mathit{zero} .
+  \]
+  Let $\phi_0 = \mathit{succ}(\mathit{zero}) \eqx{\mathit{nat}}
+  \mathit{zero}$.  Then $\Env_3$ is consistent,
+  $\ThOf{\Env_3} \not\entg \phi_0$, and erasing $\mathit{card}$'s type
+  argument
+  --- forbidden by \cref{def:erasable}, as position $1$ occurs in no term
+  argument type --- makes the problem unsatisfiable.
+\end{proposition}
+
+\begin{proof}
+  Consistency: the standard structure with
+  $\mathit{card}_{\mathit{unit}} = 1$,
+  $\mathit{card}_{\mathit{bool}} = 0$ (and standard $\mathit{nat}$)
+  satisfies both premises and the structural axioms and falsifies
+  $\phi_0$.  After the illegal erasure, both premises speak about the
+  single constant $\hat{\mathit{card}}_\eps$:
+  $\hat{\mathit{card}}_\eps = \hat{\mathit{succ}}(\hat{\mathit{zero}})$
+  and $\hat{\mathit{card}}_\eps = \hat{\mathit{zero}}$, whence
+  $\hat{\mathit{succ}}(\hat{\mathit{zero}}) = \hat{\mathit{zero}} =
+  \enc{\phi_0}$; the problem containing $\neg\enc{\phi_0}$ is
+  unsatisfiable.  (Where the soundness proof would break:
+  \cref{lem:inference-unique} is inapplicable --- no term position
+  witnesses $\alpha$ --- so \cref{def:MNe} has no well-defined proper
+  clause for $\hat{\mathit{card}}_\eps$, and any total choice falsifies
+  $L_1$ or $L_2$ in the erased model.)  This is the formal core of the
+  $\mathit{card}\ \mathsf{UNIV}$ unsoundness of
+  \cite{MengPaulson2008} and of the $\mathit{nil}$ example: erasing
+  $\mathit{nil}$'s argument likewise conflates instances, with the
+  collapse surfacing through premises such as
+  $\mathit{rev}\langle\alpha\rangle(\mathit{nil}\langle\alpha\rangle)
+  \eqx{} \mathit{nil}\langle\alpha\rangle$ at two instances.
+\end{proof}
+
+\begin{proposition}[Erasing predicate type arguments breaks covers]
+  \label{prop:tight-pred-erasure}
+  Let $\Env_4$ have inductive types $\mathit{nat}$, $\mathit{bool}$ (as
+  above) and $\mathit{list}$ (constructors
+  $\mathit{nil} : \forall\alpha.\ () \arr \mathit{list}(\alpha)$,
+  $\mathit{cons} : \forall\alpha.\ \alpha \times \mathit{list}(\alpha)
+  \arr \mathit{list}(\alpha)$), a predicate
+  $q : \forall\alpha.\ \alpha \arr \PProp$, and premises
+  \begin{align*}
+    P_1 &= \forall l{:}\mathit{list}(\mathit{nat}).\
+      q\langle \mathit{list}(\mathit{nat})\rangle(l) \imp
+      l \eqx{\mathit{list}(\mathit{nat})} \mathit{nil}\langle
+      \mathit{nat}\rangle(), \\
+    P_2 &= q\langle \mathit{list}(\mathit{bool})\rangle\bigl(
+      \mathit{cons}\langle\mathit{bool}\rangle(\mathit{true},
+      \mathit{nil}\langle\mathit{bool}\rangle())\bigr).
+  \end{align*}
+  Let $\phi_0 = \mathit{true} \eqx{\mathit{bool}} \mathit{false}$.  Then
+  $\Env_4$ is consistent, $\ThOf{\Env_4} \not\entg \phi_0$, and the
+  combination
+  of (a) erasing $q$'s type argument --- forbidden, since
+  \cref{def:erasable} restricts $\Er$ to $\Constr \cup \Fun$ --- and
+  (b) dropping the guard of $P_1$'s translation on the strength of the
+  ``cover'' $\hat q_\eps(l)$ makes the problem unsatisfiable.
+\end{proposition}
+
+\begin{proof}
+  Consistency: interpret $q_{\mathit{list}(\mathit{nat})}$ as
+  $\{\mathit{nil}\}$, $q_{\mathit{list}(\mathit{bool})}$ as
+  $\{[\mathit{true}]\}$, all other instances as empty, over the standard
+  list structures; $P_1$, $P_2$ and the structural axioms hold, and
+  $\phi_0$ fails.  After the two illegal steps the problem contains
+  \[
+    \forall l.\ \hat q_\eps(l) \imp l =
+    \hat{\mathit{nil}}(\widehat{\mathit{nat}})
+    \qquad\text{and}\qquad
+    \hat q_\eps\bigl(\hat{\mathit{cons}}(\widehat{\mathit{bool}},
+    \hat{\mathit{true}}, \hat{\mathit{nil}}(\widehat{\mathit{bool}}))\bigr).
+  \]
+  Instantiating the former with the latter's argument yields
+  $\hat{\mathit{cons}}(\widehat{\mathit{bool}}, \hat{\mathit{true}},
+  \hat{\mathit{nil}}(\widehat{\mathit{bool}})) =
+  \hat{\mathit{nil}}(\widehat{\mathit{nat}})$, contradicting the
+  unguarded discrimination axiom
+  $\forall \alpha\, x\, l\, \alpha'.\
+  \hat{\mathit{cons}}(\alpha,x,l) \neq \hat{\mathit{nil}}(\alpha')$ of
+  $\mathrm{ID}$; the problem is unsatisfiable regardless of the goal.
+  Where the soundness proof breaks: after erasing $q$, no completion
+  axiom of the form
+  $\forall \alpha\, x.\ \hat q_\eps(x) \imp \T(x, \alpha\text{-dependent
+  type})$ is even expressible --- the natural interpretation of
+  $\hat q_\eps(d)$ is ``$d$ satisfies \emph{some} instance of $q$'',
+  which forces no particular type --- so $\hat q_\eps(l)$ is not strict
+  and covers nothing.  With guards intact (only step (a)), or with $q$
+  unerased (only step (b), which is then licensed and sound by
+  \cref{thm:composition}), no contradiction arises.
+\end{proof}
+
+\begin{remark}
+  The four propositions delimit the design space sharply: covers must be
+  atoms whose predicate is \emph{false-extended} in the intended model
+  (equations and non-rigid $\T$-atoms are not), existential guards are
+  facts rather than obligations, type-argument recovery needs a witness
+  among the \emph{retained term arguments}, and the two optimizations
+  compose only because they partition the signature (predicates feed
+  guard omission; functions and constructors feed erasure).  Every known
+  practical unsoundness pattern of unguarded or type-erased hammer
+  translations that falls inside our fragment is an instance of one of
+  the four \cite{MengPaulson2008,BlanchetteBohmePopescuSmallbone2016,
+  CzajkaKaliszyk2018}.
+\end{remark}
