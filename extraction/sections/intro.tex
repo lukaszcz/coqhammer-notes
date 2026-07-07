@@ -200,11 +200,16 @@ Specifically:
 \label{sec:intro-soundness}
 
 Following automated-reasoning terminology~\cite{Czajka2018,
-BlanchetteEtAl2016}, a hammer translation is \emph{sound} when provability
-of the translated goal from the translated premises does not outrun the
-source: it must be impossible to translate a consistent development and
-obtain a first-order theory from which the image of a false --- or
-refutable --- goal is derivable.  (The converse property, that provable
+BlanchetteEtAl2016}, a hammer translation is \emph{sound} when derivability
+of the translated goal from the emitted theory guarantees that the source
+goal holds.  Concretely, in the form we prove (\cref{thm:soundness}): if
+$\ThE \provesfol \F{G}$ then $G$ is true in a fixed semantics of the source
+development (\cref{sec:semantics}).  This is weaker than exhibiting a source
+\emph{proof} of $G$ --- a distinction we return to below --- but it already
+excludes the failure that matters: no goal that is false in that semantics,
+and in particular none refutable in the source ($\Env \vdash \neg G$), has a
+derivable translation (\cref{cor:no-refutable}).  (The converse property,
+that provable
 goals remain provable, is \emph{completeness}; hammers deliberately trade
 it away, and the present translation is complete only on a fragment.  See
 \cref{sec:limitations-completeness}.)  Since the final arbiter in a hammer
