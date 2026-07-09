@@ -66,3 +66,107 @@ Equational/computational subsets:
 Problem-size/definition metrics are in `summary.tsv`; at the overall level the
 winner averages 217 constants with `$_def_*` equations per row and about 862856
 TPTP bytes/problem-row, with zero consistency hits.
+
+## Phase 6 Stage 2 confirmation and final default decision (TASK_23, 2026-07-09)
+
+Raw checkpoint data lives under
+`/home/dev/coqhammer/worktrees/extraction/eval/results/stage2/`; the committed
+summary artifacts are in
+`/home/dev/coqhammer/worktrees/extraction/eval/artifacts/task23-stage2/`.
+
+Scope: the Stage-1 winner versus the merge-base baseline over the committed
+Phase-6 corpora (`stdlib-regression`, `dependent-slice`, `external-equations`),
+using the full standard `hammer_hook` grid: `{knn, nbayes}` × premise counts
+`{32,64,128,256,1024}` × the four provers E, Vampire, Z3, and CVC4.  ATP timeout
+was 10s.  Reconstruction was run for every ATP-successful problem.
+
+Important mid-run finding and mitigation: the first Stage-2 scan found one real
+inconsistency in the candidate configuration (`dep_mset_empty`, Vampire,
+`knn-1024`).  The proof used `ssrbool.introT` with an enum-expanded guard for the
+indexed family `reflect`; the expansion had constructor payloads but omitted the
+result-index constraint, allowing a `ReflectT P` witness at index `false`.  This
+was not an `opt_erasure_guards`/transport issue.  The implemented mitigation is
+conservative and sound: indexed Set/Type enum/subset families (for example
+`reflect`) now stay on the regular guard path until index constraints are
+represented in the shallow guard.  The full Stage-2 winner grid was then rerun
+from scratch and the inconsistency scan was clean.
+
+Headline ATP/reconstruction results after that fix:
+
+| configuration | ATP successes | ATP rate | reconstruction on ATP successes | inconsistency hits |
+|---|---:|---:|---:|---:|
+| baseline merge-base | 196/440 | 44.5% | 196/196 (100.0%) | 0 |
+| final defaults | 385/440 | 87.5% | 385/385 (100.0%) | 0 |
+
+Per-prover ATP rates:
+
+| prover | baseline | final defaults |
+|---|---:|---:|
+| E | 50/110 (45.5%) | 100/110 (90.9%) |
+| Vampire | 50/110 (45.5%) | 100/110 (90.9%) |
+| Z3 | 47/110 (42.7%) | 100/110 (90.9%) |
+| CVC4 | 49/110 (44.5%) | 85/110 (77.3%) |
+
+Per-corpus ATP rates:
+
+| corpus | baseline | final defaults |
+|---|---:|---:|
+| stdlib regression | 117/120 (97.5%) | 120/120 (100.0%) |
+| dependent slice | 79/240 (32.9%) | 191/240 (79.6%) |
+| external Program/WF sample | 0/80 (0.0%) | 74/80 (92.5%) |
+
+Metrics required by PLAN §12.3:
+
+- ATP success rate per prover: recorded above and in `summary.tsv`; every prover
+  improves over baseline.
+- Reconstruction rate on ATP-successful problems: 100% for both baseline and
+  final defaults.  Newly found final-default ATP successes absent from baseline:
+  191; reconstructed: 191 (100.0%).
+- `eq_rect` watch: `dep_eq_rect_refl` moves from 0 ATP successes to 37, and all
+  37 reconstruct.  There is no ATP-up/reconstruction-down gap, so D3 does not
+  trigger `opt_erasure_guards := true`.
+- Constants with `$_def_*` equations: unique def-bearing constants in generated
+  problems go from 1113 (baseline) to 1117 (final defaults); winner-only examples
+  are `Corelib.BinNums.PosDef.Pos.add_carry`, `Corelib.Init.Wf.Acc_rect`,
+  `Stdlib.Sets.Relations_1.Order_rect`, and `program_equations_smoke.fuel_drop`.
+- Problem sizes: average generated TPTP size over grid rows increases from
+  421,605 bytes/problem to 548,698 bytes/problem; maximum size increases from
+  3,470,827 bytes to 8,846,736 bytes.  This cost did not produce an ATP
+  regression on the confirmation corpus.
+- Inconsistency scan: after the indexed-enum mitigation, exhaustive false-goal
+  scans of every Stage-2 generated problem in these corpora with E and Vampire
+  produced 0 `SZS status Theorem` hits (440 scanned problem/prover inputs).
+
+Verdict against PLAN §12.4:
+
+1. Overall ATP success rate ≥ baseline: **PASS** (`87.5%` vs `44.5%`, +43.0 pp).
+   The equational/computational stdlib subset also does not regress (`100.0%` vs
+   `97.5%`; the Stage-1 bool regression disappears in the full grid).
+2. Dependent slice strict improvement: **PASS** (`79.6%` vs `32.9%`, +46.7 pp).
+   The external Program/WF sample also improves from `0.0%` to `92.5%`.
+3. Reconstruction rate on newly found proofs comparable to overall: **PASS**
+   (newly found proofs reconstruct at `100.0%`, same as overall ATP-successful
+   reconstruction).  `dep_idiv_zero` itself remains unsolved in this small
+   dependent-slice fixture, but the WF external sample supplies the measured WF
+   win and no reconstruction gap appears.
+4. Zero inconsistencies: **PASS after mitigation**.  The initial indexed
+   `reflect` hit was fixed by regular fallback for indexed enum/subset families;
+   the rerun scan is clean.
+
+Final default decision in `src/plugin/coq_transl_opts.ml`:
+
+- `opt_split_case_axioms = true`: confirmed.
+- `opt_prop_case_erasure = true`: confirmed; no Stage-2 inconsistency after the
+  indexed enum/subset mitigation, and it remains part of the dependent-slice win.
+- `opt_erasure_guards = false`: confirmed; unguarded transport gives the
+  `eq_rect` ATP win and all such successes reconstruct.
+- `opt_refinement_types = true`: confirmed; required for the dependent/external
+  gains.
+- `opt_refinement_decl_skips = true`: flipped on by default; Stage 1 selected it
+  and Stage 2 confirms the winner with zero inconsistencies.
+- `opt_wf_recursion_eqs = true`: confirmed; the Program/WF sample improves
+  sharply and the false-goal scans stay clean.
+
+Merge posture (D6): land this work on `rocq-9.2`; forward-port to `master` after
+that.  A `rocq-9.1` backport remains optional and should be a separate user
+release decision.  No merge or port was performed as part of TASK_23.
