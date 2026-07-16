@@ -1,7 +1,7 @@
 # Full support for indexed inductive families in the shallow translation
 
 *Design note, 2026-07-16. Sources: `src/plugin/coq_transl.ml`,
-`coq_erasure.ml`, `coq_transl_opts.ml` (extraction branch, Rocq 9.1); the
+`coq_erasure.ml`, `coq_transl_opts.ml` (extraction branch, Rocq 9.2); the
 CoqHammer paper (Czajka & Kaliszyk, JAR 61, 2018) and the shallow PTS
 embedding paper (Czajka, TYPES 2016 post-proceedings); three commissioned
 literature surveys in `notes/indexed_families/research/` (fording &
