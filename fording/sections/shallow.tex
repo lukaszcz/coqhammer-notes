@@ -1,0 +1,98 @@
+\section{Shallowness}
+\label{sec:shallow}
+
+Shallowness is the design constraint that shaped every clause of
+\cref{sec:translation}: first-order ATPs are heavily optimised for the
+primitives of first-order logic, so a translation is efficient to the
+extent that the logical structure of the source arrives at the prover
+\emph{as} first-order structure, with no inhabitation predicate and no
+bridge axioms to instantiate \cite[\S 1.1]{Czajka2018}.  The companion
+paper articulates this as a checklist S1--S5 and verifies it for the
+non-indexed translation; we re-verify each item on the extended
+translation and add the indexed-specific item S6.
+
+\begin{description}[leftmargin=2em]
+\item[S1 (Native logical structure).]  $\Ff$ maps every connective and
+  quantifier of a shallow proposition to its first-order counterpart and
+  source equality to $\feq$, at translation time (\cref{def:guard-F});
+  nothing indexed changes this.  Expansion variants
+  (\cref{def:expansion}) go further in the same direction: the
+  \emph{content} of a family occurrence --- payload and index equations
+  --- becomes part of the formula in which it occurs.
+
+\item[S2 (No inhabitation predicate).]  $\SigFOL$ contains no binary
+  has-type predicate and no term encoding of types
+  (\cref{def:signature}).  The typing-flavoured atoms are the
+  per-family guard predicates, now $(1{+}m)$-ary; their index argument
+  places carry \emph{terms}, which is first-order structure the prover
+  indexes and unifies natively.  This is the point where the present
+  design parts company with the \fstar{} encoding, the one production
+  system emitting inversion axioms with index equations for type-level
+  families \cite{FStarBook,Aguirre2016}: there, types are terms and
+  typing is a fuel-instrumented binary predicate, so inversion must be
+  throttled by fuel and triggers to avoid matching loops between
+  inversion and elimination axioms; here there is no self-instantiating
+  typing axiom to loop on --- the inversion axiom is guarded by an atom
+  that only constructor typing produces, and (in expansion variants)
+  hypothesis-side content is inlined at translation time rather than
+  recovered by E-matching at solve time.  The residual caveat is
+  SMT-specific: a trigger discipline for the guarded inversion axioms
+  of recursive families would be needed by SMT backends, which have no
+  analogue of a saturation prover's fair clause selection.
+
+\item[S3 (Per-occurrence payload expansion).]  Refinement payloads are
+  expanded inline at every occurrence, in both polarities, as before.
+  The forded view extends this uniformly to families:
+  \cref{thm:expansion} licenses inlining constructor payloads
+  \emph{and index equations} at any chosen occurrence, in both
+  polarities, and \cref{prop:expansion-derivable} shows the choice is
+  operational.  ``Index equations are just more propositional
+  payload.''
+
+\item[S4 (Proofs never become terms).]  Erasure drops proof arguments,
+  premise proofs of constructors, and the index-equation binders of
+  forded branches (\cref{def:erasure}); specification extraction keeps
+  the term unapplied across propositional premises
+  (\cref{def:spec}).  Proof subterms \emph{inside index terms} vanish
+  too (\cref{rem:proof-indices}), so no proof material reaches the
+  prover even through the new index argument places.
+
+\item[S5 (Definitions as oriented computation).]  Pattern-matching
+  definitions over families compile to unguarded, orientable,
+  non-overlapping rewrite equations (\cref{rem:eq-shape},
+  \cref{prop:match-equations}) --- for $\mathsf{vmap}_g$, literally the
+  recursive program.  Case-analysis content (a search operation) is
+  segregated into the guarded inversion axioms, emitted once per family;
+  provers pay for splitting only when a proof needs it.
+
+\item[S6 (Index constraints as equations, stated not solved).]  All
+  index information of a family reaches the prover as first-order
+  equations between ordinary terms --- in inversion disjuncts, in
+  expanded guards, in constructor-typing conclusions --- computed at
+  translation time by fording, never by unification.  Three classical
+  obstructions dissolve at this interface, each by a theorem of this
+  paper rather than by fiat: heterogeneous telescopic equations are
+  stated pointwise in the untyped $\feq$ (\cref{def:theory}; the
+  formation problem of \cite{McBride1999} does not exist in $\SigFOL$);
+  defined functions in index positions are handled by superposition
+  against their defining equations (\cref{rem:slime}), where
+  elaboration-time unification is stuck \cite{McBride2014}; and the
+  K/UIP side conditions of dependent pattern matching are validated by
+  the model (\cref{sec:formulas-uip}).  Dually, the three soundness
+  obligations the interface creates are discharged as theorems:
+  guarded exhaustiveness only (\cref{prop:unguarded-inconsistent}),
+  index-carrying guard atoms only (\cref{prop:index-dropping}), and
+  no structural axioms beyond constructor images
+  (\cref{rem:hur}).
+\end{description}
+
+\paragraph{The residue.}  As in the companion paper, partial
+applications go through $\fapp$ and pointer constants, and anonymous
+$\lambda$-abstractions, matches and fixpoints inside formulas are lifted
+to fresh symbols --- unavoidable in a language without binders, and
+local to terms.  The indexed extension adds one residue class:
+\emph{induction on families} is not first-order and is not emitted
+(\cref{sec:limitations-completeness}); the emitted content of a family
+is exactly its ford --- constructor typing, guarded inversion,
+injectivity, discrimination, and the defining equations of functions
+over it.

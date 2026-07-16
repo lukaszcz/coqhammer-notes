@@ -284,6 +284,35 @@ $\guardf$ and $\Ff$ are total on $\Sfrag$ and structurally recursive; no
 normalisation of the source is involved.
 \end{definition}
 
+The proposition translation also covers proposition-valued case expressions.
+Let
+\[
+ q \defeq
+ \tcase{s}{\dots}{
+   \wcns{c}_i(\tup{y}_i) \Rightarrow \varphi_i}_{i \in K}
+\]
+and let $\Ihat{q}(\tup{x})$ be the occurrence-lifted predicate symbol.  Write
+$C_i$ for the conjunction of the constructor equation
+$\compf(\erase{s}) \feq
+ \Ihat{\wcns{c}}_i(\tup{y}_i)$, the guards or proposition formulas of the
+constructor arguments, and the constructor-result index equalities.  The
+translation emits
+\begin{align*}
+ \guard{\tau_s}{\compf(\erase{s})} \wedge
+   \bigwedge_{i \in K}\forall\tup{y}_i.\,
+     (C_i \to \F{\varphi_i})
+   &\to \Ihat{q}(\tup{x}),\\
+ \guard{\tau_s}{\compf(\erase{s})} \wedge
+   \Ihat{q}(\tup{x})
+   &\to \bigvee_{i \in K}\exists\tup{y}_i.\,
+     C_i \wedge \F{\varphi_i}.
+\end{align*}
+For a propositional scrutinee the inhabitation guard is
+$\F{\tau_s}$ itself.  This guard is essential: when $K$ is empty it makes
+both bounds vacuous instead of deriving an immediate contradiction.  Case
+symbols are keyed by the complete source dependency set, including erased
+proof variables; proof-distinct occurrences therefore cannot be conflated.
+
 Two clauses implement the shallowness requirements discussed in
 \cref{sec:intro,sec:shallow}.  The refinement clause expands the
 propositional payload \emph{inline at each occurrence} --- positively

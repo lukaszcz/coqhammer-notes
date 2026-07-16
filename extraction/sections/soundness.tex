@@ -412,6 +412,19 @@ construction of $\pv{J}$, \cref{lem:coincidence} for the premises, and
 \cref{lem:comp-adequacy} to identify $\den{\compf(\erase{u_l})}{\rho}$
 with $\sem{u_l}_\rho$.
 
+\emph{Proposition-valued case bounds}: extend the interpretation with each
+occurrence-lifted predicate denoting the $\Ff$-reading of the actual case
+value.  If the inhabitation guard holds, adequacy of the scrutinee yields a
+constructor $\wcns{c}_i(\tup{e})$.  Its classes satisfy the constructor
+equation, argument guards and result-index equalities.  Instantiating the
+$i$-th universal premise proves the lower bound, and the same classes witness
+the $i$-th existential disjunct of the upper bound.  If the inhabitation guard
+does not hold, both implications are vacuous.  In particular an empty
+scrutinee has empty branch conjunction/disjunction without making the theory
+inconsistent.  Distinct proof-dependent occurrences use distinct predicate
+symbols, so this model extension never identifies non-convertible source
+dependencies.
+
 \emph{Predicate case-analysis axioms}: as inversion, unfolding the stage
 that admitted the tuple: its witnesses instantiate the existentials, the
 guard and premise conjuncts hold by \cref{lem:coincidence} (recursive

@@ -1,0 +1,580 @@
+\section{The translation}
+\label{sec:translation}
+
+This section defines the emitted first-order theory.  Throughout, fix a
+well-formed definitional environment $\Env$ whose declarations lie in
+$\Sfrag$ and a closed shallow goal proposition $G$.  The target logic is
+classical first-order logic with equality $\feq$; $\provesfol$ is
+provability in any standard sound and complete calculus
+\cite{Shoenfield1967}; the propositional constants $\top, \bot$ are
+assumed available.
+
+\subsection{Signature}
+\label{sec:translation-sig}
+
+\begin{definition}[Signature $\SigFOL$]
+\label{def:signature}
+The signature $\SigFOL$ contains:
+\begin{itemize}[leftmargin=2em]
+\item a $(1{+}m)$-ary predicate symbol $\Ihat{I}$ (the \emph{guard
+  predicate}) for each datatype $I : (\sigma_1, \dots, \sigma_m) \to
+  \Set$ of $\Env$; the first argument place holds the guarded term, the
+  remaining $m$ the indices;
+\item a $k$-ary predicate symbol $\Ihat{J}$ for each inductive predicate
+  $J : (\sigma_1, \dots, \sigma_k) \to \Prop$ of $\Env$;
+\item an $r$-ary function symbol $\Ihat{\wcns{c}}$ for each constructor
+  $\wcns{c}$ of a datatype of $\Env$, where $r$ is the number of
+  informative arguments of $\wcns{c}$ (its $\lbox$ arity);
+\item a function symbol $\Ihat{c}$ of arity $a_c$, and if $a_c > 0$
+  additionally a constant $\Ihat{c}^0$ (the \emph{pointer} of $c$), for
+  each term definition $c \defeq t : \tau$ of $\Env$, where the
+  \emph{erasure arity} $a_c$ is determined from $\erase{t}$ in
+  \cref{def:compile};
+\item a binary function symbol $\fapp$ (infix, associating left), and a
+  constant $\prfc$ (the image of dead code $\bx$);
+\item countably many \emph{auxiliary} function symbols, produced by the
+  compilation procedure below.  As in \cite[\S 4]{Czajka2018} we assume
+  injective naming functions $\Lambda(\cdot)$, $\mathrm{X}(\cdot)$,
+  $\Phi(\cdot)$ from $\lbox$ terms (up to renaming of free variables) to
+  auxiliary symbols (hash-consing).
+\end{itemize}
+Source term variables double as first-order variables.
+\end{definition}
+
+Two negative observations, both load-bearing.  First, there is no binary
+inhabitation predicate and no encoding of \emph{types} as first-order
+terms: the indices of a family are \emph{term} arguments of its guard
+predicate, so the type $\vect(\csS\,n)$ contributes the atom
+$\Ihat{\vect}(w, \Ihat{\csS}(n))$ --- native first-order structure ---
+rather than a term $\mathsf{vec}(\mathsf{S}(n))$ inside a
+$\mathsf{HasType}$ atom.  Second, because types are not terms, no
+formula of the signature can even \emph{state} injectivity of the type
+former $I$ itself; \cref{rem:hur} explains why this inexpressibility is
+a feature.
+
+\subsection{Compilation of erased programs}
+\label{sec:translation-compile}
+
+The compilation of $\lbox$ programs into defining equations is that of
+the companion paper, reproduced here for self-containedness; indexed
+families require no change to it whatsoever, because $\lbox$ is
+unchanged.  It is a recursive procedure that \emph{emits} first-order
+axioms and, for every symbol $f$ it introduces, records a
+\emph{witness}: a $\lbox$ term $e_f$ with free variables among the
+closure parameters of $f$, used only by the model construction of
+\cref{sec:semantics}.
+
+Compilation carries a finite map $\theta$ assigning to certain $\lbox$
+variables (fix-bound recursion variables) a \emph{template} $(f, \tup{w},
+m)$: an $(|\tup{w}| + m)$-ary symbol $f$, a list of first-order terms
+$\tup{w}$, and an argument count $m$.
+
+\begin{definition}[Term translation $\compf_\theta$]
+\label{def:compC}
+For a $\lbox$ term $e$ whose free variables are first-order variables or
+$\theta$-bound, the first-order term $\compf_\theta(e)$ is defined by
+recursion on $e$:
+\begin{itemize}[leftmargin=2em]
+\item $\compf_\theta(x) = x$ for an ordinary variable;
+  $\compf_\theta(\bx) = \prfc$;
+  $\compf_\theta(\wcns{c}(\tup{e})) =
+    \Ihat{\wcns{c}}(\compf_\theta(\tup{e}))$.
+\item For an application spine $e = h\,e_1 \cdots e_j$ ($j \geq 0$, $h$
+  not an application, $e$ itself not of the previous forms):
+  \begin{itemize}
+  \item if $h = g$ with $\theta(g) = (f, \tup{w}, m)$: by the guard
+    condition $j \geq m$, and
+    $\compf_\theta(e) = f(\tup{w}, \compf_\theta(e_1), \dots,
+    \compf_\theta(e_m)) \fapp \compf_\theta(e_{m+1}) \fapp \cdots \fapp
+    \compf_\theta(e_j)$;
+  \item if $h = c$ is a term-definition constant: if $j \geq a_c$ then
+    $\compf_\theta(e) = \Ihat{c}(\compf_\theta(e_1), \dots,
+    \compf_\theta(e_{a_c})) \fapp \cdots \fapp \compf_\theta(e_j)$, and
+    otherwise $\compf_\theta(e) = \Ihat{c}^0 \fapp \compf_\theta(e_1)
+    \fapp \cdots \fapp \compf_\theta(e_j)$;
+  \item if $h = x$ is a variable: $\compf_\theta(e) = x \fapp
+    \compf_\theta(e_1) \fapp \cdots \fapp \compf_\theta(e_j)$;
+  \item if $h$ is a $\lambda$-abstraction, case or fix (a \emph{complex
+    head}): let $u$ be its \emph{value translation} defined below; then
+    $\compf_\theta(e) = u \fapp \compf_\theta(e_1) \fapp \cdots \fapp
+    \compf_\theta(e_j)$.
+  \end{itemize}
+\item Value translations of complex heads $h$ with $\tup{w} = \fv{h}$
+  (ordered):
+  \begin{itemize}
+  \item $h = \lambda x.e_0$: let $f = \Lambda(h)$, an $|\tup{w}|$-ary
+    symbol with witness $e_f = h$; run
+    $\mathrm{B}_\theta(f(\tup{w});\, h)$; the value is $f(\tup{w})$.
+  \item $h = \mathsf{case}(s;\, \tup{br})$: let $g = \mathrm{X}(\lambda
+    z.\mathsf{case}(z; \tup{br}))$ for fresh $z$, of arity $1 +
+    |\tup{w}'|$ with $\tup{w}' = \fv{\tup{br}}$, with witness $e_g =
+    \lambda z.\mathsf{case}(z; \tup{br})$; run
+    $\mathrm{B}_\theta(g(z, \tup{w}');\, \mathsf{case}(z; \tup{br}))$;
+    the value is $g(\compf_\theta(s), \tup{w}')$.
+  \item $h = \mathsf{fix}\,g_0.\,\lambda z_1 \dots \lambda z_m.\,e_0$
+    (maximal prefix): let $f = \Phi(h)$ of arity $|\tup{w}| + m$ with
+    witness $e_f = h$, and $f^0 = \Phi^0(h)$ of arity $|\tup{w}|$ with
+    witness $e_{f^0} = h$; emit the pointer axiom $\forall \tup{w}\,
+    \tup{z}.\ f^0(\tup{w}) \fapp z_1 \fapp \cdots \fapp z_m \feq
+    f(\tup{w}, \tup{z})$; run $\mathrm{B}_{\theta'}(f(\tup{w},
+    \tup{z});\, e_0)$ where $\theta' = \theta[g_0 \mapsto (f, \tup{w},
+    m)]$; the value is $f^0(\tup{w})$.
+  \end{itemize}
+\end{itemize}
+\end{definition}
+
+\begin{definition}[Body compilation $\mathrm{B}$]
+\label{def:compile}
+$\mathrm{B}_\theta(L;\, e)$ takes a first-order term $L$ (the
+\emph{left-hand side}, linear in its variables, whose variables include
+$\fv{e}$ minus the $\theta$-bound ones) and a $\lbox$ term $e$, and
+emits axioms:
+\begin{enumerate}[leftmargin=2em]
+\item If $e = \lambda x.e'$: run $\mathrm{B}_\theta(L \fapp x;\, e')$.
+\item If $e = \mathsf{case}(x;\, \{\wcns{c}_i(\tup{z}_i) \Rightarrow
+  b_i\}_i)$ with $x$ a variable of $L$: for each $i$, with $\tup{z}_i$
+  fresh, run
+  $\mathrm{B}_\theta\bigl(
+    \subst{L}{\Ihat{\wcns{c}}_i(\tup{z}_i)}{x};\;
+    \subst{b_i}{\wcns{c}_i(\tup{z}_i)}{x}\bigr)$.
+\item If $e = \mathsf{case}(s;\, \tup{br})$ with $s$ not a variable of
+  $L$: let $g = \mathrm{X}(\lambda z.\mathsf{case}(z;\tup{br}))$ with
+  closure $\tup{w}' = \fv{\tup{br}}$ and witness as in \cref{def:compC};
+  emit $\forall.\ L \feq g(\compf_\theta(s), \tup{w}')$ (universal
+  closure over the variables of $L$), and run
+  $\mathrm{B}_\theta(g(z, \tup{w}');\, \mathsf{case}(z; \tup{br}))$ for
+  fresh $z$.
+\item If $e = \mathsf{fix}\,g_0.e'$: compute the value translation $u =
+  f^0(\tup{w})$ of $e$ as in \cref{def:compC} (which also compiles $e$);
+  emit $\forall.\ L \feq u$.
+\item Otherwise: emit $\forall.\ L \feq \compf_\theta(e)$.
+\end{enumerate}
+For a term definition $c \defeq t : \tau$ of $\Env$, compilation is
+initialised on $e = \erase{t}$:
+\begin{itemize}[leftmargin=2em]
+\item if $e = \mathsf{fix}\,g_0.\lambda z_1 \dots \lambda z_m.e_0$
+  (maximal prefix): set $a_c \defeq m$ and run
+  $\mathrm{B}_{[g_0 \mapsto (\Ihat{c},\, (),\, m)]}(\Ihat{c}(\tup{z});\,
+  e_0)$;
+\item otherwise, with $e = \lambda z_1 \dots \lambda z_m.e_0$ (maximal
+  prefix, possibly $m = 0$): set $a_c \defeq m$ and run
+  $\mathrm{B}_{\emptyset}(\Ihat{c}(\tup{z});\, e_0)$.
+\end{itemize}
+The witness of $\Ihat{c}$ and of $\Ihat{c}^0$ is the $\lbox$ constant
+$c$; if $a_c > 0$, the pointer axiom $\forall \tup{z}.\ \Ihat{c}^0 \fapp
+z_1 \fapp \cdots \fapp z_{a_c} \feq \Ihat{c}(\tup{z})$ is emitted.
+\end{definition}
+
+\begin{lemma}[Compilation terminates]
+\label{lem:compile-term}
+The procedure of \cref{def:compC,def:compile} terminates on every input
+and, with the naming functions of \cref{def:signature}, emits a finite
+set of axioms for a given environment and goal.
+\end{lemma}
+
+\begin{proof}
+As in \cite{Extraction2026}: order calls by the pair (number of
+case/$\lambda$/fix nodes, node count) lexicographically.  Rule (2)
+consumes the outer case node and passes to a branch with a
+variable-for-pattern replacement that creates no case, $\lambda$ or fix
+nodes; rule (3) replaces a non-variable scrutinee by a variable; rules
+(1), (4), (5) and all $\compf$ recursions strictly decrease the pair.
+Finiteness follows since each emitted axiom is attached to a symbol,
+each symbol to a $\lbox$ term in the finite compilation tree, and
+hash-consing merges repeated liftings.
+\end{proof}
+
+\begin{remark}[Shape of the equations]
+\label{rem:eq-shape}
+All axioms emitted by compilation are universally quantified equations
+$L \feq R$ whose left-hand sides are linear terms
+$f(\tup{\pi}) \fapp x_1 \fapp \cdots \fapp x_k$ with $\tup{\pi}$
+constructor patterns and variables; grouped by head symbol they are
+pairwise non-overlapping, so oriented left to right they form an
+orthogonal rewrite system \cite{BaaderNipkow1998}.  Nothing about
+indexed families disturbs this: the patterns are patterns of
+\emph{informative} constructor arguments, and index information never
+reaches $\lbox$.
+\end{remark}
+
+\begin{example}[Compilation over families]
+\label{ex:vhead-transl}
+For the definitions of \cref{ex:vhead-vtail} (writing hatted symbols
+without hats):
+\[
+  \erase{\mathsf{vhead}} = \lambda n\,v.\ \mathsf{case}(v;
+    \{\csvnil \Rightarrow \bx \mid \csvcons(k,a,w) \Rightarrow a\}),
+\]
+so $a_{\mathsf{vhead}} = 2$ and rule (2) emits
+\[
+  \forall n.\ \mathsf{vhead}(n, \csvnil) \feq \prfc, \qquad
+  \forall n\,k\,a\,w.\ \mathsf{vhead}(n, \csvcons(k,a,w)) \feq a,
+\]
+and likewise $\mathsf{vtail}(n, \csvnil) \feq \prfc$ and $\forall
+n\,k\,a\,w.\ \mathsf{vtail}(n, \csvcons(k,a,w)) \feq w$.  Note three
+things.  (i) The equations are unguarded and unconditional: no premise
+relates $n$ to $k$.  (ii) The first equation of each pair describes a
+\emph{statically impossible} branch ($\csvnil$ cannot inhabit
+$\vect(\csS\,n)$); it is nevertheless \emph{valid} in the model
+(\cref{lem:compile-sound}), because the $\lbox$ case fires on any
+constructor form regardless of typability --- the branch body is the
+image of the $\bot$-elimination, dead code.  \Cref{sec:formulas-equations}
+analyses the index-premised and pruned variants.  (iii) For a recursive
+example, $\mathsf{vmap}_g \defeq \tfix f{:}(\Pi n{:}\nat.\,
+\vect(n) \to \vect(n)).\ \lambda n\,v.\ \tcase{v}{\dots}{\dots}$ (mapping
+a previously defined $g : A \to A$ over a vector) compiles to
+\begin{gather*}
+  \forall n.\ \mathsf{vmap}_g(n, \csvnil) \feq \csvnil,\\
+  \forall n\,k\,a\,w.\ \mathsf{vmap}_g(n, \csvcons(k,a,w)) \feq
+    \csvcons(k,\, g(a),\, \mathsf{vmap}_g(k, w)),
+\end{gather*}
+orientable rewrite rules in which the recursive call's index argument is
+the pattern variable $k$ --- the equations a human would state.
+\end{example}
+
+\subsection{Specification extraction}
+\label{sec:translation-spec}
+
+\begin{definition}[Guard formulas and proposition translation]
+\label{def:guard-F}
+For every shallow set type $\sigma$ and first-order term $u$, the
+\emph{guard formula} $\guard{\sigma}{u}$, and for every shallow
+proposition $\varphi$, the first-order formula $\F{\varphi}$, are
+defined by mutual structural recursion:
+\begin{align*}
+  \guard{I(\tup{a})}{u} &= \Ihat{I}\bigl(u,\, \compf(\erase{a_1}), \dots,
+    \compf(\erase{a_m})\bigr)\\
+  \guard{\Pi x{:}\sigma.\tau}{u} &=
+    \forall x.\ \guard{\sigma}{x} \to \guard{\tau}{u \fapp x}\\
+  \guard{\varphi \to \tau}{u} &= \F{\varphi} \to \guard{\tau}{u}\\
+  \guard{\refty{x{:}\sigma}{\varphi}}{u} &=
+    \guard{\sigma}{u} \wedge \subst{\F{\varphi}}{u}{x}
+  \\[1ex]
+  \F{\top} &= \top, \qquad \F{\bot} = \bot\\
+  \F{\varphi \circledast \psi} &= \F{\varphi} \circledast \F{\psi}
+  \qquad (\circledast \in \{\wedge, \vee, \to\})\\
+  \F{\forall x{:}\sigma.\varphi} &=
+    \forall x.\ \guard{\sigma}{x} \to \F{\varphi}\\
+  \F{\exists x{:}\sigma.\varphi} &=
+    \exists x.\ \guard{\sigma}{x} \wedge \F{\varphi}\\
+  \F{a =_{\sigma} b} &= \compf(\erase{a}) \feq \compf(\erase{b})\\
+  \F{J(\tup{a})} &= \Ihat{J}(\compf(\erase{a_1}), \dots,
+    \compf(\erase{a_k}))
+\end{align*}
+where in the binder clauses the bound source variable is reused as the
+bound first-order variable, and $\compf = \compf_\emptyset$ is the term
+translation of \cref{def:compC}, whose complex-head clauses may emit
+further axioms.  $\guardf$ and $\Ff$ are total on $\Sfrag$ and
+structurally recursive; no normalisation of the source is involved.
+\end{definition}
+
+The new clause is the first: the guard of a family occurrence carries
+the \emph{translated index terms} as arguments of the guard atom.  Index
+terms are ordinary terms --- they may contain defined functions
+($\vect(\Ihat{\mathsf{add}}(m,n))$ arises from $\vect(\mathsf{add}\ m\
+n)$), matches (lifted by $\compf$'s complex-head clauses), and proof
+subterms (erased, \cref{rem:proof-indices}).  Nothing is solved, nothing
+is normalised, nothing is encoded: the constraint material of the family
+arrives at the prover as first-order terms in predicate arguments,
+available to superposition and to nothing else.
+
+\begin{definition}[Specification of a constant]
+\label{def:spec}
+For a term definition $c \defeq t : \tau$ with $\tau \in \Sfrag$, the
+\emph{specification axiom} $\specf(c)$ is $S(u_0; \tau)$ where $u_0 =
+\Ihat{c}$ if $a_c = 0$ and otherwise $u_0 = \Ihat{c}(\,)$ is the empty
+accumulator, and
+\begin{align*}
+  S(u; \Pi x{:}\sigma.\tau') &= \forall x.\ \guard{\sigma}{x} \to
+    S(u \cdot x;\, \tau')\\
+  S(u; \varphi \to \tau') &= \F{\varphi} \to S(u; \tau')\\
+  S(u; \tau') &= \guard{\tau'}{\overline{u}} \quad
+    \text{if $\tau'$ is a datatype occurrence or refinement type,}
+\end{align*}
+where $u \cdot x$ appends $x$ to the accumulator if fewer than $a_c$
+arguments have been accumulated and otherwise applies with $\fapp$, and
+$\overline{u}$ closes the accumulator (an under-applied accumulator is
+rendered as the pointer chain, as in \cite{Extraction2026}).
+\end{definition}
+
+\begin{example}
+\label{ex:spec-vtail}
+$\specf(\mathsf{vtail})$ is
+\[
+  \forall n.\ \Ihat{\nat}(n) \to \forall v.\
+  \Ihat{\vect}(v, \Ihat{\csS}(n)) \to
+  \Ihat{\vect}\bigl(\Ihat{\mathsf{vtail}}(n,v),\, n\bigr),
+\]
+the statement of $\mathsf{vtail}$'s type as a first-order formula: the
+index arithmetic of the family has become term structure inside guard
+atoms.  For $\mathsf{vmap}_g$ the axiom is $\forall n.\ \Ihat{\nat}(n)
+\to \forall v.\ \Ihat{\vect}(v,n) \to
+\Ihat{\vect}(\Ihat{\mathsf{vmap}_g}(n,v), n)$ --- index preservation,
+for free, from the type.
+\end{example}
+
+\subsection{Structural axioms: the ford of a family}
+\label{sec:translation-structural}
+
+\begin{definition}[Emitted theory]
+\label{def:theory}
+The first-order theory $\ThE$ consists of the following axioms.
+\begin{enumerate}[leftmargin=2em]
+\item For each datatype $I : (\tup{\sigma}) \to \Set$ with constructors
+  $\wcns{c}_i : \forall \tup{y}{:}\tup{A}_i.\ \varphi_{i1} \Rightarrow
+  \dots \Rightarrow \varphi_{i\ell_i} \Rightarrow I(\tup{t}_i)$:
+  \begin{itemize}
+  \item (\emph{constructor typing})\ \ for each $i$,
+    \[
+      \forall \tup{y}.\ \textstyle\bigwedge_j \guard{A_{ij}}{y_j} \to
+      \bigwedge_l \F{\varphi_{il}} \to
+      \Ihat{I}\bigl(\Ihat{\wcns{c}}_i(\tup{y}),\,
+        \compf(\erase{t_{i1}}), \dots, \compf(\erase{t_{im}})\bigr);
+    \]
+  \item (\emph{inversion, forded})
+    \begin{multline*}
+      \forall w\,\tup{z}.\ \Ihat{I}(w, \tup{z}) \to
+      \bigvee_i \exists \tup{y}.\
+      \textstyle\bigwedge_j \guard{A_{ij}}{y_j} \wedge
+      \bigwedge_l \F{\varphi_{il}} \wedge {}\\
+      w \feq \Ihat{\wcns{c}}_i(\tup{y}) \wedge
+      \textstyle\bigwedge_{h=1}^{m} z_h \feq \compf(\erase{t_{ih}});
+    \end{multline*}
+  \item (\emph{injectivity})\ \
+    $\forall \tup{y}\,\tup{y}'.\ \Ihat{\wcns{c}}_i(\tup{y}) \feq
+     \Ihat{\wcns{c}}_i(\tup{y}') \to \bigwedge_j y_j \feq y'_j$ \ for
+     each $i$ with $r_i > 0$;
+  \item (\emph{discrimination})\ \
+    $\forall \tup{y}\,\tup{y}'.\ \neg\bigl(\Ihat{\wcns{c}}_i(\tup{y})
+     \feq \Ihat{\wcns{c}}_j(\tup{y}')\bigr)$ \ for all $i \neq j$.
+  \end{itemize}
+\item For each inductive predicate $J$ with clauses $\wcns{k}_j : \forall
+  \tup{x}{:}\tup{\tau}_j.\ \varphi_{j1} \to \dots \to \varphi_{j\ell_j}
+  \to J(\tup{u}_j)$:
+  \begin{itemize}
+  \item (\emph{clause})\ \
+    $\forall \tup{x}.\ \bigwedge_i \guard{\tau_{ji}}{x_i} \to
+     \F{\varphi_{j1}} \to \dots \to \F{\varphi_{j\ell_j}} \to
+     \Ihat{J}(\compf(\erase{\tup{u}_j}))$;
+  \item (\emph{case analysis})\ \
+    $\forall \tup{z}.\ \Ihat{J}(\tup{z}) \to \bigvee_j \exists
+     \tup{x}.\ \bigwedge_i \guard{\tau_{ji}}{x_i} \wedge \bigwedge_i
+     \F{\varphi_{ji}} \wedge \bigwedge_h z_h \feq
+     \compf(\erase{u_{jh}})$.
+  \end{itemize}
+\item For each term definition $c \defeq t : \tau$: the equations,
+  pointer axioms and auxiliary axioms emitted by compiling $\erase{t}$
+  (\cref{def:compile}), and the specification axiom $\specf(c)$ if
+  $\tau \in \Sfrag$.
+\item For each lemma $c \defeq \pi : \varphi$ with $\varphi \in \Sfrag$:
+  the \emph{premise axiom} $\F{\varphi}$.
+\item The auxiliary axioms emitted by the computations of $\F{G}$ and of
+  the guard formulas and $\Ff$-images of declarations (via the
+  complex-head clauses of $\compf$ on embedded terms).
+\end{enumerate}
+The \emph{translation of the problem} $(\Env, G)$ is the pair
+$(\ThE, \F{G})$.
+\end{definition}
+
+The forded inversion axiom is the first-order image of the forded
+declaration: it quantifies over an \emph{arbitrary} index tuple
+$\tup{z}$ --- the whole aperture, in McBride's phrase --- and each
+disjunct carries, beside the constructor equation and payload, the index
+equations $z_h \feq \compf(\erase{t_{ih}})$ that recover specificity.
+The predicate case-analysis axiom (present already in the companion
+paper) is the same shape one level down --- predicates have no element,
+so the constructor equation is absent; this is why indexed inductive
+\emph{predicates} required no new mechanism there, while indexed
+\emph{datatypes} do.  Note also the division of labour inherited from
+the companion paper: exhaustiveness lives \emph{only} in the guarded
+inversion axiom; the defining equations of item 3 make no such claim.
+
+\begin{example}[The running families, translated]
+\label{ex:running-axioms}
+For $\vect$ (constructor typing, then inversion):
+\begin{gather*}
+  \Ihat{\vect}(\Ihat{\csvnil}, \Ihat{\csO}), \qquad
+  \forall n\,a\,v.\ \Ihat{\nat}(n) \to \guard{A}{a} \to
+    \Ihat{\vect}(v, n) \to
+    \Ihat{\vect}\bigl(\Ihat{\csvcons}(n,a,v),\, \Ihat{\csS}(n)\bigr),\\
+  \begin{multlined}
+  \forall w\,z.\ \Ihat{\vect}(w, z) \to
+  \bigl(w \feq \Ihat{\csvnil} \wedge z \feq \Ihat{\csO}\bigr) \vee{}\\
+  \exists n\,a\,v.\ \bigl(\Ihat{\nat}(n) \wedge \guard{A}{a} \wedge
+    \Ihat{\vect}(v,n) \wedge
+    w \feq \Ihat{\csvcons}(n,a,v) \wedge z \feq \Ihat{\csS}(n)\bigr),
+  \end{multlined}
+\end{gather*}
+plus injectivity for $\csvcons$ and discrimination
+$\Ihat{\csvnil} \not\feq \Ihat{\csvcons}(n,a,v)$.  For
+$\mathsf{rfl}_{\varphi_0}$:
+\[
+  \F{\varphi_0} \to \Ihat{\mathsf{rfl}}(\Ihat{\wcns{RT}}, \Ihat{\cstrue}),
+  \qquad
+  \F{\neg\varphi_0} \to \Ihat{\mathsf{rfl}}(\Ihat{\wcns{RF}}, \Ihat{\csfalse}),
+\]
+\begin{multline*}
+  \forall w\,b.\ \Ihat{\mathsf{rfl}}(w, b) \to
+  \bigl(\F{\varphi_0} \wedge w \feq \Ihat{\wcns{RT}} \wedge b \feq
+  \Ihat{\cstrue}\bigr) \vee{}\\
+  \bigl(\F{\neg\varphi_0} \wedge w \feq \Ihat{\wcns{RF}} \wedge b \feq
+  \Ihat{\csfalse}\bigr),
+\end{multline*}
+with $\Ihat{\wcns{RT}} \not\feq \Ihat{\wcns{RF}}$: the propositional
+payloads and the index equations sit side by side in the disjuncts ---
+``index equations are just more propositional payload.''  For
+$\mathsf{bnd}$, inversion is
+$\forall w\,z.\ \Ihat{\mathsf{bnd}}(w,z) \to \exists n\,k.\,
+\Ihat{\nat}(n) \wedge \Ihat{\nat}(k) \wedge
+\Ihat{\mathsf{lt}}(k,n) \wedge w \feq \Ihat{\wcns{B}}(n,k) \wedge z
+\feq n$, which \cref{lem:n-one} simplifies by solving $n \defeq z$.
+For the predicate $\mathsf{le}$, the case-analysis axiom is
+\begin{multline*}
+  \forall z_1 z_2.\ \Ihat{\mathsf{le}}(z_1,z_2) \to
+  \exists n.\,\bigl(\Ihat{\nat}(n) \wedge z_1 \feq n \wedge z_2 \feq
+  n\bigr) \vee{}\\
+  \exists n\,m.\,\bigl(\Ihat{\nat}(n) \wedge \Ihat{\nat}(m) \wedge
+  \Ihat{\mathsf{le}}(n,m) \wedge z_1 \feq n \wedge z_2 \feq
+  \Ihat{\csS}(m)\bigr),
+\end{multline*}
+the classical inversion principle.
+\end{example}
+
+\begin{example}[Empty instances refute for free]
+\label{ex:fin-empty}
+No axiom asserts any instance inhabited; empty instances are refutable.
+From $\Ihat{\Fin}(w, \Ihat{\csO})$, the inversion axiom for $\Fin$
+yields a disjunction whose every disjunct contains an equation
+$\Ihat{\csO} \feq \Ihat{\csS}(n)$, refuted by discrimination for $\nat$;
+hence $\ThE \provesfol \neg \exists w.\ \Ihat{\Fin}(w, \Ihat{\csO})$,
+and a goal $\F{\forall x{:}\Fin(\csO).\ \varphi} = \forall w.\
+\Ihat{\Fin}(w,\Ihat{\csO}) \to \F{\varphi}$ is provable outright.  The
+same one-step pattern refutes $\Ihat{\vect}(\csvnil\text{-form},
+\Ihat{\csS}(n))$-style hypotheses.  Contrast the hazard class of
+selector/rank axioms on degenerate instances (Verus \#1366
+\cite{Verus1366}): the theory of \cref{def:theory} contains no axiom
+whose \emph{hypothesis-free} content mentions an arbitrary instance, so
+empty instances can only make guards false, never derive new equations.
+\end{example}
+
+\begin{example}[A user-declared equality]
+\label{ex:eq-pred}
+For $\mathsf{eq}_\sigma$ of \cref{ex:declarations}, the emitted axioms
+are the clause
+$\forall x.\ \guard{\sigma}{x} \to \Ihat{\mathsf{eq}_\sigma}(x,x)$ and
+the case analysis $\forall z_1 z_2.\ \Ihat{\mathsf{eq}_\sigma}(z_1,z_2)
+\to \exists x.\ \guard{\sigma}{x} \wedge z_1 \feq x \wedge z_2 \feq x$,
+which \cref{lem:n-one} simplifies to $\forall z_1 z_2.\
+\Ihat{\mathsf{eq}_\sigma}(z_1,z_2) \to \guard{\sigma}{z_1} \wedge z_2
+\feq z_1$.  Thus the declared equality implies the primitive $\feq$
+\emph{and} membership in $\sigma$, while $\F{a =_\sigma b} =
+\compf(\erase{a}) \feq \compf(\erase{b})$ is bare untyped equality; both
+directions of the correspondence are first-order derivable under the
+guard of $\sigma$.  A user-written transport through
+$\mathsf{eq}_\sigma$ --- the $\tscase{}{}{}{}$ former --- erases
+(\cref{def:erasure}), so a definition
+$c \defeq \lambda x\,y{:}\sigma.\ \lambda e{:}\mathsf{eq}_\sigma(x,y).\
+\lambda w{:}\tau[x].\ \tscase{\mathsf{eq}_\sigma}{e}{\tup{z}.\tau[z_2]}{.w}$
+compiles to the single unguarded equation $\forall x\,y\,w.\
+\Ihat{c}(x,y,w) \feq w$ together with its specification axiom
+\[
+  \forall x\,y.\ \guard{\sigma}{x} \to \guard{\sigma}{y} \to
+  \forall w.\ \Ihat{\mathsf{eq}_\sigma}(x,y) \to \guard{\tau[x]}{w} \to
+  \guard{\tau[y]}{\Ihat{c}(x,y,w)}.
+\]
+This closes, in the idealised setting, the implementation gap in which
+a user-written match on an equality proof receives no definitional
+axiom at all while a fixed list of library transport constants is
+special-cased (\cref{sec:intro-impl}); the soundness of the unguarded
+equation is exactly the business of \cref{sec:formulas-uip}.
+\end{example}
+
+\subsection{Forced-argument simplification}
+\label{sec:translation-none}
+
+The inversion and case-analysis axioms frequently contain existentially
+quantified variables that some index equation solves outright --- the
+image of McBride's coalescence \cite{McBride1999} and of the
+forced-argument analysis of Brady et al.\
+\cite{BradyEtAl2004,SozeauMangin2019}.  Eliminating them is a
+first-order equivalence, not a soundness matter:
+
+\begin{lemma}[Solving forced equations]
+\label{lem:n-one}
+Let $\Phi(\tup{y})$ be a first-order formula, $y_j$ one of the
+variables, and $z$ a term not containing any $y$.  Then
+\[
+  \provesfol\ \Bigl(\exists \tup{y}.\ z \feq y_j \wedge \Phi(\tup{y})
+  \Bigr) \leftrightarrow \exists \tup{y} \setminus y_j.\
+  \Phi(\tup{y})[z/y_j],
+\]
+and the same holds with the equation oriented $y_j \feq z$, and under
+any prefix of universal quantifiers and implications.  Consequently,
+replacing any disjunct of an inversion or case-analysis axiom by its
+solved form yields a logically equivalent axiom, and \cref{thm:soundness}
+is unaffected by performing any number of such replacements.
+\end{lemma}
+
+\begin{proof}
+Standard: left to right, instantiate the conjunct and rewrite; right to
+left, witness $y_j \defeq z$.  Both directions are derivations in pure
+first-order logic with equality, so the replacement preserves logical
+equivalence of the whole axiom (replacement of equivalents), and a
+theory with an axiom replaced by an equivalent proves the same formulas.
+\end{proof}
+
+\begin{remark}
+After solving, the $\mathsf{bnd}$ inversion of \cref{ex:running-axioms}
+becomes $\forall w\,z.\ \Ihat{\mathsf{bnd}}(w,z) \to \exists k.\
+\Ihat{\nat}(z) \wedge \Ihat{\nat}(k) \wedge \Ihat{\mathsf{lt}}(k,z)
+\wedge w \feq \Ihat{\wcns{B}}(z,k)$ --- the refinement-style unfolding
+with no existential residue on the index.  Which equations are solvable
+is exactly the forced-argument analysis; the translation may apply
+\cref{lem:n-one} greedily (each application removes one quantifier) and
+the model-side soundness statement is untouched.  Unsolved equations ---
+non-variable patterns like $z \feq \Ihat{\csS}(n)$, non-linear
+occurrences, defined-function images like $z \feq
+\Ihat{\mathsf{add}}(m,n)$ --- simply remain, as they must
+(\cref{rem:slime}).
+\end{remark}
+
+\begin{remark}[Green slime, stated not solved]
+\label{rem:slime}
+Nothing in \cref{def:theory} requires index terms to be
+constructor-headed.  A family $\mathsf{stree}$ with $\wcns{node} :
+\forall (x\,y{:}\nat)(l{:}\mathsf{stree}(x))(r{:}\mathsf{stree}(y)).\
+\mathsf{stree}(\csS(\mathsf{add}\ x\ y))$ contributes the inversion
+disjunct $\dots \wedge z \feq
+\Ihat{\csS}(\Ihat{\mathsf{add}}(x,y))$, next to which the compilation
+of $\mathsf{add}$ has already placed its two defining equations.  An
+ATP confronted with a hypothesis $\Ihat{\mathsf{stree}}(w,
+\Ihat{\csS}(\Ihat{\csO}))$ derives $\Ihat{\csS}(\Ihat{\mathsf{add}}(x,y))
+\feq \Ihat{\csS}(\Ihat{\csO})$, then $\Ihat{\mathsf{add}}(x,y) \feq
+\Ihat{\csO}$ by injectivity of $\Ihat{\csS}$, and can close or constrain
+the branch by superposition with $\mathsf{add}$'s equations and $\nat$'s
+inversion --- reasoning that elaboration-time unification, for which
+$\mathsf{add}$ is not a rigid symbol, cannot perform
+\cite{McBride2014,GoguenEtAl2006}.  The translation performs
+\emph{specialization by unification} nowhere; the prover performs it as
+ordinary equational inference, and the soundness proof
+(\cref{thm:env-validity}) is entirely indifferent to the shape of index
+terms.  No decidability claim is made or needed: with defined symbols
+in the signature the first-order theory of the term algebra is
+$\Pi^1_1$-complete \cite[Thm.~2]{KovacsEtAl2017}, and the translation
+targets refutational usefulness, not decision.
+\end{remark}
+
+\begin{remark}[Relation to the implementation]
+\label{rem:impl-sites}
+Each axiom family has a direct site in the CoqHammer pipeline: item 1's
+constructor typing and inversion generalize the existing
+declaration-level axioms from inductive predicates to indexed datatypes
+(the current translation emits them only behind an inhabitation atom);
+item 3's equations are the per-constructor case equations of the
+extraction branch, now specified to be emitted for indexed scrutinees
+unchanged; the guard clause of \cref{def:guard-F} is the removal of the
+classifier's indexed-family gate, with the index terms flowing into the
+guard atom's argument places.  The per-occurrence \emph{expansion} of
+guard atoms --- the implementation's enum/subset/singleton
+classifications --- is \cref{sec:formulas-expansion}.
+\end{remark}

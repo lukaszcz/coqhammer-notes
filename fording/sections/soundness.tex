@@ -1,0 +1,657 @@
+\section{Soundness}
+\label{sec:soundness}
+
+This section proves the main results: every axiom of $\ThE$ holds in
+$\ML$, and consequently first-order provability of $\F{G}$ entails truth
+of $G$ in the semantics of \cref{sec:semantics}.
+
+\subsection{Guard disciplines}
+\label{sec:soundness-discipline}
+
+\begin{definition}[Context satisfaction]
+\label{def:ctx-sat}
+A valuation $\rho$ \emph{satisfies} a context $\Gamma$, written $\rho
+\vDash \Gamma$, if in telescope order: $\rho(x) \in \semr{\sigma}{\rho}$
+for $x : \sigma$; $\rho(X) : \Dom^n \to \{0,1\}$ for $X :
+(\tup{\sigma}) \to \Prop$; and $\pvr{\varphi}{\rho} = 1$ for $p :
+\varphi$.
+\end{definition}
+
+The treatment of $\tfix$ interpolates between ``$\rho(f)$ is anything''
+and ``$\rho(f)$ inhabits its type'' by a rank-restricted membership; the
+only change against \cite{Extraction2026} is that the rank of the guard
+argument is its \emph{element rank} in the guard family
+(\cref{def:rank}), which \cref{lem:index-reflection} makes well defined
+without reference to the indices at which the argument is used.
+
+\begin{lemma}[Flattening of telescopes]
+\label{lem:flatten}
+Let $T = \Pi x_1{:}\sigma_1 \dots \Pi x_n{:}\sigma_n.\tau$.  Then $F \in
+\semr{T}{\rho}$ iff for all $d_1, \dots, d_n$ chosen successively with
+$d_i \in \semr{\sigma_i}{\rho[x_1 \mapsto d_1, \dots, x_{i-1} \mapsto
+d_{i-1}]}$ we have $F \cdot d_1 \cdots d_n \in
+\semr{\tau}{\rho[\tup{x} \mapsto \tup{d}\,]}$.
+\end{lemma}
+
+\begin{proof}
+Unfold \cref{def:interp} $n$ times.
+\end{proof}
+
+\begin{definition}[Rank-restricted interpretation]
+\label{def:rank-restricted}
+Let $T = \Pi x_1{:}\sigma_1 \dots \Pi x_n{:}\sigma_n.\tau$ be a fix
+type with guard position $k$, $\sigma_k = I(\tup{v})$, and let $m \in
+\mathbb{N}$.  Define $\semr{T}{\rho}^{k, <m}$ as the set of $F \in
+\Dom$ such that for all successively chosen $d_1, \dots, d_n$ as in
+\cref{lem:flatten} with additionally $\rank{I}{d_k} < m$:
+\[
+  F \cdot d_1 \cdots d_n \in \semr{\tau}{\rho[\tup{x} \mapsto
+  \tup{d}\,]}.
+\]
+(The rank is defined: the chain condition places $d_k$ in
+$\semr{I(\tup{v})}{\rho[\dots]}$, so $(\cdot, d_k) \in \semr{I}{}$.)  By
+\cref{lem:flatten} and finiteness of ranks, $\semr{T}{\rho} =
+\bigcap_{m} \semr{T}{\rho}^{k,<m}$, and $\semr{T}{\rho}^{k,<m}$ is
+antitone in $m$.
+\end{definition}
+
+\begin{definition}[Guard discipline]
+\label{def:discipline}
+A \emph{guard discipline} $\mathcal{D}$ over $\Gamma$ is a finite set of
+triples $(f, V_f, m_f)$ where the $f$ are pairwise distinct term
+variables declared in $\Gamma$ with fix types $T_f$ (guard position
+$k_f$, guard family $I_f$), $V_f$ is a set of term variables declared in
+$\Gamma$ whose types are occurrences of $I_f$, and $m_f \in \mathbb{N}$.
+A phrase $t$ \emph{respects} $\mathcal{D}$ if for each $(f, V_f, m_f)
+\in \mathcal{D}$, every occurrence of $f$ in $t$ lies at the head of an
+application spine $f\,a_1 \cdots a_{n_f}$ occurring as a subterm of $t$,
+with $a_{k_f} \in V_f$.  A valuation $\rho$ satisfies $\Gamma$
+\emph{under} $\mathcal{D}$, written $\rho \vDash_{\mathcal{D}} \Gamma$,
+if $\rho$ satisfies all declarations of $\Gamma$ as in
+\cref{def:ctx-sat} except that for each $(f, V_f, m_f) \in \mathcal{D}$
+only $\rho(f) \in \semr{T_f}{\rho}^{k_f, < m_f}$ is required, and
+additionally $\rank{I_f}{\rho(y)} < m_f$ for every $y \in V_f$.
+\end{definition}
+
+\begin{lemma}[Locality of respect]
+\label{lem:respect-local}
+Let $t$ respect $\mathcal{D}$ and let $s$ be a subterm of $t$ occurring
+in a non-applied position (any position other than the function part of
+an application).  Then $s$ respects $\mathcal{D}$.
+\end{lemma}
+
+\begin{proof}
+As in \cite{Extraction2026}: if the witnessing spine of an occurrence of
+$f$ in $s$ were not contained in $s$, then $s$ would be a proper prefix
+of that spine and hence occur applied, contradicting the assumption.
+\end{proof}
+
+\subsection{The fundamental lemma}
+\label{sec:soundness-fundamental}
+
+Throughout this subsection we assume the \emph{environment hypothesis}
+for the fixed environment $\Env$ (discharged in
+\cref{thm:env-validity}):
+\begin{itemize}[leftmargin=2em]
+\item[(H)] for every term definition $c \defeq t : \tau_c$ in $\Env$,
+  $\cls{c} \in \semr{\tau_c}{}$; and for every lemma $c \defeq \pi :
+  \varphi_c$ in $\Env$, $\pv{\varphi_c} = 1$.
+\end{itemize}
+
+We use the simultaneous form of \cref{lem:sem-subst} throughout: for a
+simultaneous substitution of terms $\tup{a}$ for distinct variables
+$\tup{x}$, $\semr{\sigma[\tup{a}/\tup{x}]}{\rho} =
+\semr{\sigma}{\rho[\tup{x} \mapsto \sem{\tup{a}}_\rho]}$, obtained from
+the single-variable form by $\alpha$-renaming to fresh variables and
+iterating; likewise for terms and propositions.
+
+\begin{lemma}[Fundamental lemma]
+\label{lem:fundamental}
+Assume (H).  Let $\mathcal{D}$ be a guard discipline over $\Gamma$ and
+$\rho \vDash_{\mathcal{D}} \Gamma$.
+\begin{enumerate}[leftmargin=2em]
+\item If $\Gamma \vdash t : \sigma$ and $t$ respects $\mathcal{D}$, then
+  $\sem{t}_\rho \in \semr{\sigma}{\rho}$.
+\item If $\Gamma \vdash \pi : \varphi$ and $\pi$ respects $\mathcal{D}$,
+  then $\pvr{\varphi}{\rho} = 1$.
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}
+By induction on the size of the typing derivation, mutually for (1) and
+(2).  We freely use \cref{lem:sem-basic} (weakening),
+\cref{lem:sem-subst} (semantic substitution, in simultaneous form),
+\cref{lem:conv-inv} (conversion invariance, which handles the two
+conversion rules), and \cref{lem:respect-local} to propagate the
+discipline to subphrases; types, propositions and predicate expressions
+contain no applied occurrences of disciplined variables in well-formed
+judgements, by the same locality argument.  When extending $\rho$ at
+bound variables we $\alpha$-rename so that disciplined variables,
+$V_f$-variables and context variables are not shadowed.
+
+\emph{Variables, constants.}  If $t = x$ is not disciplined, $\rho(x)
+\in \semr{\sigma}{\rho}$ by $\rho \vDash_{\mathcal{D}} \Gamma$; a bare
+disciplined $f$ does not respect $\mathcal{D}$, so this case cannot
+arise for it.  For a term constant, $\sem{c}_\rho = \cls{c} \in
+\semr{\tau_c}{}$ by (H), the $\delta$-rule and weakening; for a lemma
+constant in (2), directly by (H).
+
+\emph{Disciplined spines.}  Suppose $t = f\,a_1 \cdots a_j$ with $(f,
+V_f, m_f) \in \mathcal{D}$ and $j \geq n_f$ (respect makes $f\,a_1
+\cdots a_{n_f}$ a spine of $t$), and let $T_f = \Pi
+x_1{:}\sigma_1 \dots \Pi x_{n_f}{:}\sigma_{n_f}.\tau$.  The typing
+derivation decomposes into $j$ applications; by induction hypothesis
+(1) applied to each argument (which respects $\mathcal{D}$ by
+\cref{lem:respect-local}), $d_i \defeq \sem{a_i}_\rho \in
+\semr{\sigma_i}{\rho[x_1 \mapsto d_1, \dots]}$ for $i \le n_f$, the
+intermediate assignments being handled by semantic substitution as in
+the application case below.  By respect, $a_{k_f} \in V_f$, so
+$\rank{I_f}{d_{k_f}} = \rank{I_f}{\rho(a_{k_f})} < m_f$; since
+$\rho(f) \in \semr{T_f}{\rho}^{k_f, <m_f}$,
+\[
+  \sem{f\,a_1 \cdots a_{n_f}}_\rho = \rho(f) \cdot d_1 \cdots d_{n_f}
+  \in \semr{\tau}{\rho[\tup{x} \mapsto \tup{d}\,]}
+  = \semr{\subst{\tau}{\tup{a}}{\tup{x}}}{\rho},
+\]
+the last step by semantic substitution; remaining arguments $a_{n_f+1},
+\dots, a_j$ are absorbed by the application case.
+
+\emph{Applications and abstractions.}  For $t\,a$ with head not
+disciplined: the function part respects $\mathcal{D}$ (its disciplined
+occurrences have their spines within it, by the argument of
+\cref{lem:respect-local} applied to the maximal spine decomposition),
+so by the induction hypotheses $\sem{t}_\rho \in \semr{\Pi
+x{:}\sigma.\tau}{\rho}$ and $\sem{a}_\rho \in \semr{\sigma}{\rho}$,
+whence $\sem{t\,a}_\rho = \sem{t}_\rho \cdot \sem{a}_\rho \in
+\semr{\tau}{\rho[x \mapsto \sem{a}_\rho]} =
+\semr{\subst{\tau}{a}{x}}{\rho}$.  For $t\,\pi$: $\erase{t\,\pi} =
+\erase{t}$; induction hypothesis (2) gives $\pvr{\varphi}{\rho} = 1$,
+so induction hypothesis (1) and the clause for $\semr{\varphi \to
+\tau}{\rho}$ conclude.  For $\lambda x{:}\sigma.t$ and $e \in
+\semr{\sigma}{\rho}$: $\sem{\lambda x{:}\sigma.t}_\rho \cdot e =
+\cls{(\lambda x.\erase{t}^\rho)\,\hat{e}} = \sem{t}_{\rho[x \mapsto
+e]}$ (one $\beta$-step), which lies in $\semr{\tau}{\rho[x \mapsto e]}$
+by the induction hypothesis.  For $\lambda p{:}\varphi.t$: if
+$\pvr{\varphi}{\rho} = 1$ then $\rho \vDash_{\mathcal{D}} \Gamma,
+p{:}\varphi$ and $\sem{\lambda p{:}\varphi.t}_\rho = \sem{t}_\rho \in
+\semr{\tau}{\rho}$ by the induction hypothesis, as the clause for
+$\varphi \to \tau$ requires.
+
+\emph{Constructors.}  Let $t = \wcns{c}_i(\tup{a}; \tup{\pi})$ with the
+typing premises of \cref{fig:terms}, so the displayed type is
+$I(\tup{t}_i[\tup{a}/\tup{y}])$.  Let $\rho_0 \defeq [\tup{y} \mapsto
+\sem{\tup{a}}_\rho]$.  By induction hypothesis (1) on each $a_j$ and
+semantic substitution, $\sem{a_j}_\rho \in
+\semr{A_{ij}[\tup{a}_{<j}/\tup{y}_{<j}]}{\rho} =
+\semr{A_{ij}}{\rho_0}$; for recursive $j$ with $A_{ij} =
+I(\tup{v}_{ij})$ this reads $(\sem{\tup{v}_{ij}}_{\rho_0},
+\sem{a_j}_\rho) \in \semr{I}{}$.  By induction hypothesis (2) on each
+$\pi_l$ and semantic substitution,
+$\pvr{\varphi_{il}}{\rho_0} =
+\pvr{\varphi_{il}[\tup{a}/\tup{y}]}{\rho} = 1$.  By
+\cref{lem:index-reflection}(5),
+\[
+  \bigl(\sem{\tup{t}_i}_{\rho_0},\, \cls{\wcns{c}_i(\tup{e})}\bigr) \in
+  \semr{I}{},
+  \qquad \text{where } \cls{\wcns{c}_i(\tup{e})} = \sem{t}_\rho,
+\]
+and $\sem{\tup{t}_i}_{\rho_0} =
+\sem{\tup{t}_i[\tup{a}/\tup{y}]}_{\rho}$ by semantic substitution, so
+$\sem{t}_\rho \in \semr{I(\tup{t}_i[\tup{a}/\tup{y}])}{\rho}$.
+
+\emph{Forded case.}  Let $t = \tcase{a}{\tup{z}.z.\tau}
+{\{\wcns{c}_i(\tup{y}_i;\tup{p}_i;\tup{q}_i) \Rightarrow t_i\}_i}$ with
+$\Gamma \vdash a : I(\tup{u})$, and displayed type $\tau[\tup{u}/\tup{z},
+a/z]$.  By induction hypothesis (1), $(\sem{\tup{u}}_\rho, \sem{a}_\rho)
+\in \semr{I}{}$.  \Cref{lem:index-reflection}(1) yields the unique
+decomposition: an $i$, classes $\cls{\tup{e}}$ with $\sem{a}_\rho =
+\cls{\wcns{c}_i(\tup{e})}$, the memberships and premise truths at
+$\rho_0 = [\tup{y}_i \mapsto \cls{\tup{e}}\,]$, and
+\begin{equation}
+  \sem{\tup{u}}_\rho = \sem{\tup{t}_i}_{\rho_0}.
+  \tag{$*$}
+\end{equation}
+Let $\rho' \defeq \rho[\tup{y}_i \mapsto \cls{\tup{e}}\,]$ ($\tup{y}_i$
+fresh).  Then $\rho' \vDash_{\mathcal{D}} \Gamma, \tup{y}_i{:}\tup{A}_i,
+\tup{p}_i{:}\tup{\varphi}_i, \tup{q}_i{:}(\tup{u} =_{\tup{\sigma}}
+\tup{t}_i)$: the $\Gamma$-part by weakening; the memberships and
+premises by the decomposition (their free variables are among earlier
+declarations and $\tup{y}_i$, on which $\rho'$ agrees with $\rho_0$);
+and for the index equations,
+$\pvr{u_h =_{\sigma_h} t_{ih}}{\rho'} = 1$ because $\sem{u_h}_{\rho'} =
+\sem{u_h}_\rho$ ($\tup{y}_i$ fresh for $u_h$) $=
+\sem{t_{ih}}_{\rho_0} = \sem{t_{ih}}_{\rho'}$ by ($*$).  On erasures,
+\[
+  \erase{t}^{\rho} = \mathsf{case}(\erase{a}^{\rho}; \dots)
+  \lconv \mathsf{case}(\wcns{c}_i(\tup{e}); \dots)
+  \lred \erase{t_i}^{\rho'},
+\]
+so $\sem{t}_\rho = \sem{t_i}_{\rho'}$.  By the induction hypothesis on
+the branch derivation ($t_i$ respects $\mathcal{D}$ by
+\cref{lem:respect-local}),
+\[
+  \sem{t_i}_{\rho'} \in
+  \semr{\tau[\tup{t}_i/\tup{z},\,
+    \wcns{c}_i(\tup{y}_i;\tup{p}_i)/z]}{\rho'}
+  = \semr{\tau}{\rho'[\tup{z} \mapsto \sem{\tup{t}_i}_{\rho'},\,
+      z \mapsto \sem{\wcns{c}_i(\tup{y}_i;\tup{p}_i)}_{\rho'}]}
+\]
+by semantic substitution.  Now $\sem{\tup{t}_i}_{\rho'} =
+\sem{\tup{t}_i}_{\rho_0} = \sem{\tup{u}}_\rho$ by ($*$), and
+$\sem{\wcns{c}_i(\tup{y}_i;\tup{p}_i)}_{\rho'} =
+\cls{\wcns{c}_i(\tup{e})} = \sem{a}_\rho$; by weakening on the remaining
+free variables of $\tau$ and semantic substitution backwards, the
+displayed set equals $\semr{\tau[\tup{u}/\tup{z}, a/z]}{\rho}$, as
+required.  This is the place where the index equations of the model ---
+\cref{lem:index-reflection}(1) --- convert the branch's type, stated at
+the constructor's indices, to the case's type, stated at the
+occurrence's indices; in CIC the same conversion is performed by index
+unification, and in the forded reading by rewriting along $\tup{q}_i$.
+
+\emph{Fix.}  Let
+$t = \tfix\,f{:}T.\,\lambda \tup{x}.\,\tcase{x_k}{\tup{z}.z.\tau_0}
+{\{\wcns{c}_i(\tup{y}_i;\tup{p}_i;\tup{q}_i) \Rightarrow b_i\}_i}$ with
+$T = \Pi x_1{:}\sigma_1 \dots \Pi x_n{:}\sigma_n.\tau$, $\sigma_k =
+I(\tup{v})$, $\tau = \tau_0[\tup{v}/\tup{z}, x_k/z]$, and let $F \defeq
+\sem{t}_\rho$.  Since $\semr{T}{\rho} = \bigcap_m
+\semr{T}{\rho}^{k,<m}$, it suffices to prove $F \in
+\semr{T}{\rho}^{k,<m}$ for all $m$, by strong induction on $m$ (the
+\emph{rank induction}, nested inside the main induction).
+
+Let $m$ be given with $F \in \semr{T}{\rho}^{k,<m'}$ for all $m' < m$,
+and let $d_1, \dots, d_n$ be a chain as in \cref{def:rank-restricted}
+with $m_0 \defeq \rank{I}{d_k} < m$.  Write $\rho_c \defeq \rho[x_1
+\mapsto d_1, \dots, x_{k-1} \mapsto d_{k-1}]$; the chain condition gives
+$(\sem{\tup{v}}_{\rho_c}, d_k) \in \semr{I}{}$.  By
+\cref{lem:index-reflection}(1) there are $i$ and $\cls{\tup{e}}$ with
+$d_k = \cls{\wcns{c}_i(\tup{e})}$, the memberships and premises at
+$\rho_0 = [\tup{y}_i \mapsto \cls{\tup{e}}\,]$, and
+$\sem{\tup{v}}_{\rho_c} = \sem{\tup{t}_i}_{\rho_0}$; by
+\cref{lem:index-reflection}(4), $\rank{I}{\cls{e_j}} < m_0$ for
+recursive $j$.  Unfolding one $\mu$-step, $n$ $\beta$-steps and one
+$\iota$-step on a representative of $F \cdot d_1 \cdots d_n$:
+\[
+  F \cdot d_1 \cdots d_n = \sem{b_i}_{\rho''}, \qquad
+  \rho'' \defeq \rho[f \mapsto F,\ \tup{x} \mapsto \tup{d},\
+  \tup{y}_i \mapsto \cls{\tup{e}}\,].
+\]
+Apply the \emph{main} induction hypothesis to the branch derivation
+\[
+  \Gamma, f{:}T, \tup{x}{:}\tup{\sigma},
+  \tup{y}_i{:}\tup{A}_i, \tup{p}_i{:}\tup{\varphi}_i,
+  \tup{q}_i{:}(\tup{v} =_{\tup{\sigma}'} \tup{t}_i)
+  \vdash b_i : \tau_0[\tup{t}_i/\tup{z},\,
+    \wcns{c}_i(\tup{y}_i;\tup{p}_i)/z]
+\]
+with discipline $\mathcal{D}' = \mathcal{D} \cup \{(f,
+\tup{y}_i^{\mathrm{rec}}, m_0)\}$ and valuation $\rho''$.  The premises
+hold: $b_i$ respects $\mathcal{D}'$ (for $f$ by the guard condition
+$\mathrm{grd}_k$; for the outer disciplines by
+\cref{lem:respect-local}); $\rho''(f) = F \in \semr{T}{\rho}^{k,<m_0}$
+by the rank induction hypothesis; $\rank{I}{\rho''(y)} < m_0$ for $y \in
+\tup{y}_i^{\mathrm{rec}}$ as noted; the $\tup{x}$- and
+$\tup{y}_i$-declarations are satisfied by the chain condition and the
+decomposition; the premise proofs $\tup{p}_i$ by the decomposition; and
+the index equations $\tup{q}_i$ by $\sem{\tup{v}}_{\rho''} =
+\sem{\tup{v}}_{\rho_c} = \sem{\tup{t}_i}_{\rho_0} =
+\sem{\tup{t}_i}_{\rho''}$ ($\tup{v}$ mentions only $x_1, \dots,
+x_{k-1}$).  The conclusion gives $\sem{b_i}_{\rho''} \in
+\semr{\tau_0[\tup{t}_i/\tup{z}, \wcns{c}_i(\tup{y}_i;\tup{p}_i)/z]}
+{\rho''}$; by semantic substitution this set is
+$\semr{\tau_0}{\rho''[\tup{z} \mapsto \sem{\tup{t}_i}_{\rho''}, z
+\mapsto d_k]} = \semr{\tau_0}{\rho''[\tup{z} \mapsto
+\sem{\tup{v}}_{\rho''}, z \mapsto \sem{x_k}_{\rho''}]} =
+\semr{\tau_0[\tup{v}/\tup{z}, x_k/z]}{\rho''} =
+\semr{\tau}{\rho[\tup{x} \mapsto \tup{d}\,]}$ (weakening: $f$,
+$\tup{y}_i$ do not occur in $\tau$).  This closes the rank induction,
+hence the fix case.
+
+\emph{Refinement formers.}  $\trefine{t}{\pi}$: by the induction
+hypotheses, $\sem{t}_\rho \in \semr{\sigma}{\rho}$ and
+$\pvr{\subst{\varphi}{t}{x}}{\rho} = 1$, i.e.\
+$\pvr{\varphi}{\rho[x \mapsto \sem{t}_\rho]} = 1$ by semantic
+substitution; since $\erase{\trefine{t}{\pi}} = \erase{t}$, this is
+membership in $\semr{\refty{x{:}\sigma}{\varphi}}{\rho}$.  $\tval{t}$:
+membership in the refinement interpretation includes membership in
+$\semr{\sigma}{\rho}$, and $\erase{\tval{t}} = \erase{t}$.  For
+$\tvalid{t}$ in (2): the payload component of the same membership,
+rewritten by semantic substitution using $\sem{\tval{t}}_\rho =
+\sem{t}_\rho$.
+
+\emph{Propositional singleton eliminations.}  $\tsplit{\pi}{p_1
+p_2.t}$: induction hypothesis (2) gives both conjuncts, so $\rho
+\vDash_{\mathcal{D}} \Gamma, p_1{:}\varphi_1, p_2{:}\varphi_2$;
+conclude by induction hypothesis (1) on $t$, the erasures agreeing.
+$\tcast{\pi}{z.\tau}{t}$: induction hypothesis (2) gives $\sem{a}_\rho
+= \sem{b}_\rho$, hence $\semr{\subst{\tau}{a}{z}}{\rho} =
+\semr{\tau}{\rho[z \mapsto \sem{a}_\rho]} =
+\semr{\subst{\tau}{b}{z}}{\rho}$; conclude by induction hypothesis (1)
+on $t$.  $\texfalso{\pi}{\sigma}$ (and $\texfalso{\pi}{\varphi}$ in
+(2)): vacuous --- induction hypothesis (2) would give
+$\pvr{\bot}{\rho} = 1$.
+
+\emph{Singleton elimination.}  Let $t =
+\tscase{J}{\pi}{\tup{z}.\tau}{\tup{p}.t_0}$ with $J$ a forced singleton
+(clause $\wcns{k} : \forall \tup{x}{:}\tup{\tau}.\ \varphi_1 \to \dots
+\to \varphi_\ell \to J(\tup{u}^0)$, solution $\jmath$), $\Gamma \vdash
+\pi : J(\tup{u})$, $\theta = [u_{\jmath(i)}/x_i]_i$, and displayed type
+$\tau[\tup{u}/\tup{z}]$.  By induction hypothesis (2),
+$\sem{\tup{u}}_\rho \in \pv{J}$; unfolding the least stage containing
+the tuple (the predicate analogue of
+\cref{lem:index-reflection}(1), immediate from \cref{def:interp} since
+$J$ has a single clause): there is $\rho_0 = [\tup{x} \mapsto \tup{d}\,]$
+with $d_i \in \semr{\tau_i}{\rho_0}$, $\pvr{\varphi_l}{\rho_0} = 1$ for
+every $l$ (for a recursive premise $J(\tup{v})$, membership of
+$\sem{\tup{v}}_{\rho_0}$ in an earlier stage gives exactly
+$\pvr{J(\tup{v})}{\rho_0} = 1$), and $\sem{\tup{u}}_\rho =
+\sem{\tup{u}^0}_{\rho_0}$.  By forcedness, for each $i$:
+\[
+  \sem{\theta(x_i)}_\rho = \sem{u_{\jmath(i)}}_\rho =
+  \bigl(\sem{\tup{u}^0}_{\rho_0}\bigr)_{\jmath(i)} =
+  \sem{u^0_{\jmath(i)}}_{\rho_0} = \sem{x_i}_{\rho_0} = d_i .
+\]
+Hence by semantic substitution $\pvr{\varphi_l[\theta]}{\rho} =
+\pvr{\varphi_l}{\rho[\tup{x} \mapsto \tup{d}\,]} =
+\pvr{\varphi_l}{\rho_0} = 1$, so $\rho \vDash_{\mathcal{D}} \Gamma,
+\tup{p}{:}\theta(\tup{\varphi})$, and the induction hypothesis (1) on
+$t_0$ gives $\sem{t_0}_\rho \in
+\semr{\tau[\theta(\tup{u}^0)/\tup{z}]}{\rho} = \semr{\tau}{\rho[\tup{z}
+\mapsto \sem{\theta(\tup{u}^0)}_\rho]}$.  Again by the displayed
+computation, $\sem{\theta(u^0_h)}_\rho = \sem{u^0_h}_{\rho_0} =
+\sem{u_h}_\rho$ for every $h$, so this set is
+$\semr{\tau[\tup{u}/\tup{z}]}{\rho}$; and $\sem{t}_\rho =
+\sem{t_0}_\rho$ since $\erase{t} = \erase{t_0}$.
+
+\emph{Discrimination.}  For $\mathsf{discr}(\pi)$ with $\Gamma \vdash
+\pi : \wcns{c}(\tup{a};\cdot) =_\sigma \wcns{d}(\tup{b};\cdot)$,
+$\wcns{c} \neq \wcns{d}$: induction hypothesis (2) would give
+$\cls{\wcns{c}(\erase{\tup{a}}^\rho)} =
+\cls{\wcns{d}(\erase{\tup{b}}^\rho)}$, contradicting
+\cref{cor:discrimination}(1); the case is vacuous --- no $\rho
+\vDash_{\mathcal{D}} \Gamma$ reaches it.
+
+\emph{Proof formers.}  The introduction and elimination rules for
+$\to$, $\wedge$, $\vee$, $\forall$, $\exists$, $\top$ and predicate
+quantification are sound for the truth-value semantics by direct
+computation: each rule matches the corresponding $\min$/$\max$ clause
+of \cref{def:interp}; the instantiation rules use semantic
+substitution (parts (1) and (3) of \cref{lem:sem-subst}); and the
+witnesses in $\mathsf{ecase}$ and predicate-quantifier elimination are
+semantic (an element $d \in \semr{\sigma}{\rho}$, a function
+$\kv{P}_\rho$), requiring no syntactic counterpart.
+$\mathsf{refl}_\sigma(a)$ is reflexivity of class equality;
+$\mathsf{rew}(\pi; z.\psi; \pi')$ uses $\sem{a}_\rho = \sem{b}_\rho$
+and semantic substitution exactly as $\tcast{}{}{}$.
+
+\emph{Predicate-constructor introduction.}  For
+$\wcns{k}(\tup{a};\tup{\pi})$: by induction hypothesis (1) and iterated
+semantic substitution along the dependent telescope, each
+$\sem{a_i}_\rho$ lies in $\semr{\tau_i}{\rho_0}$ where $\rho_0 =
+[\tup{x} \mapsto \sem{\tup{a}}_\rho]$; by induction hypothesis (2) the
+non-recursive premises are true at $\rho_0$ and each recursive premise
+$J(\tup{v})$ yields $\sem{\tup{v}}_{\rho_0} \in \pv{J}$, hence in some
+finite stage.  The stage construction (at the maximum of those stages)
+puts $\sem{\tup{u}}_{\rho_0}$ in $\pv{J}$, and semantic substitution
+identifies it with $\sem{\subst{\tup{u}}{\tup{a}}{\tup{x}}}_\rho$.
+
+\emph{Predicate induction.}  For $\tind{J}(\tup{z}.\psi; \tup{\pi};
+\pi_0)$ with $\pi_0 : J(\tup{a})$: by induction hypothesis (2),
+$\sem{\tup{a}}_\rho \in \pv{J}$ and $\pvr{\Xi_j(\tup{z}.\psi)}{\rho} =
+1$ for every clause $j$.  We show by strong induction on $s$ that every
+$\tup{d} \in \pv{J}^s$ satisfies $\pvr{\psi}{\rho[\tup{z} \mapsto
+\tup{d}\,]} = 1$: a tuple enters $\pv{J}^{s}$ (with $s = s'+1$) through
+some clause $j$ with witnesses $\tup{d}' \in
+\semr{\tup{\tau}_j}{}$-telescope, true non-recursive premises, and
+recursive-premise tuples in $\pv{J}^{s'}$; instantiating the semantic
+universal quantifiers and implications of $\pvr{\Xi_j}{\rho} = 1$ at
+these witnesses --- the inductive-hypothesis premises supplied by the
+inner induction at $s'$ --- yields
+$\pvr{\subst{\psi}{\tup{u}_j}{\tup{z}}}{\rho[\tup{x} \mapsto
+\tup{d}']} = 1$, which by semantic substitution is
+$\pvr{\psi}{\rho[\tup{z} \mapsto \tup{d}\,]} = 1$.  Conclude at
+$\sem{\tup{a}}_\rho$.
+
+\emph{Datatype induction.}  Let $\pi = \tind{I}(\tup{z}.z.\psi;
+(\tup{y}_i\,\tup{p}_i\,\tup{h}_i.\pi_i)_i; a)$ with $\Gamma \vdash a :
+I(\tup{u})$ and the clause derivations of \cref{fig:proofs2}.  By
+induction hypothesis (1), $(\sem{\tup{u}}_\rho, \sem{a}_\rho) \in
+\semr{I}{}$.  We show by strong induction on $\rank{I}{d}$ that every
+$(\tup{d}, d) \in \semr{I}{}$ satisfies $\pvr{\psi}{\rho[\tup{z} \mapsto
+\tup{d}, z \mapsto d]} = 1$.  Decompose $(\tup{d}, d)$ by
+\cref{lem:index-reflection}(1) into $i$, $\cls{\tup{e}}$, $\rho_0$; for
+each recursive $j$, $(\sem{\tup{v}_{ij}}_{\rho_0}, \cls{e_j}) \in
+\semr{I}{}$ with $\rank{I}{\cls{e_j}} < \rank{I}{d}$
+(\cref{lem:index-reflection}(4)), so the inner induction gives
+$\pvr{\psi}{\rho[\tup{z} \mapsto \sem{\tup{v}_{ij}}_{\rho_0}, z \mapsto
+\cls{e_j}]} = 1$, i.e., by semantic substitution and weakening,
+$\pvr{\psi[\tup{v}_{ij}/\tup{z}, y_{ij}/z]}{\rho'} = 1$ at $\rho' \defeq
+\rho[\tup{y}_i \mapsto \cls{\tup{e}}\,]$.  Together with the memberships
+and premise truths of the decomposition, $\rho' \vDash_{\mathcal{D}}$
+the clause context, so the main induction hypothesis (2) applied to
+$\pi_i$ gives $\pvr{\psi[\tup{t}_i/\tup{z},
+\wcns{c}_i(\tup{y}_i;\tup{p}_i)/z]}{\rho'} = 1$, which by semantic
+substitution is $\pvr{\psi}{\rho[\tup{z} \mapsto \tup{d}, z \mapsto d]}
+= 1$ (using $\sem{\tup{t}_i}_{\rho_0} = \tup{d}$ and
+$\sem{\wcns{c}_i(\tup{y}_i;\tup{p}_i)}_{\rho'} = d$).  Conclude at
+$(\sem{\tup{u}}_\rho, \sem{a}_\rho)$.
+\end{proof}
+
+\subsection{Validity of the emitted theory}
+\label{sec:soundness-validity}
+
+\begin{lemma}[Validity of specification axioms]
+\label{lem:spec-valid}
+Let $c \defeq t : \tau$ be a term definition with $\tau \in \Sfrag$, and
+suppose $\cls{c} \in \semr{\tau}{}$.  Then $\ML \vDash \specf(c)$.
+\end{lemma}
+
+\begin{proof}
+By induction on the type $\tau'$ in the recursion of \cref{def:spec},
+with the invariant: if
+$\rho$ assigns the accumulated variables, $v \defeq \cls{c\,\hat{e}_1
+\cdots \hat{e}_j}$ for representatives of the accumulated values, and
+$v \in \semr{\tau'}{\rho}$, then $\ML, \rho \vDash S(u; \tau')$.  The
+$\Pi$-case extends $\rho$ under a guard, which \cref{lem:coincidence}
+converts to a membership; the premise case uses \cref{lem:coincidence}
+for $\F{\varphi}$ and leaves the accumulator unchanged; the base case
+(datatype occurrence or refinement type) is \cref{lem:coincidence}(1)
+--- for a family occurrence this includes the index arguments of the
+final guard atom, whose denotations are the interpretations of the
+index terms by \cref{lem:comp-adequacy}.
+\end{proof}
+
+\begin{theorem}[Environment validity]
+\label{thm:env-validity}
+Let $\Env$ be a well-formed definitional environment with $\Sfrag$
+declarations, and $G$ a closed shallow goal.  Then:
+\begin{enumerate}[leftmargin=2em]
+\item (H) holds;
+\item $\ML \vDash \ThE$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(1) By induction on the position of the definition in $\Env$: the body
+of $c \defeq t : \tau_c$ is typed over the strict prefix, for which (H)
+holds by induction; \cref{lem:fundamental} with empty context,
+discipline and valuation gives $\sem{t}_{} \in \semr{\tau_c}{}$, and
+$\cls{c} = \sem{t}_{}$ by the $\delta$-rule.  Lemmas identically via
+part (2) of the fundamental lemma.
+
+(2) We check each axiom family of \cref{def:theory}.
+
+\emph{Compilation, pointer and auxiliary axioms}:
+\cref{lem:compile-sound}.
+
+\emph{Specification axioms}: \cref{lem:spec-valid}, using (1).
+
+\emph{Premise axioms}: (1) and \cref{lem:coincidence} at the empty
+valuation.
+
+\emph{Constructor typing} (datatypes): let $\tup{d}$ be an assignment of
+$\tup{y}$ with $\ML \vDash \bigwedge_j \guard{A_{ij}}{y_j} \wedge
+\bigwedge_l \F{\varphi_{il}}$ at $\tup{d}$.  By \cref{lem:coincidence},
+$d_j \in \semr{A_{ij}}{\rho_0}$ for every $j$ and
+$\pvr{\varphi_{il}}{\rho_0} = 1$ for every $l$, where $\rho_0 =
+[\tup{y} \mapsto \tup{d}\,]$ (for recursive $j$ the guard is the atom
+$\Ihat{I}(y_j, \compf(\erase{\tup{v}_{ij}}))$ and coincidence yields
+$(\sem{\tup{v}_{ij}}_{\rho_0}, d_j) \in \semr{I}{}$).  By
+\cref{lem:index-reflection}(5), $(\sem{\tup{t}_i}_{\rho_0},
+\Ihat{\wcns{c}}_i^{\ML}(\tup{d})) \in \semr{I}{}$, and by
+\cref{lem:comp-adequacy} the index arguments of the conclusion atom
+denote exactly $\sem{\tup{t}_i}_{\rho_0}$; hence the atom holds.
+
+\emph{Inversion} (datatypes): let $(d, \tup{d}) \in \Ihat{I}^{\ML}$,
+i.e.\ $(\tup{d}, d) \in \semr{I}{}$.  \Cref{lem:index-reflection}(1)
+yields $i$, $\cls{\tup{e}}$, $\rho_0$; instantiate the existentials of
+the $i$-th disjunct with $\cls{\tup{e}}$.  The guards and premise
+conjuncts hold by \cref{lem:coincidence} (memberships and truths of the
+decomposition); $w \feq \Ihat{\wcns{c}}_i(\tup{y})$ holds by the
+interpretation of $\Ihat{\wcns{c}}_i$; and each index equation $z_h
+\feq \compf(\erase{t_{ih}})$ holds because $d_h =
+(\sem{\tup{t}_i}_{\rho_0})_h$ and \cref{lem:comp-adequacy} identifies
+the right-hand side's denotation at the chosen witnesses with
+$\sem{t_{ih}}_{\rho_0}$.
+
+\emph{Injectivity and discrimination}: \cref{cor:discrimination}(1) ---
+at all elements of $\Dom$, with no guard.
+
+\emph{Predicate clause and case-analysis axioms}: as constructor typing
+and inversion one level down, exactly as in \cite{Extraction2026},
+using the stage construction of $\pv{J}$, \cref{lem:coincidence} and
+\cref{lem:comp-adequacy}.
+\end{proof}
+
+\subsection{Main theorem and corollaries}
+\label{sec:soundness-main}
+
+\begin{theorem}[Soundness]
+\label{thm:soundness}
+Let $\Env$ be a well-formed definitional environment with $\Sfrag$
+declarations and $G$ a closed shallow proposition over $\Env$.  If
+$\ThE \provesfol \F{G}$ then $\pv{G} = 1$: $G$ is true in the
+proof-irrelevant classical semantics of $\Env$.
+\end{theorem}
+
+\begin{proof}
+$\ML \vDash \ThE$ (\cref{thm:env-validity}); by soundness of classical
+first-order logic, $\ML \vDash \F{G}$; by \cref{lem:coincidence} at the
+empty valuation, $\pv{G} = 1$.
+\end{proof}
+
+\begin{corollary}[Consistency]
+\label{cor:consistency}
+$\ThE$ is consistent, for every well-formed definitional $\Env$ and
+goal $G$.  In particular no combination of the emitted axiom families
+--- across all declared families, instances and definitions --- can
+derive $\bot$.
+\end{corollary}
+
+\begin{proof}
+$\ML \vDash \ThE$ and $\ML \nvDash \bot$.  No consistency assumption on
+the source is needed: a definitional environment always has the model
+$\ML$.
+\end{proof}
+
+\begin{corollary}[Refutable goals are not provable]
+\label{cor:no-refutable}
+If $\vdash \pi : \neg G$ for some closed proof over $\Env$, then $\ThE
+\nvdash_{\mathrm{FOL}} \F{G}$; more generally $\ThE$ never proves both
+$\F{G}$ and $\F{\neg G}$.
+\end{corollary}
+
+\begin{proof}
+By \cref{lem:fundamental} (via \cref{thm:env-validity}(1)),
+$\pv{\neg G} = 1$, so $\pv{G} = 0$ and \cref{thm:soundness} applies
+contrapositively; for the second statement, $\ML$ satisfies every
+consequence of $\ThE$ and $\F{\neg G} = \F{G} \to \bot$.
+\end{proof}
+
+\begin{proposition}[Standardness on purely structural families]
+\label{prop:standard}
+Call a datatype $I$ \emph{purely structural} if its constructors have no
+premises and every non-recursive constructor argument type is an
+occurrence of a purely structural datatype declared earlier.  Then:
+\begin{enumerate}[leftmargin=2em]
+\item For every purely structural $I$ and $(\tup{d}, d) \in \semr{I}{}$,
+  $d$ is the class of a closed term built exclusively from constructors
+  of purely structural datatypes; and two such closed constructor terms
+  have the same class only if they carry the same constructor at the
+  root and componentwise equal-class arguments, so each class
+  determines its constructor tree over classes uniquely.
+\item For $\vect$ over a purely structural element type $A$, the map
+  \begin{multline*}
+    (a_1, \dots, a_n) \longmapsto\\
+    \Bigl(\cls{\csS^n(\csO)},\ \cls{\csvcons(\csS^{n-1}(\csO), \hat a_1,
+    \csvcons(\csS^{n-2}(\csO), \hat a_2, \dots, \csvnil \dots))}\Bigr)
+  \end{multline*}
+  (for representatives $\hat a_i$) is a bijection from the set of finite
+  sequences over $\semr{A}{}$ to $\semr{\vect}{}$; in particular
+  $\semr{\vect(\csS^n(\csO))}{}$ is in bijection with
+  $\semr{A}{}^{\,n}$, and $n \mapsto \cls{\csS^n(\csO)}$ is a bijection
+  $\mathbb{N} \to \semr{\nat}{}$.
+\end{enumerate}
+Consequently, for propositions whose quantifiers range over purely
+structural datatypes, $\pv{\cdot}$ is satisfaction in the corresponding
+standard structure of index-respecting finite trees.
+\end{proposition}
+
+\begin{proof}
+(1) By induction on declaration order and, within a datatype, on
+$\rank{I}{d}$: \cref{lem:index-reflection}(1) decomposes $d$ as
+$\cls{\wcns{c}_i(\tup{e})}$ with non-recursive components in
+interpretations of earlier purely structural datatypes (induction on
+declaration order) and recursive components of smaller rank (induction
+on rank); premises are absent.  Distinctness is
+\cref{cor:discrimination}(1) by induction on the terms.
+
+(2) Write $\Phi$ for the displayed map.  \emph{Well-definedness and
+injectivity}: the image element is a constructor term; injectivity of
+$\Phi$ follows from \cref{cor:discrimination}(1) by induction on
+sequence length, together with the injectivity of $n \mapsto
+\cls{\csS^n(\csO)}$ (also \cref{cor:discrimination}(1)).  \emph{Image in
+$\semr{\vect}{}$}: by induction on $n$ using
+\cref{lem:index-reflection}(5) and, for the index computation,
+$\sem{\csS\,n}_{[n \mapsto \cls{\csS^{n-1}(\csO)}]} =
+\cls{\csS^n(\csO)}$.  \emph{Surjectivity}: let $(\tup{d}, d) \in
+\semr{\vect}{}$ and induct on $\rank{\vect}{d}$.  If the decomposition
+is by $\csvnil$: $\tup{d} = (\sem{\csO}) = (\cls{\csO})$ and $d =
+\cls{\csvnil} = \Phi(\varepsilon)$.  If by $\csvcons$ with components
+$\cls{e_n}, \cls{e_a}, \cls{e_w}$: the recursive condition gives
+$(\cls{e_n}, \cls{e_w}) \in \semr{\vect}{}$ (the index tuple of the
+recursive argument is $(\sem{n}_{\rho_0}) = (\cls{e_n})$), so by the
+inner induction $\cls{e_w} = \Phi(a_2, \dots, a_n)$-image with
+$\cls{e_n} = \cls{\csS^{n-1}(\csO)}$; moreover $\cls{e_a} \in
+\semr{A}{}$, and $\tup{d} = (\sem{\csS\,n}_{\rho_0}) =
+(\cls{\csS^{n}(\csO)})$; hence $(\tup{d}, d) = \Phi(\cls{e_a}, a_2,
+\dots, a_n)$.  The bijection $\mathbb{N} \cong \semr{\nat}{}$ is the
+$m = 0$ instance, as in \cite{Extraction2026}.  The final claim unfolds
+\cref{def:interp} clause by clause under the bijections.
+\end{proof}
+
+\begin{remark}[Postulated axioms]
+\label{rem:axioms}
+If $\Env$ additionally contains postulates $c : \varphi$ (or $c :
+\sigma$) without bodies, all results relativise as in
+\cite{Extraction2026}: \cref{thm:env-validity} goes through
+provided each postulate is true in the semantics ($\pv{\varphi} = 1$;
+for a postulated constant, $\cls{c} \in \semr{\sigma}{}$ under the
+evident extension of $\ML$).  Excluded middle and proof irrelevance are
+true; functional extensionality is \emph{not}
+(\cref{rem:funext-leak}); a postulated inhabitant of an empty instance
+($c : \Fin(\csO)$) is not, and voids the guarantee --- which is the
+correct account of the corresponding SMT-datatype hazard
+(\cref{ex:fin-empty}): the danger is never the empty instance itself
+but an axiom asserting it inhabited.
+\end{remark}
+
+\begin{remark}[What is not claimed]
+\label{rem:not-claimed}
+\Cref{thm:soundness} does not claim $G$ is provable in $\CICi$: the
+semantics validates excluded middle, proof irrelevance and (as spent in
+the $\tscase{}{}{}{}$ case) uniqueness of identity proofs, so
+$\F{G}$ may be provable for $G$ true-but-unprovable.  This matches the
+design of the implemented tool, which runs classical provers and relies
+on reconstruction.  \Cref{sec:formulas-uip} localises the UIP debt
+precisely.
+\end{remark}

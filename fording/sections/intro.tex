@@ -1,0 +1,263 @@
+\section{Introduction}
+\label{sec:intro}
+
+A \emph{hammer} translates a goal of a proof assistant, together with a
+selection of library facts, into the input logic of automated theorem
+provers (ATPs), and reconstructs any proof the ATPs find
+\cite{BlanchetteEtAl2016qed}.  For proof assistants based on the Calculus
+of Inductive Constructions (CIC) --- Rocq (formerly Coq) and its relatives
+--- the reference tool is CoqHammer \cite{CzajkaKaliszyk2018,CoqHammer},
+whose target is untyped classical first-order logic (FOL).  The efficiency
+of such a translation hinges on it being \emph{shallow}
+\cite{Czajka2018}: source propositions must become first-order
+\emph{formulas} whose connectives, quantifiers and equalities are the
+native first-order ones, so that clausification, superposition and term
+indexing do real logical work on the translated problem, instead of
+simulating the object logic through an inhabitation predicate one bridge
+axiom at a time.
+
+A companion paper \cite{Extraction2026} carries this programme out for a
+monomorphic fragment of CIC with \emph{non-indexed} inductive datatypes:
+the translation of a definition is factored into \emph{program extraction}
+(the Letouzey-style erasure \cite{Letouzey2003,Letouzey2004} of the body,
+compiled to per-constructor rewrite equations) and \emph{specification
+extraction} (a realizability reading of the type as a first-order formula
+about the translated constant), and both components are proved sound
+against a single first-order model: a proof-irrelevant, classical term
+model over the erasure calculus whose domain deliberately contains
+ill-typed ``junk'' elements.  The model decides, uniformly, which guards
+are semantically mandatory and which may be dropped.
+
+That development stops at a well-marked boundary: its datatypes have no
+indices.  \emph{Indexed inductive families} --- length-indexed vectors
+$\vect\,A : \nat \to \Set$, finite sets $\Fin : \nat \to \Set$, bounded
+numbers, the ssreflect view type $\mathsf{reflect}\ P : \bool \to \Set$,
+and the user-declared equality-like and $\mathsf{le}$-like predicates ---
+are the workhorses of dependently typed libraries, and they are exactly
+the point where CIC's typing discipline diverges most sharply from
+first-order logic: the type of a constructor \emph{constrains} the indices
+at which it may appear, case analysis must \emph{unify} the indices of the
+scrutinee's type with those of each constructor, and eliminations of
+propositional families into computational content are governed by the
+singleton criterion, Streicher's K, and their refinements
+\cite{GoguenEtAl2006,CockxEtAl2014,GilbertEtAl2019}.  The present paper
+extends the companion's calculus, translation and soundness proof to
+indexed families, and settles the design questions specific to them.
+
+\subsection{The idea: fording}
+\label{sec:intro-idea}
+
+The mechanism is due to McBride \cite[\S 3.5]{McBride1999}, who named it
+after Henry Ford's ``any colour\,\dots\,so long as it is black'': a
+constructor of an indexed family,
+\[
+  \wcns{c} : \forall \tup{a} : \tup{A}.\ I\,\tup{t}(\tup{a}),
+\]
+is equivalent to a constructor of a \emph{non-indexed} family that accepts
+arbitrary indices $\tup{u}$ but carries equational premises restoring the
+lost specificity:
+\[
+  \wcns{c}^{\mathrm{Ford}} :
+  \forall \tup{u}.\ \forall \tup{a} : \tup{A}.\
+  (\tup{u} = \tup{t}(\tup{a})) \to I^{\mathrm{Ford}}\,\tup{u}.
+\]
+Index constraints thereby become \emph{propositional payload}, on the same
+footing as the refinement payloads $P\,x$ of subset types
+$\refty{x{:}A}{P\,x}$, which the companion translation already expands
+shallowly at every occurrence.  Every system that elaborates dependent
+pattern matching performs this reduction internally --- Coq's
+\texttt{inversion} \cite{CornesTerrasse1995,Monin2010}, the
+Goguen--McBride--McKinna translation of pattern matching to eliminators
+(``the equations on the indices are exactly those we must unify''
+\cite{GoguenEtAl2006}), Agda's unifier \cite{CockxEtAl2014,CockxDevriese2018},
+and the Equations package \cite{SozeauMangin2019}.  The present paper
+performs it in a translation to untyped first-order logic, \emph{per
+occurrence and per constructor}, and proves the result sound.
+
+Two classical obstacles make fording delicate inside type theory, and both
+dissolve in an untyped first-order target.  First, telescopic index
+equations relate terms whose \emph{types} are only equal after earlier
+equations have been substituted; stating them requires heterogeneous
+(``John Major'') equality, whose eliminator is exactly Streicher's K
+\cite{McBride1999,CockxEtAl2014}.  Untyped first-order equality states
+them directly.  Second, defined functions in index positions ---
+McBride's \emph{green slime} \cite{McBride2014} --- make elaboration-time
+unification stuck: $0 \feq \mathsf{plus}(m,n)$ is neither a positive nor
+a negative unification success because $\mathsf{plus}$ is not a rigid
+symbol.  A saturation prover simply \emph{keeps} the equation and reasons
+with the defining equations of $\mathsf{plus}$; specialization by
+unification becomes ordinary superposition, and branches that a
+type-theoretic elaborator must leave stuck can be closed by proof.  The
+translation of this paper accordingly never solves index constraints; it
+only states them.
+
+What does \emph{not} dissolve by itself is soundness.  The literature on
+translations of inductive types into untyped or weakly typed logics is a
+catalogue of documented accidents precisely at the three points this paper
+must get right: unguarded constructor-exhaustiveness bounds the
+cardinality of the whole untyped universe (Meng and Paulson's two-element
+universe \cite[\S 2.3]{MengPaulson2008}; the monotonicity analysis of
+\cite{BlanchetteEtAl2016} identifies exhaustiveness axioms as exactly the
+sentences that can never lose their guards); encoding a \emph{type-indexed}
+equality by the native untyped equality of the target lets an equation
+established at one index leak to another (the \fstar{} unsoundness
+\#1542 \cite{FStar1542}, where pointwise function equality proved at
+domain $\mathsf{nat}$ escaped to domain $\mathsf{int}$, yielding
+$\mathsf{False}$); and axioms that are individually plausible ---
+selector totality, rank/height orderings, box/unbox roundtrips --- can
+interact inconsistently on degenerate or empty instances (the Verus
+unsoundness \#1366 \cite{Verus1366}).  Our response to all three is the
+companion's discipline, extended: \emph{every} emitted axiom is proved
+valid in one fixed model, constructed once, so no combination of emitted
+axioms can be inconsistent (\cref{cor:consistency}), and the model
+arbitrates which guards are load-bearing.  Where a design variant is
+unsound, we do not merely avoid it: we prove its unsoundness inside the
+framework, as a specification for implementations
+(\cref{sec:formulas}).
+
+\subsection{Contributions}
+\label{sec:intro-contrib}
+
+This paper is self-contained: all definitions and proofs are given in
+full, including the parts shared with the companion paper
+\cite{Extraction2026}, which are re-developed here in their generalized
+form.  Concretely:
+
+\begin{enumerate}[leftmargin=2em]
+\item We define $\CICi$ (\cref{sec:calculus}), a stratified, monomorphic,
+  first-order fragment of CIC whose datatypes are \emph{indexed inductive
+  families} with dependent constructor telescopes and propositional
+  constructor premises, subsuming the non-indexed datatypes, refinement
+  types and indexed inductive predicates of the companion fragment.  Case
+  analysis on a family is \emph{forded}: each branch binds, besides the
+  constructor's arguments and premises, proofs of the index equations
+  $\tup{u} = \tup{t}_i(\tup{y}_i)$, so that dependently typed programming
+  idioms (impossible branches, index-directed results) are expressible
+  with first-order motives, without large elimination.  The calculus also
+  has elimination of \emph{index-determined} propositional singletons ---
+  the image of CIC's singleton elimination for equality-like families,
+  with McBride-style forcing in place of CIC's parameter side condition
+  --- and a constructor-discrimination proof former.
+\item We define the erasure of $\CICi$ into the untyped calculus $\lbox$
+  and prove the two syntactic pillars of extraction --- substitution
+  commutation and simulation of reduction --- together with confluence of
+  $\lbox$ (\cref{sec:lambdabox}, \cref{sec:confluence}).  Erasure is
+  index-blind; in particular proofs occurring \emph{inside index terms}
+  vanish, which is the translation-level form of canonicalizing erased
+  data to a single token \cite{Atkey2018,Werner2008}.
+\item We define the translation (\cref{sec:translation}).  Guard
+  predicates become $(1{+}m)$-ary --- the guard of an occurrence
+  $I(\tup{u})$ is the atom $\Ihat{I}(w, \compf(\erase{\tup{u}}))$, carrying
+  the translated indices --- and the structural axioms of a family are the
+  first-order image of its ford: constructor typing with index conclusions,
+  and a guarded \emph{inversion} axiom whose disjuncts carry constructor
+  payloads \emph{and index equations}.  Pattern-matching definitions
+  compile, unchanged, to unguarded per-constructor equations.  We prove
+  the forced-argument simplification (index equations solvable for a bare
+  variable are redundant) as a first-order equivalence
+  (\cref{lem:n-one}).
+\item We construct the model (\cref{sec:semantics}): the domain is again
+  the set of closed $\lbox$ terms modulo conversion, junk included; an
+  indexed family denotes a set of (index-tuple, element) pairs built in
+  stages.  The key new lemma is \emph{index reflection}
+  (\cref{lem:index-reflection}): every member of the interpretation
+  decomposes uniquely as a constructor form whose index tuple equals the
+  denotation of the constructor's index terms --- the semantic content of
+  fording, and the point where the model validates what uniqueness of
+  identity proofs validates in type theory.  Ranks become element ranks,
+  which index reflection makes well defined.
+\item We prove soundness (\cref{sec:soundness}): every axiom of the
+  emitted theory holds in the model (\cref{thm:env-validity}), first-order
+  provability of the translated goal implies truth of the goal in the
+  proof-irrelevant classical semantics (\cref{thm:soundness}), the theory
+  is consistent (\cref{cor:consistency}), and no refutable goal becomes
+  provable (\cref{cor:no-refutable}).  The fundamental lemma
+  (\cref{lem:fundamental}) is proved in full; its new cases --- forded
+  case analysis, singleton elimination, fixpoints over families --- are
+  exactly where index reflection is spent.  On premise-free families with
+  first-order arguments the model is standard: $\semr{\vect}{}$ at index
+  $n$ is in bijection with length-$n$ lists (\cref{prop:standard}).
+\item We settle the indexed-specific design questions
+  (\cref{sec:formulas}), each as a theorem about the model or the theory:
+  \begin{itemize}
+  \item the inversion axiom's guard is mandatory in a strong sense ---
+    for every family that specialises an index to a constructor form,
+    the unguarded axiom is \emph{inconsistent} with the discrimination
+    axioms, not merely unsound
+    (\cref{prop:unguarded-inconsistent});
+  \item the index arguments of guard predicates are mandatory: the
+    index-forgetting variant proves a goal that is false in the source
+    semantics --- the precise analogue of \fstar{} \#1542
+    (\cref{prop:index-dropping});
+  \item per-constructor match equations remain valid without any guard or
+    index premise, \emph{including} equations for statically impossible
+    branches; the index-premised variant is strictly weaker and both are
+    sound, so the choice is operational
+    (\cref{prop:match-equations,prop:premised-weaker}); pruning
+    rigidly clashing branches is sound and prunes only semantically dead
+    equations (\cref{prop:pruning});
+  \item per-occurrence inlining of the forded inversion disjunction ---
+    the shallow ``expansion'' of classified occurrences --- is sound in
+    both polarities and interderivable with the axiomatic form
+    (\cref{thm:expansion,prop:expansion-derivable});
+  \item index uniqueness ($\Ihat{I}(w,\tup{z}) \wedge \Ihat{I}(w,\tup{z}')
+    \to \tup{z} \feq \tup{z}'$) is a first-order consequence of the
+    emitted axioms, while injectivity of the type former itself is
+    neither expressible in the signature nor emitted --- as it must not
+    be, being anti-classical (\cref{prop:index-unique},
+    \cref{rem:hur});
+  \item the unconditional singleton collapse is the exact point where the
+    model's proof irrelevance is spent as uniqueness of identity proofs;
+    Werner's guarded singleton reduction is the premise-carrying
+    alternative, and both variants are sound (\cref{fact:uip},
+    \cref{prop:guarded-scase}).
+  \end{itemize}
+\item We re-verify the shallowness checklist of the companion paper on
+  the extended translation and extend it with an indexed-specific item:
+  index constraints arrive as first-order equations computed at
+  translation time --- never as unification problems, never as type-term
+  encodings, never through an inhabitation predicate
+  (\cref{sec:shallow}).
+\end{enumerate}
+
+\subsection{What soundness means here}
+\label{sec:intro-soundness}
+
+As in the companion paper, soundness is model-theoretic: if the emitted
+theory first-order proves the translated goal, the goal is true in a fixed
+proof-irrelevant, classical semantics of the source development
+(\cref{thm:soundness}).  This is the property with operational
+consequences for a hammer --- no refutable goal acquires a phantom proof,
+premise-selection learning is not poisoned, and the emitted theory is
+consistent --- while proof reconstruction inside the proof assistant
+remains the final arbiter of each individual proof.  The semantics
+validates excluded middle and proof irrelevance by construction (the ATPs
+are classical; erasure forgets proofs); consequently it also validates
+uniqueness of identity proofs, and \cref{sec:formulas-uip} makes precise
+where the translation spends that strength and what the corresponding
+reconstruction obligations are.  The converse property, completeness, is
+deliberately traded away; \cref{sec:limitations} delimits what is lost.
+
+\subsection{Relation to the implemented translation}
+\label{sec:intro-impl}
+
+$\CICi$ and its translation are an idealisation of a design for
+CoqHammer's translation pipeline, not a description of its current code.
+The current implementation refuses to classify indexed families for
+erasure-based treatment; declaration-level inversion axioms for inductive
+predicates already carry index equations, but they are mediated by an
+inhabitation atom rather than expanded per occurrence; a user-written
+match on an equality proof receives no definitional axiom at all (only a
+fixed list of transport constants is special-cased); and per-constructor
+case equations for indexed matches are emitted without index premises,
+including for statically impossible branches.  Every construction of this
+paper has a direct implementation site in that pipeline: the forded
+constructor telescopes of \cref{sec:translation-structural} correspond to
+classifying the forded form of a family; the expansion theorem of
+\cref{sec:formulas-expansion} to per-occurrence guard expansion; the
+singleton elimination of \cref{sec:calculus} to the erasure of matches on
+equality-like proofs; and the propositions of
+\cref{sec:formulas-equations} to the choice points (index premises,
+branch pruning) that the implementation exposes as options.  We indicate
+the correspondences where relevant but keep the development
+self-contained.

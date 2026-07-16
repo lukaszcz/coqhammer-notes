@@ -1,0 +1,120 @@
+\section{Related work}
+\label{sec:related}
+
+\paragraph{Fording and the elimination of dependent pattern matching.}
+The constraint technique is McBride's \cite[\S 3.5]{McBride1999},
+including coalescence (our \cref{lem:n-one}) and the worked
+$\mathsf{vtail}$ example that \cref{ex:vhead-vtail} replays inside
+$\CICi$; the datatype-level formulation used in \cref{sec:fording} is
+stated by Zhang \cite{Zhang2023}.  Goguen, McBride and McKinna
+\cite{GoguenEtAl2006} eliminate Coquand-style dependent pattern matching
+\cite{Coquand1992} into eliminators plus heterogeneous equality and K,
+via specialization by unification; their five unification transitions
+(deletion, solution, injectivity, conflict, cycle) are exactly the
+first-order theory of constructors, and \cref{rem:slime} is the
+observation --- made there for elaboration, here as a soundness theorem
+--- that a saturation prover performs these transitions as ordinary
+equational inference, with defined-function-headed indices handled
+strictly better.  The without-K refinements of Cockx et al.\
+\cite{CockxEtAl2014,CockxDevriese2018} supply the exact accounting of
+which transitions require K/UIP; \cref{sec:formulas-uip} shows the model
+validates the unrestricted set, and \cref{rem:hur} imports their
+negative results (Counterexample~35; no type-former injectivity, after
+Hur \cite{Hur2010}).  Coq's \texttt{inversion} tactic performs fording
+at use sites \cite{CornesTerrasse1995}; Monin's small inversions
+\cite{Monin2010} show the generated content is derivable with no
+axioms, which is what makes the reconstruction obligations of our
+inversion axioms benign; the Equations package \cite{SozeauMangin2019}
+implements the whole stack inside Coq, with forced-argument analysis
+(after Brady, McBride and McKinna \cite{BradyEtAl2004}) as the
+UIP-avoidance mechanism that \cref{lem:n-one} repurposes as an
+optimisation.
+
+\paragraph{Erasure and proof irrelevance.}  The program half follows
+Letouzey \cite{Letouzey2003,Letouzey2004,Letouzey2008}: sort-directed,
+index-blind erasure, with stored indices kept; MetaCoq mechanises it
+with the $\mathsf{Subsingleton}$ criterion for case erasure
+\cite{SozeauEtAl2020}.  Our $\tscase{}{}{}{}$ is the stratified image of
+CIC's singleton elimination \cite{Rocq}, extended from ``parameters put
+aside'' to forced arguments; that this extension under proof irrelevance
+is exactly UIP is the analysis of Gilbert, Cockx, Sozeau and Tabareau
+\cite{GilbertEtAl2019}, whose corrected criterion (non-forced arguments
+propositional, orthogonal index patterns, guardedness) delimits what can
+be \emph{definitional} --- our model needs only what is \emph{true} in a
+proof-irrelevant semantics, which is why orthogonality is not required
+here (\cref{def:forced-singleton}).  Werner's guarded singleton
+reduction \cite{Werner2008} is the syntactic ancestor of
+\cref{prop:guarded-scase}; the proof-irrelevant model tradition
+\cite{Werner1997,MiquelWerner2003,LeeWerner2011} is where our
+truth-value semantics lives, and Lee--Werner's ``singleton with a
+canonical element'' is the denotational form of $\prfc$, whose
+algebraic form is Atkey's $!_0x = {!}_0y$ in quantitative type theory
+\cite{Atkey2018} and whose operational form is Idris~2's
+quantity-$0$ erasure \cite{Brady2021}.  Brady, McBride and McKinna's
+forcing, detagging and collapsing \cite{BradyEtAl2004} delete at run
+time what our translation asserts as equations; their warning about
+collapsing in open contexts is discussed after
+\cref{prop:guarded-scase}.
+
+\paragraph{Hammers and type encodings.}  The immediate context is the
+CoqHammer translation \cite{CzajkaKaliszyk2018,CzajkaKaliszyk2016}, its
+proof-theoretically sound core \cite{Czajka2018}, and the companion
+paper \cite{Extraction2026} whose architecture this paper extends;
+\cref{sec:intro-impl} and \cref{rem:impl-sites} give the
+correspondence.  For HOL hammers, the translation stack and its
+model-with-junk soundness proofs are due to Meng and Paulson
+\cite{MengPaulson2008} and Blanchette et al.\
+\cite{BlanchetteEtAl2016}; their monotonicity analysis --- a type's
+guards are erasable iff no positive equality literal bounds it ---
+identifies exhaustiveness axioms as never-erasable, which
+\cref{prop:unguarded-inconsistent} sharpens for families.  HOL systems
+never face type-level index unification: inductive families arrive
+pre-forded, either as predicates whose \texttt{.cases} rules are
+inversion-with-equations shipped as ordinary lemmas, or as subset types
+($\vect\,A\,n$ as $\{l \mid \mathsf{length}\ l = n\}$) --- fording is
+the default in weaker logics, which is indirect evidence for its
+suitability as a translation target.  Sledgehammer's SMT route
+\cite{BlanchetteEtAl2013} and the SMT datatypes theory
+\cite{BarrettEtAl2007,ReynoldsBlanchette2017} axiomatise closed-world
+initial algebras --- exhaustiveness, selectors, demand-driven splitting
+--- which is exactly what an indexed family is not; Lean-auto
+\cite{QianEtAl2025} accordingly ground-monomorphises index instances
+before shipping \texttt{declare-datatypes}.  \fstar{} \cite{SwamyEtAl2016} is the closest
+production design: a single-sorted target with a fuel-instrumented
+typing predicate and per-family inversion axioms carrying index
+equations \cite{FStarBook,Aguirre2016}; its documented incidents ---
+\#1542 \cite{FStar1542} and the partially-applied-inductive \#692 ---
+and the Verus rank-axiom incident \cite{Verus1366} are analysed against
+this paper's design in \cref{rem:1542,ex:fin-empty}.  Aguirre's
+soundness analysis of the \fstar{} encoding \cite{Aguirre2016} proves a
+fragment proof-theoretically and observes that HOL-style
+monotonicity-based guard removal does not apply to indexed inductive
+types --- consistent with our finding that family guards are the
+load-bearing ones.  Liquid Haskell \cite{VazouEtAl2014} performs
+per-occurrence inversion with measure equations in the \emph{checker},
+keeping the solver quantifier-free --- the most consistent embodiment of
+occurrence-driven expansion, at the price of checker-driven unfolding
+depth; Dafny \cite{Leino2010} deliberately emits no exhaustiveness
+axiom and per-case definitional axioms with constructor-shaped
+triggers, matching the shape of \cref{def:compile}'s output; Why3's
+\texttt{eliminate\_algebraic} emits projection-form inversion sound
+only in a many-sorted target \cite{FilliatrePaskevich2013}; the
+Dedukti/CoqInE route \cite{BoespflugBurel2012} turns inversion into
+rewriting, with index specialization by computation.  The first-order
+metatheory of term algebras --- completeness of
+injectivity/distinctness/domain-closure/acyclicity, the
+non-finite-axiomatisability of acyclicity, and the
+$\Pi^1_1$-completeness with uninterpreted symbols --- is Kov\'acs,
+Robillard and Voronkov \cite{KovacsEtAl2017}; the translation emits the
+finitely axiomatisable guarded fragment and omits acyclicity
+(\cref{sec:limitations-completeness}).
+
+\paragraph{Semantics of inductive families.}  Indexed inductive
+definitions in type theory are Dybjer's \cite{Dybjer1994}; the
+stage-based interpretation of \cref{def:interp} is the classical
+iterated-inductive-definition construction \cite{Aczel1977}, in the
+indexed form used by set-theoretic models of CIC
+\cite{Werner1997,LeeWerner2011}.  The rank-restricted treatment of
+fixpoints is the semantic counterpart of guarded/sized recursion
+\cite{Gimenez1995,BartheEtAl2004}, extended here with element ranks
+made well defined by \cref{lem:index-reflection}(3).

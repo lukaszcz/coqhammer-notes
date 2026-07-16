@@ -1,0 +1,138 @@
+\section{Limitations and future work}
+\label{sec:limitations}
+
+The fragment $\CICi$ was chosen so that every emitted axiom is provably
+sound while covering the indexed phenomena the fording architecture is
+about: constructor-constrained indices, forded case analysis,
+index-determined singletons, recursion over families.  We delimit the
+boundary, separating presentational restrictions from semantic ones,
+and record the reconstruction obligations.
+
+\subsection{Dependent index telescopes}
+\label{sec:limitations-telescopes}
+
+Index types in $\CICi$ are closed (\cref{def:env}): a family may not be
+indexed over a telescope in which a later index type mentions an
+earlier index ($\mathsf{dvec} : \Pi n{:}\nat.\ \Fin\,n \to \Set$).  The
+restriction is inherited from the shape of source-level equations: the
+forded branch equations $\tup{u} =_{\tup{\sigma}} \tup{t}_i$ are
+homogeneous, and with dependent telescopes the equation at position $h$
+would relate terms whose types agree only after the earlier equations
+are substituted --- McBride's motivation for heterogeneous equality
+\cite{McBride1999}, whose eliminator is K.  The \emph{target} side has
+no such problem: untyped pointwise equations state telescopic
+constraints directly, and the emitted axioms of \cref{def:theory} would
+be unchanged in form.  Lifting the restriction therefore requires work
+only at the source: either heterogeneous equality in the proof layer
+(with its K-strength absorbed by the model, which validates it), or
+cast-chained telescopic equations.  We expect no semantic obstacle ---
+the stage construction and \cref{lem:index-reflection} nowhere use
+closedness of index types --- but the bookkeeping in
+\cref{fig:terms,fig:terms2,fig:proofs,fig:proofs2} is substantial and is left as future work.
+
+\subsection{Polymorphism, large indices, large elimination}
+\label{sec:limitations-poly}
+
+$\CICi$ is monomorphic: type parameters are ground instances
+(\cref{sec:calculus-cic}), so families indexed by \emph{types} ---
+$\mathsf{eq}\ \Set\ A\ B$, universe-indexed structures --- are outside
+the fragment, consistently with the intended pipeline in which
+heuristic monomorphisation runs first.  Large elimination remains
+excluded; fording removes its programming role in impossible branches
+(\cref{ex:vhead-vtail}), the primitive $\mathsf{discr}$ covers its
+role in discrimination, and its remaining uses (types computed by
+recursion) would break the rigidity of set types (\cref{lem:rigid}) on
+which the structural definitions of $\guardf$ and
+$\semr{\cdot}{}$ rest.
+
+\subsection{Well-founded recursion and \textsf{Acc}-style predicates}
+\label{sec:limitations-wf}
+
+The hard constraint identified in the companion paper stands, and the
+indexed extension gives it a second face.  $\tfix$ captures structural
+recursion only; $\mathsf{Acc}$-based recursion is excluded, because
+defining equations obtained by recursion through an erased proof are
+sound only with the erased propositional premises retained --- the
+unconditional unfolding equation of Euclidean division at divisor $0$
+is \emph{inconsistent} with $\forall n.\ n \not\feq \csS(n)$-style
+facts.  On the declaration side, $\mathsf{Acc}$'s clause has its
+recursive premise under a quantifier, which \cref{def:env} excludes;
+semantically, its guardedness is not syntactic --- Gilbert et al.\
+observe that definitional proof irrelevance for $\mathsf{Acc}$ makes
+conversion undecidable \cite{GilbertEtAl2019} --- and our rank
+machinery, which is the semantic image of syntactic guardedness, does
+not apply.  Both faces point to the same future work: premised
+unfolding equations with a semantics interpreting the defined symbol by
+an arbitrary total extension.
+
+\subsection{Acyclicity, induction, completeness}
+\label{sec:limitations-completeness}
+
+The translation emits no acyclicity axioms ($x \not\feq \csS(x)$ and
+its relatives) and no induction: acyclicity is not finitely
+axiomatisable over term algebras and induction is a schema
+\cite{KovacsEtAl2017}; both are sound in $\ML$ (acyclicity by
+\cref{cor:discrimination} and rank induction), so \emph{adding}
+premise-selected instances would be sound, but the translation makes no
+completeness claim that would force them.  Completeness fails further
+along the axes inherited from the companion paper: the semantics is
+classical and proof-irrelevant (\cref{rem:not-claimed}); conversion
+under binders for lifted symbols is not reflected; goals needing
+induction on families (e.g.\ $\forall n\,(v{:}\vect(n)).\
+\Ihat{\mathsf{vmap}}_{\mathrm{id}}(n,v) \feq v$) need the
+reconstruction backend or user induction; and expansion variants
+unfold one constructor layer per occurrence, so properties requiring
+unbounded inversion depth need an inductive lemma --- the same
+trade-off Liquid Haskell documents for checker-driven unfolding
+\cite{VazouEtAl2014}.  A completeness theorem for the ground equational
+fragment over purely structural families (where \cref{prop:standard}
+makes $\ML$ standard) should follow from \cref{rem:eq-shape} by
+standard rewriting arguments and is left as future work.
+
+\subsection{Functional extensionality}
+\label{sec:limitations-funext}
+
+$\ML$ is intensional (\cref{rem:funext-leak}): premise sets containing
+funext-derived lemmas step outside \cref{thm:soundness}.  Repairing
+this requires a coarser domain (quotient by observational equivalence),
+which would disturb \cref{cor:discrimination} and the compilation
+argument; nothing indexed-specific changes the analysis, but
+\cref{rem:1542} raises its stakes --- the \fstar{} incident shows
+extensionality axioms and index-blind encodings interacting is how
+translations of this kind have actually failed.
+
+\subsection{Reconstruction}
+\label{sec:limitations-reconstruction}
+
+Soundness here is model-theoretic; the implemented pipeline's final
+arbiter is proof reconstruction, and the paper's results localise its
+obligations.  Uses of inversion axioms and expanded guards replay by
+\texttt{inversion}-style reasoning, derivable without axioms
+\cite{CornesTerrasse1995,Monin2010} --- K-free, since the motive never
+depends on the generated equations.  Uses of the unconditional
+singleton-collapse equations, of deletion, and of the extra
+permissiveness of \cref{def:forced-singleton} beyond CIC's parameter
+mechanism (\cref{rem:singleton-criterion}) may need UIP-class tactics
+at types without decidable equality; \cref{prop:guarded-scase} is the
+premise-carrying alternative that eliminates this debt.  A
+proof-theoretic soundness theorem in the style of \cite{Czajka2018} ---
+transforming first-order derivations from $\ThE$ into $\CICi$ proof
+terms modulo excluded middle, proof irrelevance and UIP --- would turn
+this localisation into an algorithm and is the natural next step, with
+the lifted-symbol substitution stability of the companion paper's
+discussion as the known hard part.
+
+\subsection{Other restrictions}
+\label{sec:limitations-misc}
+
+Mutual and nested inductive families, deep and mutual recursion, and
+coinductive families are excluded syntactically, as in the companion
+paper; each constructor of a mutual block fords independently, so we
+expect the extension to be bookkeeping, but coinductive families ---
+whose case-analysis content is a greatest-fixpoint inversion and whose
+equality is bisimilarity --- are a genuine further step.  Enumeration-,
+subset- and singleton-shaped families receive no special-cased
+treatment in the formal development; the classification exists in
+implementations as a choice of expansion policy, and
+\cref{thm:expansion} is deliberately policy-agnostic so that any such
+classification is covered.

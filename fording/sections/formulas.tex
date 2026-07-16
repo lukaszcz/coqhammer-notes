@@ -1,0 +1,660 @@
+\section{Fording at the level of formulas: design questions settled}
+\label{sec:formulas}
+
+The model $\ML$ was built once; this section spends it.  Each subsection
+takes a design question documented in implementations of related
+translations --- where may the forded inversion disjunction be inlined?
+which guards are load-bearing?  do match equations need index premises?
+what may be said about indices without saying it about type formers? ---
+and settles it as a theorem about $\ML$ or about the theory $\ThE$.
+Throughout, $\Env$ is well formed and definitional with $\Sfrag$
+declarations.
+
+\subsection{Per-occurrence expansion of forded guards}
+\label{sec:formulas-expansion}
+
+The translation of \cref{sec:translation} keeps guard atoms atomic and
+states the ford once per family, in the inversion axiom.  A shallower
+variant --- the analogue, for families, of the inline expansion of
+refinement payloads --- replaces a guard atom, at any chosen occurrence,
+by the corresponding disjunction of constructor payloads and index
+equations.  This is sound, in both polarities, and changes nothing
+logically:
+
+\begin{definition}[One-level expansion]
+\label{def:expansion}
+For a datatype $I$ as in \cref{def:theory}, define the first-order
+formula (with free variables $w, \tup{z}$)
+\[
+  \Xp{I}(w, \tup{z}) \;\defeq\;
+  \bigvee_i \exists \tup{y}.\
+  \textstyle\bigwedge_j \guard{A_{ij}}{y_j} \wedge
+  \bigwedge_l \F{\varphi_{il}} \wedge
+  w \feq \Ihat{\wcns{c}}_i(\tup{y}) \wedge
+  \textstyle\bigwedge_{h} z_h \feq \compf(\erase{t_{ih}}),
+\]
+i.e.\ the right-hand side of the inversion axiom; for an inductive
+predicate $J$, let $\Xp{J}(\tup{z})$ be the right-hand side of its
+case-analysis axiom.  An \emph{expansion variant} of the translation is
+any pair $(\guardf', \Ff')$ obtained from \cref{def:guard-F} by
+replacing, at any chosen set of occurrences in the structural recursion,
+the clause value $\Ihat{I}(u, \compf(\erase{\tup{a}}))$ by
+$\Xp{I}(u, \compf(\erase{\tup{a}}))$ and/or atoms
+$\Ihat{J}(\compf(\erase{\tup{a}}))$ by
+$\Xp{J}(\compf(\erase{\tup{a}}))$ (arguments substituted for $w,
+\tup{z}$).  The variant theory $\Th'(\Env, G)$ is \cref{def:theory} with
+items 3--5 (specification, premise and goal formulas and their auxiliary
+axioms) computed by $(\guardf', \Ff')$; items 1--2 (structural axioms)
+are unchanged.
+\end{definition}
+
+Note that the expansion is \emph{one level}: the guards
+$\guard{A_{ij}}{y_j}$ inside $\Xp{I}$ are the atomic guards of the base
+translation, so the definition is not recursive and expanded formulas
+are finite regardless of recursion in $I$.  Constraint discharge remains
+pay-as-you-go, one constructor layer per expansion, exactly as in the
+source calculus (\cref{sec:fording-fording}).
+
+\begin{lemma}[Expansion is valid]
+\label{lem:expansion-valid}
+$\ML \vDash \forall w\,\tup{z}.\ \Ihat{I}(w, \tup{z}) \leftrightarrow
+\Xp{I}(w, \tup{z})$, and $\ML \vDash \forall \tup{z}.\
+\Ihat{J}(\tup{z}) \leftrightarrow \Xp{J}(\tup{z})$.
+\end{lemma}
+
+\begin{proof}
+Left to right is the validity of inversion resp.\ case analysis
+(\cref{thm:env-validity}).  Right to left, for $I$: given a disjunct's
+witnesses $\tup{d}$ satisfying its conjuncts, \cref{lem:coincidence}
+converts the guard and premise conjuncts into memberships and truths at
+$\rho_0 = [\tup{y} \mapsto \tup{d}\,]$;
+\cref{lem:index-reflection}(5) gives $(\sem{\tup{t}_i}_{\rho_0},
+\Ihat{\wcns{c}}_i^{\ML}(\tup{d})) \in \semr{I}{}$; and the equation
+conjuncts identify $\den{w}{}$ with the constructor value and
+$\den{\tup{z}}{}$ with the index tuple (using \cref{lem:comp-adequacy}
+for the right-hand sides).  For $J$: the stage construction closes
+$\pv{J}$ under exactly the displayed conditions.
+\end{proof}
+
+\begin{theorem}[Soundness of expansion variants]
+\label{thm:expansion}
+Let $(\guardf', \Ff')$ be any expansion variant.  Then
+\cref{lem:coincidence} holds verbatim for $(\guardf', \Ff')$;
+consequently $\ML \vDash \Th'(\Env,G)$, and if $\Th'(\Env,G)
+\provesfol \Ff'(G)$ then $\pv{G} = 1$.  All corollaries of
+\cref{sec:soundness-main} hold for the variant.
+\end{theorem}
+
+\begin{proof}
+The coincidence proof is by structural induction on types and
+propositions; the only change is at a replaced occurrence, where
+$\ML, \rho \vDash \Xp{I}(u, \compf(\erase{\tup{a}}))$ iff $\ML, \rho
+\vDash \Ihat{I}(u, \compf(\erase{\tup{a}}))$ by
+\cref{lem:expansion-valid} (a universally valid equivalence may be
+instantiated at the argument terms), and the base-translation
+coincidence handles the atom.  The auxiliary axioms emitted by
+computing the $\compf$-translations inside expanded occurrences are
+compilation axioms, valid by \cref{lem:compile-sound}.  With
+coincidence in place, the proofs of \cref{lem:spec-valid},
+\cref{thm:env-validity} and \cref{thm:soundness} go through unchanged
+for items 3--5, and items 1--2 are shared with $\ThE$.
+\end{proof}
+
+\begin{proposition}[Expansion changes nothing logically]
+\label{prop:expansion-derivable}
+$\ThE \provesfol \forall w \tup{z}.\ \Ihat{I}(w,\tup{z})
+\leftrightarrow \Xp{I}(w,\tup{z})$ (from the constructor-typing and
+inversion axioms of $I$), and likewise for $J$ from clause and
+case-analysis axioms.  Consequently $\ThE$ and any $\Th'(\Env,G)$ are
+mutually derivable, and the choice among expansion variants is purely
+operational.
+\end{proposition}
+
+\begin{proof}
+Left to right is the inversion axiom.  Right to left: in the $i$-th
+disjunct, the witnesses' guards and premises feed the constructor-typing
+axiom of $\wcns{c}_i$, yielding
+$\Ihat{I}(\Ihat{\wcns{c}}_i(\tup{y}), \compf(\erase{\tup{t}_i}))$;
+rewriting with $w \feq \Ihat{\wcns{c}}_i(\tup{y})$ and $z_h \feq
+\compf(\erase{t_{ih}})$ gives $\Ihat{I}(w, \tup{z})$.  Mutual
+derivability of the theories: each axiom of $\Th'$ differs from the
+corresponding axiom of $\ThE$ by replacements of subformulas by
+$\ThE$-provably equivalent ones (both theories contain items 1--2), so
+each direction follows by the replacement theorem of classical
+first-order logic.
+\end{proof}
+
+\begin{example}[The $\mathsf{reflect}$ payoff]
+\label{ex:reflect-expansion}
+For $\mathsf{rfl}_{\varphi_0}$ (\cref{ex:running-axioms}), a hypothesis
+occurrence $r : \mathsf{rfl}_{\varphi_0}(b)$ inside a premise or goal
+expands to
+\[
+  \bigl(\F{\varphi_0} \wedge r \feq \Ihat{\wcns{RT}} \wedge b \feq
+  \Ihat{\cstrue}\bigr) \vee
+  \bigl(\F{\neg\varphi_0} \wedge r \feq \Ihat{\wcns{RF}} \wedge b \feq
+  \Ihat{\csfalse}\bigr).
+\]
+Both directions of the view are now local: from $b \feq \Ihat{\cstrue}$
+the second disjunct dies by discrimination on $\bool$, leaving
+$\F{\varphi_0}$ (elimination is no longer too weak); and in a positive
+position, establishing the instance at tag $\Ihat{\wcns{RF}}$ together
+with $b \feq \Ihat{\cstrue}$ is impossible for the same reason
+(introduction cannot cheat the index).  In the atomic variant the same
+two inferences route through the declaration-level inversion axiom ---
+one resolution step more, contingent on premise selection.  Which
+variant is operationally better is an empirical question; the content
+of \cref{thm:expansion,prop:expansion-derivable} is that it is
+\emph{only} an operational question.
+\end{example}
+
+\begin{remark}[Existential residue]
+Expansion introduces $\exists \tup{y}$ in guard positions; in negative
+positions these become universals after clausification.  For
+enumeration-like and subset-like families the residue is empty or a
+single carrier variable after \cref{lem:n-one} ($\mathsf{rfl}$:
+none; $\mathsf{bnd}$: one), which is exactly the class of families for
+which implementations enable expansion; for recursive families like
+$\vect$ the atomic guard is the reasonable default.  Nothing in the
+soundness statement forces either choice.
+\end{remark}
+
+\subsection{Which guards are load-bearing}
+\label{sec:formulas-guards}
+
+The companion paper proved that for non-indexed datatypes the guard of
+the inversion axiom is semantically mandatory (false at junk) while the
+per-constructor equations need no guards at all.  For families both
+halves sharpen.
+
+\begin{proposition}[Unguarded inversion is inconsistent]
+\label{prop:unguarded-inconsistent}
+Let $I$ be a datatype some constructor $\wcns{c}_i$ of which has a
+constructor-headed index term: $t_{ih} = \wcns{c}'(\dots)$ for some
+position $h$, where $\wcns{c}'$ belongs to a datatype $I'$ that has a
+second constructor $\wcns{d} \neq \wcns{c}'$.  Let $\mathrm{Inv}^-_I$
+be the inversion axiom of $I$ with its guard atom $\Ihat{I}(w,
+\tup{z})$ deleted.  Then $\{\mathrm{Inv}^-_I\}$ together with the
+discrimination axioms of $I$ and of $I'$ --- axioms the translation
+must emit in any case --- is inconsistent.  In particular, for $\vect$
+(\cref{ex:running-axioms}) the theory $\{\mathrm{Inv}^-_{\vect}\} \cup
+\{\text{discrimination for } \nat, \vect\}$ is inconsistent.
+\end{proposition}
+
+\begin{proof}
+Instantiate the universally quantified variables of $\mathrm{Inv}^-_I$
+by $w \defeq \Ihat{\wcns{c}}_i(\tup{x})$, $z_h \defeq
+\Ihat{\wcns{d}}(\tup{x}')$, the remaining $z$'s by fresh variables
+($\tup{x}, \tup{x}'$ fresh).  In the resulting disjunction, every
+disjunct $i' \neq i$ contains the equation
+$\Ihat{\wcns{c}}_i(\tup{x}) \feq \Ihat{\wcns{c}}_{i'}(\tup{y})$,
+refuted by discrimination for $I$; the disjunct $i$ contains
+$\Ihat{\wcns{d}}(\tup{x}') \feq \compf(\erase{t_{ih}})[\tup{y}]$, whose
+right-hand side is $\Ihat{\wcns{c}'}$-headed
+($\compf(\erase{\wcns{c}'(\dots)})$ is an application of
+$\Ihat{\wcns{c}'}$ by \cref{def:compC}), refuted by discrimination for
+$I'$.  All disjuncts refuted, the theory proves $\bot$.
+For $\vect$, concretely: $w \defeq \Ihat{\csvnil}$, $z \defeq
+\Ihat{\csS}(x')$ --- the $\csvnil$ disjunct dies on $\Ihat{\csS}(x')
+\feq \Ihat{\csO}$, the $\csvcons$ disjunct on $\Ihat{\csvnil} \feq
+\Ihat{\csvcons}(n,a,v)$.
+\end{proof}
+
+\begin{remark}
+\label{rem:unguarded-general}
+The hypothesis delimits the blast radius precisely.  Rigid index
+patterns (the proposition) cover $\vect$, $\Fin$ and every family whose
+constructors specialise an index.  Enumeration-shaped families with
+bare-variable or absent index constraints are caught by the
+\emph{cardinality} mechanism instead: for $\mathsf{rfl}_{\varphi_0}$,
+the unguarded inversion entails $\forall w.\ w \feq \Ihat{\wcns{RT}}
+\vee w \feq \Ihat{\wcns{RF}}$ (each disjunct contains the corresponding
+tag equation as a conjunct), a two-element bound on the whole untyped
+universe; in any environment that also declares $\nat$ --- or any
+datatype with three provably distinct closed terms --- instantiating
+$w$ at $\Ihat{\csO}$, $\Ihat{\csS}(\Ihat{\csO})$ and
+$\Ihat{\csS}(\Ihat{\csS}(\Ihat{\csO}))$ --- pairwise distinct by
+discrimination and injectivity of $\nat$ --- forces two of them equal
+by pigeonhole, hence $\bot$.  This is Meng and Paulson's two-element
+universe \cite[\S 2.3]{MengPaulson2008}; exhaustiveness sentences are
+exactly the sentences whose guards can never be dropped
+\cite{BlanchetteEtAl2016}.  For a fully generic family (every index a
+bare variable, constructors carrying arguments) the unguarded axiom is
+false in $\ML$ --- any junk instantiation of $w$ refutes it there ---
+but need not be inconsistent; soundness fails all the same, via
+\cref{lem:coincidence}.  Note the strengthening against the non-indexed
+case of \cite{Extraction2026}: there, guard omission made the
+disjunctive axiom false in $\ML$, and inconsistency required an
+auxiliary single-constructor datatype; here the family's own index
+equations or tag equations detonate it.  For the implementation this
+means: an indexed inversion axiom accidentally emitted unguarded is
+typically not a weak axiom but a refutation-generator, poisoning every
+problem it enters (cf.\ \cref{cor:consistency}).
+\end{remark}
+
+\begin{proposition}[Index arguments of guards are mandatory]
+\label{prop:index-dropping}
+Consider the \emph{index-forgetting} variant of the translation: guard
+predicates $\Ihat{I}^-$ of arity $1$, guard clause
+$\guardf^-_{I(\tup{a})}(u) = \Ihat{I}^-(u)$, and the axioms of
+\cref{def:theory} recomputed accordingly (index equations deleted from
+inversion, index arguments deleted from constructor-typing
+conclusions).  This variant is unsound: for $\Env$ declaring $\nat$ and
+$\vect$ (over $A = \nat$) there is a closed shallow goal $G$ with
+$\pv{G} = 0$ whose translation is derivable,
+\begin{gather*}
+  G \;\defeq\; \exists v : \vect(\csO).\ \neg\,(v =_{\vect(\csO)}
+  \csvnil),\\
+  \Th^-(\Env, G) \provesfol \exists v.\ \Ihat{\vect}^-(v) \wedge
+  \neg\,(v \feq \Ihat{\csvnil}).
+\end{gather*}
+\end{proposition}
+
+\begin{proof}
+$\pv{G} = 0$: by \cref{lem:index-reflection}(1) and
+\cref{cor:discrimination}, every $(\sem{\csO}, d) \in \semr{\vect}{}$
+decomposes by $\csvnil$ --- the $\csvcons$ index tuple is a class
+$\cls{\csS(e)} \neq \cls{\csO}$ --- so $\semr{\vect(\csO)}{} =
+\{\cls{\csvnil}\}$ and the matrix is false at the only element.
+
+Derivability: the index-forgetting constructor-typing axioms are
+$\Ihat{\vect}^-(\Ihat{\csvnil})$ and $\forall n\,a\,v.\ \Ihat{\nat}(n)
+\to \Ihat{\nat}(a) \to \Ihat{\vect}^-(v) \to
+\Ihat{\vect}^-(\Ihat{\csvcons}(n,a,v))$.  From $\Ihat{\nat}(\Ihat{\csO})$
+(constructor typing for $\nat$) instantiate $n = a \defeq \Ihat{\csO}$,
+$v \defeq \Ihat{\csvnil}$ to get
+$\Ihat{\vect}^-(\Ihat{\csvcons}(\Ihat{\csO}, \Ihat{\csO},
+\Ihat{\csvnil}))$; discrimination for $\vect$ gives
+$\neg(\Ihat{\csvcons}(\dots) \feq \Ihat{\csvnil})$; the displayed
+existential follows with witness
+$\Ihat{\csvcons}(\Ihat{\csO},\Ihat{\csO},\Ihat{\csvnil})$.
+\end{proof}
+
+\begin{remark}[The \fstar{} \#1542 shape]
+\label{rem:1542}
+\Cref{prop:index-dropping} is the indexed-family form of a documented
+unsoundness.  In \fstar{} \#1542 \cite{FStar1542}, the type-indexed
+extensional equality $\mathsf{feq}\ \#a$ --- ``equal pointwise at domain
+$a$'' --- was encoded through the SMT solver's untyped $=$; an equality
+whose \emph{meaning depends on an index} was represented by an atom that
+forgot the index, and facts established at index $\mathsf{nat}$ were
+consumed at index $\mathsf{int}$, proving $\mathsf{False}$.  Here,
+family membership --- whose meaning depends on the index --- is
+represented in the variant by an atom $\Ihat{\vect}^-(v)$ that forgets
+it, and membership established at index $\csS(\csO)$ is consumed at
+index $\csO$.  The polarity analysis explains where the damage occurs:
+forgetting indices in \emph{negative} (premise) positions merely
+strengthens hypotheses and weakens the translation; in \emph{positive}
+(conclusion, existential-witness) positions it lets the prover
+manufacture members of the wrong instance, as in the derivation above.
+Since one guard clause serves both polarities, the indices must stay.
+The translation of \cref{sec:translation} is immune for a reason worth
+stating precisely: it is not that its untyped $\feq$ is somehow safer
+than \fstar{}'s --- it is that \emph{no index-dependent notion of the
+source is represented by an index-blind notion of the target}.  Source
+equality $a =_\sigma b$ is index-blind ($\sigma$ is not consulted)
+because its \emph{semantics} in $\ML$ is index-blind class equality
+(\cref{def:interp}), and family membership is index-aware because its
+semantics is (\cref{lem:coincidence}); each atom is exactly as
+discriminating as the semantic notion it names.  The residual caveat is
+the intensionality of that semantics: see \cref{rem:funext-leak}.
+\end{remark}
+
+\subsection{Match equations for indexed scrutinees}
+\label{sec:formulas-equations}
+
+\begin{proposition}[Unguarded equations, impossible branches included]
+\label{prop:match-equations}
+Every equation emitted by the compilation of a definition matching on a
+family --- with no guard on the matched term, no guards on the
+constructor-argument variables, and no index premises, and
+\emph{including} the equations of branches whose index patterns clash
+with the scrutinee occurrence's indices --- holds in $\ML$ under every
+assignment.  In particular (\cref{ex:vhead-transl}):
+\begin{gather*}
+  \ML \vDash \forall n.\ \Ihat{\mathsf{vhead}}(n, \Ihat{\csvnil}) \feq
+  \prfc,\\
+  \ML \vDash \forall n\,k\,a\,w.\
+  \Ihat{\mathsf{vhead}}(n, \Ihat{\csvcons}(k,a,w)) \feq a .
+\end{gather*}
+\end{proposition}
+
+\begin{proof}
+An instance of \cref{lem:compile-sound}(2).  The point of displaying it:
+the $\iota$-rule of $\lbox$ fires on any constructor form with no index
+side condition, so validity of the equations is a fact about the
+\emph{program}, blind to the typing discipline that made the branch
+impossible; the branch body is the erasure of the $\bot$-elimination,
+namely $\bx$.
+\end{proof}
+
+\begin{proposition}[Index-premised equations are strictly weaker]
+\label{prop:premised-weaker}
+Fix the definition $\mathsf{vhead}$ and let the \emph{premised variant}
+of its $\csvnil$-equation be
+\[
+  \mathrm{Eq}^{\pi}_{\csvnil} \;\defeq\;
+  \forall n.\ \Ihat{\csS}(n) \feq \Ihat{\csO} \to
+  \Ihat{\mathsf{vhead}}(n, \Ihat{\csvnil}) \feq \prfc,
+\]
+and analogously $\mathrm{Eq}^{\pi}_{\csvcons} = \forall n\,k\,a\,w.\
+\Ihat{\csS}(n) \feq \Ihat{\csS}(k) \to \Ihat{\mathsf{vhead}}(n,
+\Ihat{\csvcons}(k,a,w)) \feq a$ (premises: occurrence indices $\feq$
+constructor index pattern).  Then:
+\begin{enumerate}[leftmargin=2em]
+\item each premised equation is derivable from its unguarded form, hence
+  valid in $\ML$;
+\item the unguarded $\csvnil$-equation is \emph{not} derivable from the
+  theory obtained from $\ThE$ by replacing $\mathsf{vhead}$'s equations
+  with their premised forms;
+\item deleting the $\csvnil$-equation altogether (\emph{rigid-clash
+  pruning}) preserves \cref{thm:env-validity}, hence
+  \cref{thm:soundness,cor:consistency}.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(1) Weakening.  (3) Validity of a subset of a valid axiom set.
+
+(2) Let $\Env_0$ declare $\nat$, $A \defeq \nat$, $\vect$ and
+$\mathsf{vhead}$ only, and let $\Th^\pi$ be the resulting theory with
+$\mathsf{vhead}$'s two equations replaced by their premised forms.  We
+build $\ML' \vDash \Th^\pi$ falsifying the unguarded
+$\csvnil$-equation.  A pointwise reinterpretation of
+$\Ihat{\mathsf{vhead}}$ is not available: the pointer axiom $\forall
+z_1 z_2.\ \Ihat{\mathsf{vhead}}^0 \fapp z_1 \fapp z_2 \feq
+\Ihat{\mathsf{vhead}}(z_1, z_2)$ ties the symbol to the applicative
+structure of $\Dom$, which is fixed.  Instead, reinterpret both symbols
+through an \emph{alternative witness}: let
+\[
+  \kappa \defeq \lambda n\,v.\ \mathsf{case}(v;\,
+    \{\csvnil \Rightarrow \csO \mid \csvcons(k,a,w) \Rightarrow a\})
+\]
+--- the erasure of $\mathsf{vhead}$ with the dead code of the
+impossible branch replaced by $\csO$ --- and let $\ML'$ agree with
+$\ML$ on all symbols except $(\Ihat{\mathsf{vhead}}^0)^{\ML'} \defeq
+\cls{\kappa}$ and $\Ihat{\mathsf{vhead}}^{\ML'}(d_1, d_2) \defeq
+\cls{\kappa\,e_1\,e_2}$ (representatives $e_i \in d_i$).  Then:
+the pointer axiom holds by construction ($\fapp$ is application);
+the premised $\csvnil$-equation holds vacuously, its premise
+$\Ihat{\csS}(n) \feq \Ihat{\csO}$ being false
+(\cref{cor:discrimination}; constructor interpretations are unchanged);
+the premised $\csvcons$-equation holds because
+$\kappa\,e_1\,\csvcons(\tup{e}) \lreds e_a$, and this is where $\kappa$
+agrees with $\erase{\mathsf{vhead}}$; the specification axiom
+$\forall n.\ \Ihat{\nat}(n) \to \forall v.\ \Ihat{\vect}(v,
+\Ihat{\csS}(n)) \to \Ihat{\nat}(\Ihat{\mathsf{vhead}}(n,v))$ constrains
+the symbol only at $v \in \semr{\vect(\csS\,n)}{}$-instances, which by
+\cref{lem:index-reflection}(1,3) are $\csvcons$-forms ($\cls{\csvnil}$'s
+unique index tuple is $\cls{\csO}$), where $\ML'$ computes the same
+values as $\ML$, so the axiom transfers from
+\cref{thm:env-validity}; and all axioms not mentioning
+$\mathsf{vhead}$'s symbols hold as in $\ML$.  Finally the unguarded
+$\csvnil$-equation fails: $\Ihat{\mathsf{vhead}}^{\ML'}(d,
+\cls{\csvnil}) = \cls{\kappa\,e\,\csvnil} = \cls{\csO} \neq \cls{\bx} =
+\prfc^{\ML'}$, the last two being distinct $\lred$-normal forms
+(\cref{thm:confluence}).
+
+The moral generalises: the premised theory cannot distinguish the
+extracted program from any \emph{repair of its dead code}, because
+every axiom that could see the dead branch is either premised on a
+refutable index equation or guarded by an uninhabited instance.
+\end{proof}
+
+\begin{proposition}[Pruned branches are semantically dead]
+\label{prop:pruning}
+Say two terms \emph{rigidly clash} if both are constructor-headed with
+distinct constructors, or both are applications of the same constructor
+and some pair of corresponding informative arguments rigidly clashes;
+extend to index tuples by ``some position clashes''.  If, in a
+definition $c \defeq \lambda \tup{x}.\ \tcase{x_k}{\dots}{\dots}$ (or
+the fix form) with $x_k : I(\tup{v})$, the occurrence indices $\tup{v}$
+rigidly clash with the index pattern $\tup{t}_i$ of constructor
+$\wcns{c}_i$, then for every valuation $\rho$ of $\tup{x}$ with
+$\rho(x_k) \in \semr{I(\tup{v})}{\rho}$, the value $\rho(x_k)$ is not of
+the form $\cls{\wcns{c}_i(\tup{e})}$.  Consequently the pruned equation
+constrains $\Ihat{c}$ only at argument tuples excluded by the guards of
+$c$'s specification axiom.
+\end{proposition}
+
+\begin{proof}
+First, rigid clash implies semantic distinctness at all valuations: by
+induction on the definition, if $u$ and $t$ rigidly clash then
+$\sem{u}_{\rho_1} \neq \sem{t}_{\rho_2}$ for all $\rho_1, \rho_2$ ---
+distinct constructor heads give distinct classes
+(\cref{cor:discrimination}(1)), and for equal heads, componentwise
+equality of classes would contradict the inner clash by the induction
+hypothesis (erasure preserves constructor heads of informative
+arguments).  Now suppose $\rho(x_k) = \cls{\wcns{c}_i(\tup{e})} \in
+\semr{I(\tup{v})}{\rho}$.  By \cref{lem:index-reflection}(1,3) the
+unique index tuple of this element is $\sem{\tup{t}_i}_{\rho_0}$, so
+$\sem{\tup{v}}_\rho = \sem{\tup{t}_i}_{\rho_0}$, contradicting semantic
+distinctness at the clashing position.
+\end{proof}
+
+\begin{remark}[Choice of equation form]
+\label{rem:equation-choice}
+\Cref{prop:match-equations,prop:premised-weaker,prop:pruning} bound the
+design space: the unguarded equations are the strongest sound form and
+are what the factored architecture naturally produces; index premises
+are sound but strictly weaker, buying nothing semantically (their one
+virtue is to keep the equation silent at wrong-index instantiations,
+a reconstruction-signal nicety); pruning is sound and removes only
+equations that no guarded reasoning can reach, at the price that we do
+\emph{not} claim conservativity --- a first-order derivation of a goal
+may in principle route through junk instances of a pruned equation, so
+pruning can only be justified operationally, not by the model.  All
+three verdicts are instances of the companion paper's division of
+labour: equations carry computation, valid everywhere; typing content
+lives in guarded specification and inversion axioms.
+\end{remark}
+
+\subsection{Indices, elements, and injectivity of type formers}
+\label{sec:formulas-injectivity}
+
+\begin{proposition}[Index uniqueness is a first-order consequence]
+\label{prop:index-unique}
+For every datatype $I$,
+\[
+  \ThE \provesfol \forall w\,\tup{z}\,\tup{z}'.\
+  \Ihat{I}(w, \tup{z}) \to \Ihat{I}(w, \tup{z}') \to
+  \textstyle\bigwedge_h z_h \feq z'_h,
+\]
+and the formula holds in $\ML$.
+\end{proposition}
+
+\begin{proof}
+Model validity is \cref{lem:index-reflection}(3).  Derivability: apply
+inversion to both hypotheses, obtaining disjuncts $i$ (witnesses
+$\tup{y}$) and $i'$ (witnesses $\tup{y}'$) with $w \feq
+\Ihat{\wcns{c}}_i(\tup{y}) \feq \Ihat{\wcns{c}}_{i'}(\tup{y}')$.  If $i
+\neq i'$, discrimination refutes the branch.  If $i = i'$, injectivity
+gives $y_j \feq y'_j$ for all $j$; each index equation pair $z_h \feq
+\compf(\erase{t_{ih}})[\tup{y}]$, $z'_h \feq
+\compf(\erase{t_{ih}})[\tup{y}']$ then yields $z_h \feq z'_h$ by
+congruence of $\feq$ (the two right-hand sides are the same first-order
+term at componentwise-equal arguments).  For $r_i = 0$ the two
+right-hand sides are identical closed terms.
+\end{proof}
+
+\begin{remark}[Injectivity of type formers is neither expressible nor
+wanted]
+\label{rem:hur}
+Index uniqueness is the sound first-order shadow of the type-theoretic
+intuition ``$I(\tup{u})$ and $I(\tup{u}')$ are disjoint unless $\tup{u}
+= \tup{u}'$'': it speaks about \emph{elements}.  The stronger,
+type-level statement --- injectivity of the type former, $I\,\tup{u} =
+I\,\tup{u}' \to \tup{u} = \tup{u}'$ --- is not even a formula of
+$\SigFOL$: types are not terms in this translation
+(\cref{def:signature}), so there is no equality between type images to
+invert.  This inexpressibility is a feature.  In type theory,
+injectivity of inductive type constructors is \emph{anti-classical}:
+Hur's construction \cite{Hur2010} refutes excluded middle in Agda with
+injective type constructors, by a Cantor-style diagonal through an
+injection $(\Set \to \Set) \to \Set$ --- so a translation validating
+classical logic, as any ATP-facing translation must, cannot emit any
+image of it.  Encodings that do represent type expressions as
+first-order terms (types-as-terms with a $\mathsf{HasType}$ predicate)
+must therefore be careful that no axiom makes the type-term constructor
+injective-and-surjective in a way that imports the paradox; in the
+present design the question cannot arise.  The same discipline governs
+constructor discrimination: the axioms of \cref{def:theory} concern
+fully applied constructor images only --- there are no partially
+applied constructor symbols in $\SigFOL$ at all, constructors being
+$r$-ary function symbols --- which is exactly the boundary drawn by
+Counterexample~35 of \cite{CockxDevriese2018}: conflict between
+\emph{under-applied} constructors is refutable under functional
+extensionality (Agda issue \#1497) and must not be asserted by a
+translation whose source may consistently assume it.
+\end{remark}
+
+\subsection{Singleton collapse and uniqueness of identity proofs}
+\label{sec:formulas-uip}
+
+The $\tscase{}{}{}{}$ and $\tcast{}{}{}$ cases of
+\cref{lem:fundamental}, and the unconditional identity equations that
+user-written transports compile to (\cref{ex:eq-pred}), are the exact
+locations where the model's proof irrelevance is spent as
+\emph{uniqueness of identity proofs}.  We make the accounting precise.
+
+\begin{fact}[The semantic UIP surrogate]
+\label{fact:uip}
+Let $J$ be a forced singleton with clause $\wcns{k} : \forall
+\tup{x}{:}\tup{\tau}.\ \tup{\varphi} \to J(\tup{u}^0)$, solution
+$\jmath$, and let $J(\tup{u})$ be an occurrence with solution
+substitution $\theta$.  For every valuation $\rho$ with
+$\pvr{J(\tup{u})}{\rho} = 1$:
+\[
+  \sem{\theta(\tup{u}^0)}_\rho = \sem{\tup{u}}_\rho
+  \qquad\text{and}\qquad
+  \pvr{\varphi_l[\theta]}{\rho} = 1 \ \text{for all } l.
+\]
+\end{fact}
+
+\begin{proof}
+Extracted from the $\tscase{}{}{}{}$ case of \cref{lem:fundamental},
+which proves exactly this.
+\end{proof}
+
+In type-theoretic terms, \cref{fact:uip} says: the mere \emph{truth} of
+the singleton family at $\tup{u}$ collapses the motive instance at the
+generic (constructor) indices with the motive instance at $\tup{u}$, and
+recovers the premises --- without inspecting any proof.  Gilbert,
+Cockx, Sozeau and Tabareau prove that this collapse, availed as a
+definitional principle for an equality-like family under proof
+irrelevance, \emph{is} UIP \cite[\S 2.2]{GilbertEtAl2019}; and the
+without-K analysis of pattern matching isolates the same strength in the
+unification steps of deletion and of injectivity at non-linear or
+non-self-unifiable indices \cite{CockxEtAl2014,CockxDevriese2018}.  Our
+model validates all of them at once, because $\pv{\cdot}$ is
+proof-irrelevant and \cref{lem:index-reflection} holds; consequently:
+
+\begin{itemize}[leftmargin=2em]
+\item \emph{Deletion} costs nothing: a match on $\mathsf{eq}_\sigma(a,a)$
+  (or a $\tcast{}{}{}$ along it) is validated by \cref{fact:uip} with
+  $\theta(\tup{u}^0)$ and $\tup{u}$ literally equal.
+\item \emph{Non-linear index patterns} cost nothing: nothing in
+  \cref{def:forced-singleton} or in \cref{lem:index-reflection}
+  restricts repeated variables or self-unifiability; the without-K
+  side conditions exist to avoid UIP, which the model has.
+\item \emph{Heterogeneity} costs nothing at the target: the index
+  equations of \cref{def:theory} are pointwise untyped equations; the
+  formation problem that motivates John Major equality
+  \cite{McBride1999} does not exist in $\SigFOL$.
+\end{itemize}
+
+What the strength \emph{costs} is reconstruction, not soundness: a
+first-order proof that uses a transport-collapse equation at a type
+without decidable equality may need UIP (or an axiom-free inversion
+argument where one exists \cite{Monin2010,CockxDevriese2018}) to replay
+in CIC.  This is the same debt the companion paper documents for
+$\tcast{}{}{}$-erasure, unchanged in kind; the premise-carrying variant
+below eliminates it at the price of weaker axioms.
+
+\begin{proposition}[Werner's guarded collapse as an emission variant]
+\label{prop:guarded-scase}
+Let $\Env_0$ declare $\bool$, the forced singleton
+$\mathsf{eq}_{\bool}$ (\cref{ex:declarations}), and
+\begin{multline*}
+  c \defeq \lambda x\,y{:}\bool.\ \lambda
+  e{:}\mathsf{eq}_{\bool}(x,y).\ \lambda w{:}\bool.\\
+  \tscase{\mathsf{eq}_{\bool}}{e}{\tup{z}.\bool}{.\,w},
+\end{multline*}
+with emitted equation $\forall x\,y\,w.\ \Ihat{c}(x,y,w) \feq w$
+(\cref{ex:eq-pred}, at the constant motive).  The \emph{premised
+variant}
+\[
+  \mathrm{Eq}^\pi_c \;\defeq\; \forall x\,y\,w.\ y \feq x \to
+  \Ihat{c}(x,y,w) \feq w
+\]
+(premise: the non-trivial index equation of the ford, $\tup{u} \feq
+\theta(\tup{u}^0)$) is derivable from the unguarded equation, hence
+$\ML$-valid; and the unguarded equation is not derivable from the
+theory $\Th^\pi$ obtained from $\Th(\Env_0, \top)$ by replacing it with
+$\mathrm{Eq}^\pi_c$.
+\end{proposition}
+
+\begin{proof}
+Derivability is weakening.  For non-derivability, a witness-repair
+modification of $\ML$ in the style of \cref{prop:premised-weaker} is
+not available: the pointer axiom forces the behaviour of $\Ihat{c}$ to
+be the applicative behaviour of some element of $\Dom$, and the
+premised equation constrains that behaviour on \emph{every} diagonal
+triple $(d, d, w)$, junk included --- where a $\lbox$ program that
+inspects its arguments is stuck; rather than pursue a definability
+analysis of $\Dom$, we exhibit a finite countermodel.  Let
+$\mathfrak{N}$ have universe $\{0,1\}$ with: $\feq$ interpreted as
+identity; $\Ihat{\cstrue} \defeq 0$, $\Ihat{\csfalse} \defeq 1$;
+$\Ihat{\bool} \defeq \{0,1\}$;
+$\Ihat{\mathsf{eq}_{\bool}} \defeq \{(0,0), (1,1)\}$; $\prfc \defeq 0$;
+$u \fapp v \defeq u \oplus v$ (exclusive or); $\Ihat{c}^0 \defeq 0$;
+and $\Ihat{c}(x,y,w) \defeq x \oplus y \oplus w$.  Every axiom of
+$\Th^\pi$ holds:
+constructor typing and inversion for $\bool$ (the universe is
+$\{0,1\}$), discrimination ($0 \neq 1$), the clause and case-analysis
+axioms of $\mathsf{eq}_{\bool}$ (its interpretation is the diagonal of
+$\Ihat{\bool}$), the specification axiom of $c$ (its conclusion
+$\Ihat{\bool}(\Ihat{c}(x,y,w))$ is unconditionally true), the pointer
+axiom ($((\Ihat{c}^0 \oplus x) \oplus y) \oplus w = x \oplus y \oplus
+w$), and the premised equation ($y = x$ gives $x \oplus x \oplus w =
+w$).  The unguarded equation fails: $\Ihat{c}(0,1,0) = 1 \neq 0$.
+\end{proof}
+
+This is precisely the situation Werner analysed for proof-irrelevant
+type theories \cite{Werner2008}: the unconditional singleton reduction
+$(\mathsf{Eq\_rec}\ A\ P\ a\ b\ p\ e) \rhd p$ ``easily breaks the
+subject reduction property in incoherent contexts,'' and his repair
+keeps the index condition as a guard: reduce only \emph{if} $a
+=_{\beta\varepsilon} b$ (generalized to arbitrary singletons: if
+$\tup{u} =_{\beta\varepsilon} \tup{a}$).  The premised equation is that
+rule with ``provable'' in place of ``definitionally checked'' --- a
+strictly weaker demand, which is why both variants are sound here while
+Werner needs the check for decidability and subject reduction.  An
+implementation can therefore expose the choice as a dial: unguarded
+collapse (strongest, UIP-debt at reconstruction) or premised collapse
+(weaker, replayable by plain inversion), per definition or globally.
+Brady, McBride and McKinna's run-time warning --- collapsing ``runs the
+risk of reducing a proof of something which cannot be constructed, such
+as $5 \le 4$'' in open contexts \cite{BradyEtAl2004} --- is the same
+point seen from the operational side; in the model-theoretic setting
+the absurd-context hazard is neutralised because equations are
+consequences of one consistent structure (\cref{cor:consistency}), and
+what remains of it is exactly the premised-versus-unguarded choice.
+
+\begin{remark}[Intensionality: the residual caveat]
+\label{rem:funext-leak}
+$\ML$ interprets equality as $\lbox$-convertibility, which is
+intensional: for the standard recursive $\mathsf{add}$,
+$\cls{\lambda x.\,\mathsf{add}\ \csO\ x} \neq \cls{\lambda x.\,x}$ in
+$\Dom$ (the left representative is stuck at the variable) although the
+two classes agree applicatively on all of $\semr{\nat}{}$.  So functional extensionality is \emph{not} validated:
+environments whose premise lemmas are proved from a funext postulate
+step outside \cref{thm:soundness} (\cref{rem:axioms}), though
+\cref{cor:consistency} is unaffected since no extensionality axiom is
+ever emitted.  This caveat is the honest residue of the \fstar{}
+\#1542 analysis (\cref{rem:1542}): that incident needed \emph{both} an
+extensionality axiom \emph{and} an index-blind equality encoding; the
+present translation emits neither, and each half of the immunity is a
+theorem --- \cref{prop:index-dropping} for the index-blindness half,
+the present remark for the extensionality half.
+\end{remark}

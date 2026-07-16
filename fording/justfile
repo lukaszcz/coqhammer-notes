@@ -1,0 +1,23 @@
+# Build driver for the fording paper (XeTeX).
+
+paper := "main"
+
+default: build
+
+# Full build: xelatex + bibtex + two more xelatex passes.
+build:
+    xelatex -interaction=nonstopmode -halt-on-error {{paper}}.tex
+    bibtex {{paper}}
+    xelatex -interaction=nonstopmode -halt-on-error {{paper}}.tex
+    xelatex -interaction=nonstopmode -halt-on-error {{paper}}.tex
+
+# Single pass (no bibliography refresh).
+quick:
+    xelatex -interaction=nonstopmode -halt-on-error {{paper}}.tex
+
+clean:
+    rm -f {{paper}}.aux {{paper}}.bbl {{paper}}.blg {{paper}}.log {{paper}}.out \
+          {{paper}}.toc {{paper}}.fls {{paper}}.fdb_latexmk {{paper}}.xdv
+
+distclean: clean
+    rm -f {{paper}}.pdf

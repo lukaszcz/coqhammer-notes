@@ -65,38 +65,36 @@ this branch (Rocq 9.1).*
 ### 1.1 Code
 
 A `Case` term is lifted out by `remove_case` → `case_lifting`
-(`src/plugin/coq_transl.ml:411`), which hash-conses the case expression
-(`coqterm_hash`, so a given match is lifted only once per problem), introduces a
-fresh constant `F = $_case_<ind>$<id>` applied to the free variables of the
-expression, and calls `add_inversion_axioms0` (`coq_transl.ml:294`) with
-`mk_inversion` (`coq_transl.ml:203`) to produce **one** axiom per match. Under
-default options (`opt_closure_guards = false`), the guard structure is decided at
-`coq_transl.ml:321-328`: `mk_guards` is applied to `get_fvars ctx matched_term` —
-i.e. type guards are kept **only for the free variables of the matched term**,
-and omitted for all other closure variables (this asymmetry is a soundness
-requirement, see §1.3). Inside each disjunct, the existentially quantified
-constructor arguments get `$HasType` conjuncts via `prop_to_formula`'s handling
-of `∃`.
+(`src/plugin/coq_transl.ml`), which occurrence-lifts the expression to a symbol
+`F = $_case_<ind>$<id>` applied to its informative free variables.  The
+hash-consing key additionally contains the actual erased proof dependencies and
+the enclosing declaration, so matches depending on different proof variables
+cannot be conflated.  The `Hashing.can_aux` canonicalization of `Let` terms uses
+the let body (not the binder type), which is required for this identity rule.
 
-Nested matches in branches are handled by the inner `hlp` continuation
-(`coq_transl.ml:467-520`): the branch's own inversion disjunction is nested
-*inside* the corresponding disjunct of the outer axiom (still one axiom total).
-Matches whose *inductive type* lives in `Prop` (target of the arity is `Prop`)
-are not translated at all: `case_lifting` returns a `$_generic_case_*` constant
-about which nothing is assumed (`coq_transl.ml:433-439, 453-454`) — this is the
-known "small propositional inductive types" limitation (JAR §9).
+Informative results are compiled to one equation per constructor, recursively
+flattening nested cases.  Compound scrutinees are first normalized through a
+typed auxiliary `λz. match z with ...`; constructor branch arities use Rocq's
+`nargs` count, so let-bound constructor declarations are not mistaken for
+arguments.  Every branch is validated before the first equation is emitted.
+Matches on empty Prop inductives remain unconstrained, and permitted singleton
+eliminations collapse to their unique branch under the source proposition.
 
-The general shape of the axiom, in the notation of the JAR paper (§5.2), for a
-case-lifted constant `F` over free variables `y⃗` with matched term `t` of
-inductive type `c p⃗ u⃗` with constructors `c₁ … c_k`:
+Proposition-valued matches use a separate specification (`G`) reading.  For a
+lifted predicate `F(y⃗)` matching `t`, each constructor contributes a guarded
+branch condition containing the constructor equation `t = cᵢ(...)`, its index
+equalities, argument guards/premises, and the translated branch formula.  The
+compiler emits both a lower and an upper bound:
 
 ```
-∀y⃗₀. guards_{fvars(t)} ( ( ∃x⃗₁. t = c₁ p⃗ x⃗₁ ∧ F y⃗ ≈ s₁ )
-                        ∨ …
-                        ∨ ( ∃x⃗_k. t = c_k p⃗ x⃗_k ∧ F y⃗ ≈ s_k ) )
+Inh(t) ∧ ⋀ᵢ ∀x⃗ᵢ. (t = cᵢ(x⃗ᵢ) ∧ Gᵢ ∧ idxᵢ → φᵢ) → F(y⃗)
+Inh(t) ∧ F(y⃗) → ⋁ᵢ ∃x⃗ᵢ. t = cᵢ(x⃗ᵢ) ∧ Gᵢ ∧ idxᵢ ∧ φᵢ
 ```
 
-where `≈` is `=` or `↔` depending on whether the branch is a proposition.
+The inhabitation guard is load-bearing: for an empty scrutinee it makes both
+bounds vacuous.  There is no `$_generic_case_*` fallback.  The two ablation
+paths mean axiom omission for the occurrence-lifted symbol; unexpected shapes
+raise an internal translation error.
 
 ### 1.2 Concrete outputs (verified on this branch)
 
@@ -304,16 +302,17 @@ it only changes what the ATP receives for each selected constant.
    *variable* scrutinees appearing in the goal this is usually fine (the
    inversion axiom is selected whenever the type is relevant); for compound
    scrutinees under several quantifiers it may occasionally cost a proof.
-   Mitigation: (a) inversion axioms are always emitted alongside; (b) if
-   regressions show up, emit *both* forms for matches on compound scrutinees
-   only, or gate the choice per strategy (see §2.7).
+   Mitigation: the compiler records matched inductives per enclosing
+   declaration, and `get_axioms` **delivers** their inversion, injectivity,
+   discrimination and constructor axioms whenever the declaration is selected.
+   Proposition-valued bounds carry constructor exhaustiveness internally.
 2. **More axioms per match** (k instead of 1). Harmless for clause count (the
    old axiom clausifies to ≥ 3k literals anyway) but each new axiom gets a name;
    `get_cases` in `provers.ml` must be taught the new naming scheme.
 3. **Interaction with `opt_simpl`/lifting-axiom merging** as noted in §2.1 — a
    mechanical generalization.
-4. **Propositional branches** (`≈` is `↔`) work identically; branches that are
-   proofs (return type in `Prop`) are already not translated this way at all.
+4. **Proposition-valued branches** use the lower/upper `G` bounds above.
+   Empty and indexed-singleton canaries pin the inhabitation and index premises.
 
 ### 2.6 Reconstruction signal improves
 
@@ -477,10 +476,9 @@ architecture for the *definitional* part of the translation of `c := t : τ` is:
    `div` one must emit `∀a b. b ≠ O → div a b = (if b ≤? a then S (div (a−b) b) else O)`
    and not the unconditional equation, whose instance `div a O = S (div a O)`
    contradicts a legitimately provable premise like `∀a. div a O = O`.
-   (Today this whole class is translated to `$_generic_case_*` — nothing is
-   assumed, nothing can go wrong, nothing can be proved. So this caveat is not
-   a current bug; it is the price of the upgrade and must be handled in the
-   design.)
+   The implementation now handles this by guarded WF equations; when the
+   corresponding ablation is off, the occurrence-lifted symbol simply receives
+   no defining equation.
 
 2. **Specification extraction** (the TODO point 9 term): for the *type* `τ`,
    emit the realizability statement `⟦τ⟧₂ ⌜c⌝ c` — Letouzey's simulation

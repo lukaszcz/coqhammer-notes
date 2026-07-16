@@ -1,0 +1,209 @@
+\section{Fording, and what an untyped target changes}
+\label{sec:fording}
+
+This section reviews the type-theoretic situation the paper starts from,
+fixes the reading of \emph{fording} used throughout, and identifies which
+parts of the classical machinery an untyped first-order target renders
+unnecessary --- and which soundness obligations it creates instead.  It
+contains no formal development; the definitions begin in
+\cref{sec:calculus}.
+
+\subsection{Indexed families and their eliminations}
+\label{sec:fording-families}
+
+An inductive family in the sense of Dybjer \cite{Dybjer1994} is an
+inductive definition $I : \tup{\sigma} \to s$ whose constructors target
+\emph{instances} $I\,\tup{t}(\tup{a})$ determined by the constructor's own
+arguments.  The paradigmatic informative examples are
+\[
+  \csvnil : \vect\,A\ \csO, \qquad
+  \csvcons : \forall n{:}\nat.\ A \to \vect\,A\ n \to \vect\,A\ (\csS\,n),
+\]
+and the paradigmatic propositional ones are the equality family and
+$\mathsf{le}$.  Three features distinguish families from plain datatypes
+in a way that any translation must confront.
+
+\begin{enumerate}[leftmargin=2em]
+\item \emph{Constructor typing constrains indices.}  A constructor
+  inhabits only the instances of the form $I\,\tup{t}(\tup{a})$; an
+  arbitrary instance $I\,\tup{u}$ is inhabited by $\wcns{c}$-forms only
+  when the constraint $\tup{u} = \tup{t}(\tup{a})$ is solvable.
+\item \emph{Case analysis specializes indices.}  A dependent match on a
+  scrutinee of type $I\,\tup{u}$ must reconcile $\tup{u}$ with each
+  constructor's $\tup{t}_i(\tup{y}_i)$.  Type-theoretic elaborations do so
+  by first-order unification with constructors as the rigid symbols
+  \cite{GoguenEtAl2006}; branches whose constraints are refutable are
+  discharged, and solvable constraints instantiate the branch.
+\item \emph{Propositional families may or may not eliminate into
+  computations.}  CIC permits a match on a $\Prop$-sorted scrutinee in an
+  informative position only for empty and \emph{singleton} inductives
+  (one constructor, all arguments propositional, parameters aside)
+  \cite{Rocq,Letouzey2003}; the equality family qualifies because its
+  constructor has no arguments beyond parameters.  The criterion is known
+  to be simultaneously too strong and too weak
+  \cite{GilbertEtAl2019}: it rejects families whose non-parameter
+  arguments are \emph{forced} by the indices, and accepting it together
+  with proof irrelevance makes uniqueness of identity proofs (UIP) hold.
+\end{enumerate}
+
+\subsection{Fording}
+\label{sec:fording-fording}
+
+McBride's thesis \cite[\S 3.5]{McBride1999} introduces the constraint
+technique this paper is built on: to use an elimination rule whose motive
+ranges over the whole ``aperture'' $I\,\tup{\imath}$ at a more specific
+instance, one abstracts the full aperture and \emph{constrains} it with
+pointwise equations
+$\tup{\imath} \simeq \tup{u}$ --- ``the patterns to which it applies are
+subject to equational constraints which recover their specificity.''
+Goguen, McBride and McKinna's elimination of dependent pattern matching
+\cite{GoguenEtAl2006} runs on the same device: in their specialization by
+unification, the method for constructor $\wcns{c}$ receives hypotheses
+$\tup{u} \simeq \tup{t}_c(\tup{y})$ and $\wcns{c}\,\tup{y} \simeq x$ ---
+``the equations on the indices are exactly those we must unify to allow
+the instantiation.''  At the level of declarations the transformation is
+folklore, stated compactly by Zhang \cite{Zhang2023}: a constructor
+$\wcns{c} : X \to F\,a$ fords to
+$\wcns{c}^{\mathrm{Ford}} : \forall a'.\ (a = a') \to X \to F\,a'$, after
+which ``$F$ is no longer indexed'' --- the family has become a
+\emph{parameterized} type whose constructors carry equational premises,
+and index specialization has become ordinary propositional reasoning that
+a consumer may perform whenever convenient.
+
+This paper uses fording in three places, always as a lens and never as a
+literal re-declaration:
+
+\begin{itemize}[leftmargin=2em]
+\item in the \emph{source calculus}: the branches of a case analysis on
+  $I(\tup{u})$ bind proofs of the index equations
+  $\tup{u} = \tup{t}_i(\tup{y}_i)$ (\cref{fig:terms}), which is
+  what lets dependently typed idioms --- impossible branches, results
+  depending on indices --- be written with first-order motives;
+\item in the \emph{emitted theory}: the inversion axiom of a family
+  quantifies over an arbitrary index tuple and disjoins, per constructor,
+  the payload \emph{and the index equations}
+  (\cref{def:theory}) --- the first-order image of the forded
+  declaration;
+\item in the \emph{semantics}: the interpretation of a family is a set of
+  (index tuple, element) pairs, and the index-reflection lemma
+  (\cref{lem:index-reflection}) states that membership holds exactly when
+  a constructor decomposition with matching index denotations exists ---
+  fording read as a property of one model.
+\end{itemize}
+
+One point deserves emphasis, because it explains why no
+``forded re-declaration'' appears anywhere in the formal development.
+Read as a CIC declaration, the forded family has its erstwhile indices as
+\emph{non-uniform parameters}: recursive constructor arguments still
+occur at other instantiations ($\csvcons$ at $n$, conclusion at
+$\csS\,n$).  Parameter-versus-index is a property of constructor
+\emph{conclusions} only, and elimination confronts only conclusions:
+since every forded constructor returns the generic instance, case
+analysis needs no index unification, and each branch simply receives its
+equations as hypotheses.  Constraint discharge is pay-as-you-go, one
+constructor layer per match.  In the untyped first-order output the
+parameter/index distinction vanishes entirely --- there are only function
+symbols, predicates and equations --- which is why fording can remain a
+per-occurrence, per-constructor lens.
+
+\subsection{What the untyped target dissolves}
+\label{sec:fording-dissolves}
+
+The type-theoretic literature attaches three warning labels to fording
+and to dependent case analysis generally.  All three are analysed
+precisely in the body of the paper; we preview the outcome.
+
+\paragraph{Heterogeneous equality.}  Telescopic index equations relate
+terms whose types agree only after earlier equations are substituted:
+$v_1 = v_2$ at types $\vect\,A\,n_1$ and $\vect\,A\,n_2$ cannot even be
+\emph{stated} homogeneously before $n_1 = n_2$ is substituted.  McBride's
+heterogeneous $\simeq$ exists to state such equations, and its eliminator
+is exactly K \cite{McBride1999,CockxEtAl2014}.  In an untyped target the
+formation problem does not exist: equality is a single binary predicate
+on one universe, and telescopic equations are stated pointwise
+(\cref{def:theory}).  The paper's source calculus sidesteps the issue
+differently --- its index telescopes are non-dependent
+(\cref{def:env}), so source-level equations are homogeneous --- and
+\cref{sec:limitations} discusses the residual gap.
+
+\paragraph{K, UIP, and the singleton criterion.}  The without-K analysis
+of pattern matching \cite{CockxEtAl2014,CockxDevriese2018} isolates
+exactly two unification steps that require K: deletion of reflexive
+equations, and injectivity at indices that are non-linear or not
+self-unifiable; Gilbert et al.\ \cite{GilbertEtAl2019} show that
+eliminating an indexed propositional singleton under proof irrelevance
+\emph{is} UIP.  Every one of these obstructions is a proof-relevance
+obstruction.  The model of \cref{sec:semantics} is proof-irrelevant by
+construction, hence validates UIP outright, so the \emph{unrestricted}
+rule set is sound for the translation: deletion, non-linear injectivity
+and singleton collapse need no side conditions
+(\cref{sec:formulas-uip}).  What survives of the without-K literature is
+its \emph{negative} space: discrimination only for fully applied
+constructor forms (under-applied conflict is refutable under functional
+extensionality --- Counterexample~35 of \cite{CockxDevriese2018}), and no
+injectivity for type formers (\cref{rem:hur}).
+
+\paragraph{Green slime.}  Defined functions in index positions make
+unification-based elaboration stuck \cite{McBride2014}: $0 \simeq
+\mathsf{plus}\,m\,n$ is neither a clash nor a solution.  The standard
+type-theoretic workarounds (ford the offending index, relational
+re-expression, derived eliminators) all amount to \emph{keeping the
+equation as data}.  The translation does exactly that, uniformly, for
+every index: the emitted equation $z \feq
+\Ihat{\mathsf{plus}}(m,n)$ sits in an inversion disjunct or a guard
+formula next to the defining equations of $\Ihat{\mathsf{plus}}$, and a
+saturation prover performs specialization by unification as ordinary
+equational reasoning --- including closing branches that elaboration-time
+unification cannot (a refutation of $0 \feq \mathsf{plus}(m,n)$ under
+$m \feq \csS(k)$ is one paramodulation step away from the defining
+equations).  Nothing in the soundness proof distinguishes rigid from
+non-rigid index terms; decidability is neither claimed nor needed
+(\cref{rem:slime}).
+
+\subsection{What the untyped target does not dissolve}
+\label{sec:fording-obligations}
+
+Three families of documented accidents mark the soundness obligations
+that an untyped target \emph{creates}; the formal development treats each
+as a theorem rather than a guideline.
+
+First, \emph{exhaustiveness}: in a one-universe target, ``every $x$ is a
+constructor form'' bounds the cardinality of the whole universe
+\cite[\S 2.3]{MengPaulson2008}, and the monotonicity analysis of
+\cite{BlanchetteEtAl2016} shows such sentences are exactly the ones whose
+guards can never be erased.  For indexed families the situation is
+strictly worse: for every family that specialises an index to a
+constructor form --- vectors, finite sets, and their relatives --- an
+\emph{unguarded} inversion axiom is not merely false in the intended
+model but inconsistent with the discrimination axioms the translation
+must also emit, its own index equations identifying distinct
+constructor forms (\cref{prop:unguarded-inconsistent});
+enumeration-shaped families detonate by cardinality instead
+(\cref{rem:unguarded-general}).
+
+Second, \emph{index erasure in atoms}: a type-indexed notion encoded by
+an index-blind target notion lets facts established at one index leak to
+another.  The \fstar{} unsoundness \#1542 \cite{FStar1542} is the
+documented instance --- extensional function equality at domain
+$\mathsf{nat}$, encoded into the SMT solver's untyped $=$, leaked to
+domain $\mathsf{int}$ and proved $\mathsf{False}$.  The analogue inside
+this paper's design space is a guard predicate that forgets its index
+arguments; \cref{prop:index-dropping} shows the resulting translation
+proves a semantically false goal.  The translation of
+\cref{sec:translation} therefore keeps the indices as arguments of every
+guard atom, and its native untyped $\feq$ is sound for a different reason
+than \fstar{}'s was unsound: the \emph{semantics of source equality} in
+the model is itself untyped conversion-class equality, so no typed
+reading exists to be violated --- at the documented price that the model
+is intensional and functional extensionality is not validated
+(\cref{rem:funext-leak}).
+
+Third, \emph{degenerate instances}: axioms asserting existence or
+structure at empty instances --- selector totality, box/unbox roundtrips,
+rank orderings --- have produced inconsistencies in deployed systems
+(Verus \#1366 \cite{Verus1366}).  The translation emits no rank axioms,
+no selectors and no unboxing roundtrips; at an empty instance the guard
+atom is simply false in the model and every structural axiom is
+vacuously satisfied there, while refutations of inhabitation
+(``$\Fin(0)$ is empty'') become one-step consequences of the guarded
+inversion axiom and discrimination (\cref{ex:fin-empty}).
