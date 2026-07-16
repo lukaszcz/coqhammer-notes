@@ -548,7 +548,22 @@ the paths Phase C touches).
    classified families) before touching the expansion itself.
 3. Consistency canaries on indexed-heavy dumps (prove-`$false` over the
    full axiom set), plus the §1 probes as golden translation checks.
-4. Guards-on vs guards-off over the generalized mechanism: re-run the
+4. An F\*-#1542-shaped canary, targeting the specific failure class next
+   to which the riskiest reclassification (`eq` → CPropSingleton) lives:
+   index-equation leakage into native equality. F\*'s funext unsoundness
+   arose because its type-indexed `==` was encoded as Z3's untyped `=`,
+   so an equality established at one index escaped its guard and held at
+   another. Our collapse of (heterogeneous) index equality to native `=`
+   is the same move, sound only by the junk-model facts of §3. The canary:
+   dumps engineered so that a forded equation escaping its
+   `guard`/premise, or an unconditional guards-off transport equation
+   (`cast e x = x`) firing on a junk proof where branches disagree, would
+   let the ATPs derive `$false` — e.g. matches on `eq` between
+   observably-distinct terms under an uninhabited hypothesis, and
+   guards-off dumps mixing transports at several types. The general
+   canaries test aggregate consistency; this one fails loudly iff an
+   equation outlives its occurrence.
+5. Guards-on vs guards-off over the generalized mechanism: re-run the
    erasure-guards axis; the prior +9.1pp for guards-off should persist or
    improve (more erasures, same UIP debt), but it is now measuring a
    bigger surface — do not assume transfer.
