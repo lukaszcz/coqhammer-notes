@@ -1,0 +1,916 @@
+                                                                          Draft of June 5, 2014
+
+
+
+                                                 Pattern Matching Without K
+
+                                            Jesper Cockx                 Dominique Devriese           Frank Piessens
+                                                      iMinds-DistriNet, KU Leuven, 3001 Leuven, Belgium.
+                                                             firstname.lastname@cs.kuleuven.be
+
+
+
+
+Abstract                                                                                clauses. For example, the function half : N → N can be defined as
+Dependent pattern matching is an intuitive way to write programs                                   half :   N                 →     N
+and proofs in dependently typed languages. It is reminiscent of                                    half     zero              =     zero
+both pattern matching in functional languages and case analysis                                                                                           (1)
+                                                                                                   half     (suc zero)        =     zero
+in on-paper mathematics. However, in general it is incompatible                                    half     (suc (suc k))     =     suc (half k)
+with new type theories such as homotopy type theory (HoTT). As a
+consequence, proofs in such theories are typically harder to write                      Note that pattern matching combines two powerful programming
+and to understand. The source of this incompatibility is the reliance                   features, namely case analysis and recursion.
+of dependent pattern matching on the so-called K axiom – also                               Additionally, dependent pattern matching can be used to write
+known as the uniqueness of identity proofs – which is inadmissible                      proofs (in the form of dependently typed functions). For example,
+in HoTT. The Agda language supports an experimental criterion to                        we can prove the transitivity of the propositional equality x ≡ y
+detect definitions by pattern matching that make use of the K axiom,                    (Martin-Löf 1984) by pattern matching on its only constructor refl
+but so far it lacked a formal correctness proof.                                        of type x ≡ x:
+    In this paper, we propose a new criterion for dependent pat-                                  trans : (x y z : A) → x ≡ y → y ≡ z → x ≡ z
+tern matching without K, and prove it correct by a translation to                                                                                         (2)
+                                                                                                  trans x bxc bxc refl refl = refl
+eliminators in the style of Goguen et al. (2006). Our criterion both
+allows more good definitions than existing proposals, and solves                        Inaccessible patterns, like bxc in this example, witness the fact
+a previously undetected problem in the criterion offered by Agda.                       that only one type-correct argument can be in that position. Indeed,
+It has been implemented in Agda and is the first to be supported                        matching on a proof of x ≡ y with refl : x ≡ x forces x and y to
+by a formal proof. Thus it brings the benefits of dependent pattern                     be the same. Another example is the proof cong that any function
+matching to contexts where we cannot assume K, such as HoTT. It                         maps equal arguments to equal results:
+also points the way to new forms of dependent pattern matching, for                           cong : (f : A → B)(x y : A) → x ≡ y → f x ≡ f y
+example on higher inductive types.                                                                                                                        (3)
+                                                                                              cong f x bxc refl = refl
+Categories and Subject Descriptors F.3.3 [Logics and Meanings                              Proofs by dependent pattern matching are typically much shorter
+of Programs]: Studies of Program Constructs – functional constructs,                    and more readable than ones that use the classical datatype elimi-
+program and recursion schemes; D.3.3 [Programming Languages]:                           nators associated with each inductive family. For example, let ≤
+Language Constructs and Features – data types and structures,                           be the usual ordering on N defined as an inductive family (Dybjer
+patterns, recursion                                                                     1991) defined by the two constructors lz and ls:
+Keywords Dependent Pattern Matching, K Axiom, Homotopy                                             lz : (n : N) → zero ≤ n
+                                                                                                                                                          (4)
+Type Theory, Agda                                                                                  ls : (m n : N) → m ≤ n → suc m ≤ suc n
+                                                                                        We can prove antisymmetry of this relation by pattern matching as
+1.    Introduction                                                                      follows:
+The case for dependent pattern matching. Dependent pattern                               antisym : (m n : N) → m ≤ n → n ≤ m → m ≡ n
+matching (Coquand 1992) is a technique for writing functions in                          antisym bzeroc bzeroc (lz bzeroc) (lz bzeroc) =
+languages based on dependent type theory, such as Agda (Norell
+                                                                                                     refl                                                 (5)
+2007), Coq (Sozeau 2010), and Idris (Brady 2013). It allows us
+to define functions in a style similar to functional programming                         antisym bsuc mc bsuc nc (ls m n x) (ls bnc bmc y) =
+languages such as Haskell, by giving a number of equalities called                                       cong suc (antisym m n x y)
+                                                                                        Pattern matching allows us to skip the two cases where one of the
+                                                                                        arguments is lz n and the other is ls n0 m0 because zero can
+                                                                                        never be of the form suc m0 (this is called the conflict rule). In the
+                                                                                        second clause, m0 (the first argument of the second ls) was replaced
+                                                                                        by bnc because suc m0 and suc n were forced to be equal, and
+                                                                                        similarly n0 (its second argument) is replaced by bmc (this is called
+                                                                                        the injectivity rule).
+                                                                                        Desugaring pattern matching. In a dependent type theory with
+                                                                                        inductive families but without pattern matching, functions have
+[Copyright notice will appear here once ’preprint’ option is removed.]                  to be written using datatype eliminators. They will be defined
+
+
+Pattern matching without K                                                          1                                                                 2014/6/5
+ antisym : (m n : N) → m ≤ n → n ≤ m → m ≡ n                                  true:
+                                                                               coerce-id : (e : Bool ≡ Bool) → coerce e true ≡ true
+ antisym = elim≤ (λm; n; _ . n ≤ m → m ≡ n)                                                                                         (7)
+                                                                               coerce-id refl = refl
+    (λn; e. elim≤ (λn; m; _ . m ≡ zero → m ≡ n)
+                                                                              This can be desugared to
+       (λn; e. e)
+                                                                               coerce-id = λe. K (λe. coerce e true ≡ true) refl e (8)
+       (λk; l; _; _; e. elim⊥ (λ_ . suc l ≡ suc k)
+                                                                              The K axiom is necessary to deal with reflexive equations such as
+          (noConfN (suc l) zero e))                                           Bool ≡ Bool in this example.
+       n zero e refl)
+                                                                              Pattern matching in HoTT. An emerging field within dependent
+    (λm; n; _; H; q. cong suc                                                 type theory is homotopy type theory (HoTT) (The Univalent Foun-
+       (H                                                                     dations Program 2013). It gives a new interpretation of terms of
+                                                                              type x ≡ y as paths from x to y. Many basic constructions in HoTT
+          (elim≤ (λk; l; _ . k ≡ suc n → l ≡ suc m → n ≤ m)                   can be written very elegantly using pattern matching, for exam-
+             (λ_; e; _. elim⊥ (λ_ . n ≤ m)                                    ple trans (2) corresponds to the composition of two paths, and
+                                                                              cong (3) can be interpreted as a proof that all functions in HoTT are
+                (noConfN zero (suc n) e))
+                                                                              continuous (in a certain sense).
+             (λk; l; e; _; x; y. subst (λn. n ≤ m)                                One of the core elements of HoTT is the univalence axiom. This
+                (noConfN (suc k) (suc n) x)                                   axiom states roughly that any two isomorphic types can be identified,
+                                                                              i.e. if there is a function f : A → B which has both a left and a
+                (subst (λm. k ≤ m)                                            right inverse, then it gives us a proof ua f of A ≡ B. Moreover,
+                   (noConfN (suc l) (suc m) y) e))                            this proof satisfies coerce (ua f ) x = f x. Univalence captures
+                                                                              the common mathematical practice of informal reasoning “up to
+             (suc n) (suc m) y refl refl)))
+                                                                              isomorphism” in a nice and formalized way. It also has a number of
+                                                                              useful consequences, such as functional extensionality.
+Figure 1. This proof of the antisymmetry of ≤ is more complex                     However, the univalence axiom is incompatible with dependent
+than the proof by pattern matching (5) because it uses only the stan-         pattern matching. For example, we can construct a function swap :
+dard datatype eliminators (see Section 3.1) and the “no confusion”            Bool → Bool such that swap true = false and vice versa.
+property of the natural numbers. No confusion can be constructed              This function is its own inverse, so by univalence it gives us a
+from the eliminator for N as well (see Section 3.4).                          proof ua swap of Bool ≡ Bool such that coercing true along this
+                                                                              proof results in false. Together with the proof coerce-id (7), this
+                                                                              leads to a proof of the absurdity true ≡ false. This has forced
+                                                                              people working on HoTT to avoid using pattern matching or risk
+formally in Section 3.1, but Figure 1 already gives an alternative            unsoundness.
+definition of antisym as an example using eliminators only. All the
+                                                                              Avoiding K. The source of the incompatibility between univalence
+equational reasoning that was done automatically in the definition
+                                                                              and dependent pattern matching is that pattern matching relies on
+by pattern matching now has to be done explicitly. The proof with
+                                                                              the K axiom. If we could somehow restrict definitions by pattern
+eliminators also requires considerable cleverness for the construction
+                                                                              matching so that we could translate them to type theory with
+of the motive (McBride 2002) of each eliminator, while this is done
+                                                                              eliminators but without the K axiom, then we would be able to use
+automatically in the definition by pattern matching. So it is clearly
+                                                                              pattern matching in HoTT. One attempt to achieve this is an option
+preferable to use pattern matching for this proof.
+                                                                              in Agda called –without-K (Norell et al. 2012). When enabled, Agda
+    As shown by Goguen et al. (2006), all definitions by dependent
+                                                                              attempts to detect definitions by pattern matching that make use of
+pattern matching can be translated to ones that only use eliminators.
+                                                                              the K axiom by means of a syntactic check. In theory, this option
+However, for this translation they depend on the so-called K axiom.
+                                                                              should allow people to use pattern matching in a safe way when it is
+Coquand (1992) already observed that pattern matching allows
+                                                                              undesirable to assume K. However, the option has been criticized
+proving this K axiom:
+                                                                              many times, for being too restrictive (Sicard-Ramírez 2013), for
+                  K : (P : a ≡ a → Set) →                                     having unclear semantics (Reed 2013), and for containing errors
+                                                                              (Altenkirch 2012; Cockx 2014). These errors allowed one to prove
+                      (p : P refl)(e : a ≡ a) → P e                (6)        (weaker versions of) the K axiom. While errors are typically fixed
+                  K P p refl = p                                              quickly after being found, this situation really calls for a more in-
+                                                                              depth investigation of dependent pattern matching without K.
+The K axiom is equivalent with the uniqueness of identity proofs
+principle (UIP), which states that any two proofs of x ≡ y must be            Contributions.
+equal. As observed by Hofmann and Streicher (1994), the K axiom                • We present a new criterion that describes what kind of definitions
+does not follow from the standard rules of type theory, but it is                by pattern matching are still allowed if we do not assume K. This
+compatible with them.                                                            criterion is strictly more general than previous attempts.
+    So far, none of the examples we gave needs the K axiom for
+                                                                               • We give a formal proof that definitions by pattern matching
+the translation to eliminators (except for the definition of K itself).
+For the next example, remember that in type theory there is no                   satisfying this criterion are conservative over standard type
+strict boundary between types and terms, so we can form equations                theory by translating them to eliminators in the style of Goguen
+between types as well, for example Bool ≡ Bool. Given such an                    et al. (2006), but without relying on the K axiom.
+equation between types, we can coerce terms of the first type to the           • Our criterion has been implemented as a patch to Agda. We test it
+other using the function coerce : A ≡ B → A → B (which can be                    on a body of examples in order to show its adequacy, soundness,
+constructed by pattern matching). Now we can use pattern matching                and generality. As of Agda version 2.3.4, our implementation
+to prove that coercing true by any proof of Bool ≡ Bool results in               will replace the old version of –without-K.
+
+
+Pattern matching without K                                                2                                                                2014/6/5
+  • Finally, we give an idea how to make pattern matching without K               Cycle: x = c p̄[x], Θ ⇒ ⊥ (if x ≺ c p̄[x])
+      even less restrictive by analyzing which types satisfy K without
+                                                                                  Exhaustively applying these rules whenever they are applicable
+      assuming it as an axiom. Future work is still needed to make this
+                                                                                  terminates by the usual argument (Jouannaud and Kirchner 1990),
+      analysis more robust.
+                                                                                  with three possible outcomes:
+Overview. The rest of this paper is organized as follows. In section              Positive success: All equations have been solved, yielding a most
+2, we describe our criterion for pattern matching without K and                      general unifier σ.
+compare our implementation with the current one in Agda. Section
+3 contains the main technical contribution of this paper: a proof                 Negative success: Either the conflict or the cycle rule applies,
+that definitions by pattern matching satisfying our criterion can be                 meaning that there exist no unifiers.
+translated to eliminators without using K. In section 4, we discuss               Failure: An equation is reached for which no transition applies,
+how pattern matching without K can be made less restrictive. Finally,                meaning that the problem is too hard to be solved (by this
+we discuss related work in section 5.                                                unification algorithm).
+    Supplementary material for this paper can be found
+online at http://people.cs.kuleuven.be/~jesper.cockx/                             This algorithm is complete for constructor forms: if both ū and v̄
+Without-K/. This page contains the implementation of our cri-                     are built from constructors and variables only, then unification will
+terion in Agda, Agda files containing the examples given in this                  never result in a failure.
+paper, and Agda files illustrating parts of the proof in Section 3.                   Case splitting succeeds if unification of ū with each of the v̄i
+                                                                                  succeeds (either positively or negatively). If all of them succeed
+                                                                                  negatively, we replace x by an absurd pattern ∅, marking that case
+2.     The criterion                                                              splitting resulted in zero cases.1 If on the other hand at least one
+A definition by pattern matching can be thought of as given by a                  of them succeeds positively, we get the same number of new cases
+number of case splits on the arguments. For example, the function                 where x has been replaced by ci ȳ and ȳ : ∆i are fresh variables.
+half : N → N in Definition 1 is defined by first doing a case                     To each of these cases, we then apply the substitution σi constructed
+split on the argument n : N – giving us two cases n = zero and                    by unification. For example, a function f : (k : N) → k ≤k → P k
+n = suc m – and then another case split on m. For definitions like                can be defined by the following patterns:
+this one, each case split corresponds exactly to one application of                                     f bzeroc (lz bzeroc) = . . .
+the standard eliminator for N, hence the K axiom is not needed.                                                                                             (9)
+                                                                                                        f bsuc nc (ls n; bnc) = . . .
+    Things get more complicated for an inductive family (Dybjer
+1991) such as Fin n, the canonical finite set of n elements, or                   Here, b. . .c marks an inaccessible pattern: it is not part of a case
+m ≤ n, the type of proofs that m is smaller than or equal to n.                   split, but rather computed by unification. The substitution σi is also
+When splitting on a type from an inductive family, we need to apply               applied to the result type: in the first clause, the right-hand side
+unification in order to determine the possible cases. This unification            should have type P zero, while in the second one it should have
+algorithm depends crucially on the K axiom, so we have to restrict                type P (suc n).
+it in order to remove this dependence.
+    In this section, we first describe the unification algorithm used             2.2     Restricting the unification rules
+by Goguen et al. (2006). Next, we describe our restricted unification             Our criterion for pattern matching without K works by limiting the
+algorithm that does not depend on K. We also compare our criterion                unification algorithm in two ways:
+with the syntactic criterion for pattern matching without K in Agda.
+Finally, we give a short evaluation of our implementation.                          • It is not allowed to use the deletion step.
+                                                                                    • When applying the injectivity step on the equation c s̄ = c t̄
+2.1     Case splitting by unification of the indices                                    where c s̄, c t̄ : D ū, the indices ū should be self-unifiable, i.e.
+When checking a definition by pattern matching, we must decide                          unification of ū with itself should succeed positively (while still
+which constructors can be used to construct a term of a particular                      adhering to these two restrictions).
+type, and under which constraints. For example, consider the                          This inevitably means that unification will fail more often.
+inductive family m ≤ n with constructors lz and ls as given in                    However, if unification results in a success (a positive or negative
+Definition 4. Suppose we want to do a case split on a variable of type            one) then we know that the original rules would have given the same
+k ≤ k, then we have to decide for what kind of arguments the two                  result. Where the original algorithm was complete for constructor
+constructors give a result of the form k ≤ k. In the case of lz, this             forms, our modified version is only complete for linear constructor
+is when both k and the argument n are equal to zero, while for ls,                forms (i.e. ones where each variable occurs only once).
+this is when the two arguments m and n are equal and k = suc n.                       As a first example, our criterion allows the definition of the
+    In general, suppose we are case splitting on a variable x : D ū              standard J-eliminator for the propositional equality (also known as
+where D is an inductive family with indices ū (we consider D                     the principle of based path induction in HoTT) by pattern matching:
+to already be applied to its parameters, if any). Suppose D has
+constructors ci with return type D v̄i for i = 1, . . . , k, then we                           J : (P : (b : A) → a ≡ b → Set) →
+have to unify ū with each of the v̄i . Unification is the process of                              (p : P a refl)(b : A)(e : a ≡ b) → P b e                (10)
+searching for unifiers, i.e. substitutions σ such that ūσ = v̄i σ.                            J P p bac refl = p
+A unification problem is represented as a list of equations u1 =
+vi1 , . . . , un = vin , and the following five unification transitions are       The unification problem for the case split on e : a ≡ b with the
+used to simplify the problem step by step:                                        constructor refl : a ≡ a is given by b = a. Unification succeeds
+                                                                                  positively after one solution step, with the most general unifier
+Deletion: x = x, Θ ⇒ Θ                                                            [b 7→ a] as the result. Likewise, the definitions of trans (2), cong
+Solution: x = t, Θ ⇒ Θ[x 7→ t] (if x is not free in t)                            (3), and antisym (5) in the introduction are also accepted.
+Injectivity: c s̄ = c t̄, Θ ⇒ s̄ = t̄, Θ                                          1 The reason for replacing x by an absurd pattern instead of removing the
+Conflict: c1 s̄ = c2 t̄, Θ ⇒ ⊥ (if c1 6= c2 )                                     pattern entirely, is to keep coverage checking decidable (Goguen et al. 2006).
+
+
+Pattern matching without K                                                    3                                                                        2014/6/5
+    In contrast, the definition of K by pattern matching is not allowed,         syntactical artefacts like the distinction between a parameter and
+as case splitting on the argument of type a≡a produces a unification             an index. Similarly, Agda’s syntactic criterion does not allow us to
+problem a = a, which fails without the deletion step of the                      pattern match on an argument of type n ≤ n because the variable n
+unification algorithm.                                                           occurs twice. But this turns out to be over-conservative, as evidenced
+                  K : (P : a ≡ a → Set) →                                        by the fact that it is allowed by our criterion.
+                                                                                      Another advantage of our criterion is that unlike the syntactic cri-
+                    (p : P refl)(e : a ≡ a) → P e                     (11)       terion, it does not put any requirements on the datatype parameters.
+                  K P p refl = p                                                 This is very useful when we need injectivity of a constructor of a
+                                                                                 parametrized data type. For example, the syntactic criterion does not
+This already explains the need for the first restriction to the unifi-           allow case splitting on an argument of type x :: xs ≡ y :: ys where
+cation algorithm. As an example of why the second restriction is                 :: is the list constructor, since the type A of x and y is a parameter
+needed, consider the following weaker variant of K:                              and the constructor :: is considered to be applied to this parameter.
+   weakK : (P : refl ≡a≡a refl → Set) →                                          Our criterion has no such problems.
+              (p : P refl)(e : refl ≡a≡a refl) → P refl               (12)            Unfortunately, our criterion still has some limitations. For exam-
+                                                                                 ple, when working with the ≤ relation on finite sets Fin n, we can-
+   weakK P p refl = p                                                            not pattern match on an argument of type i ≤ i where i : Fin n. This
+Like the regular K, this weakK does not follow from the standard                 is because unification gets stuck on the problem fs n x = fs n y,
+rules of type theory and is incompatible with univalence (Kraus                  where the deletion rule is needed to remove the equation n = n.
+and Sattler 2013). However, since refl is a constructor without                  However, this definition is also refused by the syntactic criterion. In
+any arguments, it would be accepted if we did not have the second                Section 4, we discuss a possible solution to this problem.
+restriction.
+                                                                                 2.4    Implementation and evaluation
+2.3     Comparison with the syntactic criterion                                  Our new criterion for pattern matching without K has been imple-
+So far, the only credible proposal of a criterion for pattern matching           mented as a patch to Agda. We used it with a number of Agda
+without K was the syntactic criterion used by Agda. So how does                  programs in order to test it for adequacy, soundness, and generality.
+our criterion compare to it? One reason to prefer our criterion is that          Adequacy. In order to test the adequacy of our approach, we tested
+it is more amenable to the correctness proof given in Section 3. But             it on a number of small examples that should be definable without K,
+we should also compare their generality, i.e. what kind of definitions           such as the functions half (1), trans (2), cong (3), and antisym
+are still allowed by each. The criterion currently used in Agda for              (5) from the introduction. We also tested it on a body of Agda code
+pattern matching without K is specified as follows:                              related to propositional equality and HoTT by Danielsson (2013),
+          If the flag is activated, then Agda only accepts certain               which was written with Agda’s current –without-K flag in mind. All
+      case-splits. If the type of the variable to be split is D pars             these examples are accepted without problems.
+      ixs, where D is a data (or record) type, pars stands for
+                                                                                 Soundness. To test the soundness of our criterion, we also tested
+      the parameters, and ixs the indices, then the following
+                                                                                 it on a number of variations on the K axiom and weaker versions of
+      requirements must be satisfied:
+                                                                                 it. For example, when we try to define K as in Definition 11, we get
+        • The indices ixs must be applications of constructors (or
+                                                                                 the following error message:
+          literals) to distinct variables. Constructors are usually not
+          applied to parameters, but for the purposes of this check                    Cannot eliminate reflexive equation x = x of type A because
+          constructor parameters are treated as other arguments.                       K has been disabled (when checking that the pattern refl
+        • These distinct variables must not be free in pars.                           has type x ≡ x).
+    This criterion implies that the deletion rule is never used during           Pattern matching with refl on a proof of Bool ≡ Bool is also
+unification. To see why this is true, note that it guarantees that               prohibited by our check. Similarly, the elimination rule for heteroge-
+all unification problems generated by pattern matching are of the                neous equality given by McBride (2000) (which is equivalent with
+form ū = v̄i where ū consists of constructors applied to free                  K) is rejected, as are the weaker versions of K given by Altenkirch
+variables and each variable occurs only once in ū. Moreover, since              (2012) and Cockx (2014).
+new constructors introduced by case splitting are applied to fresh               Generality. Finally, to test the generality of our approach, we gave
+variables, the variables in ū are not free in v̄i . Both the solution and       it some definitions that are rejected by Agda’s syntactic criterion,
+the injectivity step preserve these three properties, hence we will              but does not actually rely on the K axiom. For example, definitions
+never reach an equation of the form x = x.                                       involving case splitting on types such as m ≤ m, k ≡ l + m, and
+    On the other hand, the syntactic criterion does not imply that               x ≡ f y are accepted. Another notable advantage of our criterion is
+the indices are self-unifiable when applying the injectivity rule. But           that adding parameters to a data type will never change the validity
+this is actually a bug in the syntactic criterion, allowing one to prove         of a definition by pattern matching. This is especially useful in Agda
+a weaker version of the K axiom (Cockx 2014). So the fact that our               since module parameters are also considered to be parameters of the
+criterion is more restrictive in this case is actually a good thing.             datatypes defined inside that module (Norell 2007, chapter 4). So
+    Apart from that issue, our criterion is in fact strictly more general        with the syntactic criterion, moving a definition to another module
+than the syntactic one. For example, the syntactic criterion allows us           can cause an error, but with our criterion this is no longer the case.
+to pattern match with refl on an argument of type k +l ≡m (where
+k, l, m : N are previous arguments), but not on an argument of type
+m ≡ k + l. This asymmetry is created by a technical detail in the                3.     Eliminating pattern matching without K
+standard definition of propositional equality as an inductive family:            In this section, we show that definitions by dependent pattern
+the first argument is a parameter (so it can be anything), while the             matching satisfying our criterion can be translated to type theory
+second one is an index (so it must consist of constructors applied               with universes and inductive families, without using the K axiom.
+to free variables). In contrast, our criterion allows both variants              Our proof follows the same general outline as the proof by Goguen
+because we look at the unifications that are performed instead of                et al. (2006), but there are two important differences:
+
+
+Pattern matching without K                                                   4                                                                    2014/6/5
+  • We work with the homogeneous propositional equality instead                                                        (Ctx-empty)
+      of the heterogeneous version. The reason is that the elimination                                        valid
+      rule they use for the heterogeneous equality is equivalent with                            Γ ` A : Seti      x∈ / F V (Γ)
+      K (McBride 2000), something we wish to avoid. Using the                                                                             (Ctx-ext)
+      homogeneous equality also means that we have to work a little                                      Γ(x : A) valid
+      harder to express equality between two sequences of terms in
+      the same telescope.                                                                              Γ valid   x:A∈Γ               (Var)
+                                                                                                              Γ`x:A
+  • Working with the homogeneous equality leads us very natu-
+      rally to upgraded versions of the unification transitions given                          Γ ` t : A1        Γ ` A1 = A2 : Seti
+                                                                                                                                                (=Ty)
+      by Goguen et al. (2006), where the return type is dependent on                                          Γ ` t : A2
+      the equality proof. The construction of these upgraded transi-
+      tions will make clear why the two restrictions to the unification                                        Γ valid           (Set)
+      algorithm given in Section 2.2 are really needed.                                                   Γ ` Seti : Seti+1
+    The general idea of the proof is as follows. First, the definition
+by pattern matching is translated to a case tree. This translation                            Γ ` A : Seti     Γ(x : A) ` B : Setj
+                                                                                                                                                     (Π)
+is described in detail by Norell (2007), and we will not repeat                                   Γ ` (x : A) → B : Setmax(i,j)
+it here. Each leaf node of the case tree corresponds to a clause
+f p̄ = e, i.e. it defines f on arguments that match the pattern p̄,                                       Γ(x : A) ` t : B
+                                                                                                                                         (λ)
+and each internal node corresponds to a case split of p̄ on some                                       Γ ` λx. t : (x : A) → B
+variable x : D ū into patterns p̄1 , . . . , p̄n . If we can assemble the
+definitions of f p̄1 , . . . , f p̄n into a definition of f p̄, then we can                    Γ ` f : (x : A) → B        Γ`t:A
+work backwards from the leaf nodes towards the root, ultimately                                                                                (App)
+obtaining a definition of f on arbitrary variables.                                                     Γ ` f t : B[x 7→ t]
+    So we need to know how to assemble the definitions of
+f p̄1 , . . . , f p̄n into a definition of f p̄. This assembly proceeds                           Γ(x : A) ` t : B        Γ`s:A
+                                                                                                                                               (β)
+in two steps. First we apply a technique called basic caseD -analysis                             (λx. t) s = t[x 7→ s] : B[x 7→ s]
+at ū; x. This splits the problem into one subproblem for each con-
+structor ci of D̄, and gives us proofs of the equations ū = v̄i and                           Γ ` f : (x : A) → B       x∈/ F V (f )
+x = c ȳ. The second step is to apply specialization by unification,                                                                                 (η)
+                                                                                                    λx. f x = f : (x : A) → B
+simplifying these equations step by step. The unification transitions
+make sure that we do not have to fill in anything for a negative                    + reflexivity, symmetry, transitivity and congruence rules for =
+success. So finally, we fill in the translated definition of f p̄i for
+each positive success.                                                            Figure 2. The core formal rules of UTT, including dependent
+    In general there can be recursive calls to the function f in each             function types (x : A) → B, an infinite hierarchy of universes
+clause f p̄ = e. These recursive calls are required to be structurally            Set0 , Set1 , Set2 , . . ., and βη-equality.
+recursive on some argument x : D ū of f. It is important for the proof
+that the type of x in ∆ is already a data type, not just the type of x
+in each of the clauses separately. This allows us to use well-founded
+recursion on D to obtain an inductive hypothesis H, asserting that                Contexts and substitutions. We use Greek capitals Γ, ∆, . . . for
+f is already defined on arguments structurally smaller than x. This               contexts, capitals T, U, . . . for types, and small letters t, u, . . . for
+inductive hypothesis is then used to replace the recursive calls to f             terms. A list of terms is indicated by a bar above the letter, for
+in e.                                                                             example t̄. Contexts double as the type of such a list of terms,
+    The challenge is then to construct all these techniques (case                 also called a telescope, so we can write for example t̄ : Γ where
+analysis, specialization by unification, and structural recursion) as             Γ = (m : N)(p : m ≡ zero) and t̄ = zero; refl. Note that the
+terms internal to type theory. Before we begin this construction, we              empty context  is inhabited by the empty list (). The simultaneous
+repeat some standard definitions from type theory (Section 3.1) and               substitution of the terms t̄ for the variables in the context Γ is written
+dependent pattern matching (Section 3.2). We continue by showing                  as [Γ 7→ t̄]. We denote substitutions by small Greek letters σ, τ, . . .
+how the homogeneous propositional equality can be used to express
+equality of sequences (Section 3.3). We then recall some standard                 Elimination operators. For any telescope Ξ, we define a Ξ-
+equipment for inductive datatypes given by McBride et al. (2006):                 elimination operator (McBride 2002) to be any function with a
+case analysis, structural recursion, no confusion, and acyclicity,                type of the form
+of which the latter two are slightly adapted to work with the                               (P : Ξ → Seti ) →
+homogeneous equality (Section 3.4). No confusion and acyclicity
+are subsequently used to construct the unification transitions as terms                     (m1 : ∆1 → P s̄1 ) . . . (mn : ∆n → P s̄n ) →                     (13)
+inside type theory (Section 3.5). Finally, all these tools are brought                      (t̄ : Ξ) → P t̄
+together for the translation of case trees to eliminators (Section 3.6).
+                                                                                  We call Ξ the target, P the motive, and m1 , . . . , mn the methods of
+                                                                                  the elimination operator. The reader may think of a Ξ-elimination
+3.1     Type theory                                                               operator as a way to transform a problem into a set of subproblems.
+As our version of type theory, we use Luo’s Unified Theory of De-                 In the type shown above, the original problem is to construct a result
+pendent Types (UTT) with dependent products, inductive families,                  of type P t̄ when given an arbitrary list of values t̄ in the telescope
+and universes (Luo 1994). We omit the meta-level logical framework                Ξ. This original problem is transformed into n sub-problems given
+and the impredicative universe of propositions because they are not               by each of the methods: the ith subproblem is to construct a result
+needed for our current work. The formal rules of the version of UTT               of type P s̄i when given an arbitrary value satisfying telescope
+we use are summarized in Fig. 2.                                                  ∆i . The elimination operator’s type can be read as a function that
+
+
+Pattern matching without K                                                    5                                                                            2014/6/5
+transforms solutions for the sub-problems into a solution for the                          
+                                                                                            zero 7→ zero
+original problem.                                                                        n
+                                                                                                     
+                                                                                                        suc zero 7→ zero
+                                                                                             (suc m)
+Inductive families. Inductive families (Dybjer 1991) are (depen-
+                                                                                                       suc (suc k) 7→ suc (half k)
+dent) types inductively defined by a number of constructors, for ex-
+ample N is defined by the constructors zero : N and suc : N → N.                  Figure 3. A representation of the function half by a case tree. At
+Inductive families can also have parameters and indices, for exam-                each internal node, the variable on which the case split is performed
+ple Vec A n is an inductive family with one parameter A : Set,                    is underlined.
+one index n : N, and two constructors nil : Vec A zero and
+cons : (n : N) → A → Vec A n → Vec A (suc n). Each
+inductive family comes equipped with a datatype eliminator, for                                                  f ≺t            r≺s          s≺t
+example the eliminator for N is                                                     ti ≺ c t1 . . . tn          f s≺t                   r≺t
+      elimN : (P : N → Seti ) → (mzero : P zero) →                                Figure 4. The structural order ≺ is used to check termination
+              (msuc : (n : N) → P n → P (suc n)) →                    (14)        (Goguen et al. 2006).
+                 (n : N) → P n
+In general, let D be an inductive family. Since everything we do in               sq : (m : N) → Square m2 . Then bm2 c (sq m) is a pattern of
+this paper is parametric in the datatype parameters of D, we consider             type (n : N)(p : Square n). Any other pattern btc (sq m) would
+D to be already applied to (arbitrary) parameters. So D is defined by             be ill-typed, so the use of an inaccessible pattern is justified. We
+the telescope Ξ of the indices and the constructors                               also define an operation dp̄e taking a pattern p̄ back to its underlying
+                                                                                  term.
+  ci : ∆i → (Φi1 → D v̄i1 ) → . . . → (Φini → D v̄ini ) → D ūi
+                                                                       (15)       Case Trees. A definition by pattern matching consists of one or
+for i = 1, . . . , k. We write D̄ for the telescope (ū : Ξ)(x : D ū). The       more case splits. We represent these case splits by a case tree. The
+standard eliminator for D is a D̄-elimination operator with methods               nodes of a case tree for a function f : ∆ → T are labeled by patterns
+m1 , . . . , mk where                                                             of type ∆, where the label of the root node consists of variables
+   mi : (t̄ : ∆i ) →                                                              only. Each internal node of a case tree corresponds to a case split,
+                                                                                  while each leaf node corresponds to a clause of the definition. An
+          (x1 : Φi1 → D v̄i1 ) . . . (xni : Φini → D v̄ini ) →                    example of a case tree is given in Figure 3.
+          (h1 : (s̄1 : Φi1 ) → P v̄i1 (x1 s̄1 )) → . . . →            (16)            Using case trees has a number of advantages. First, the patterns
+          (hni : (s̄ni : Φini ) → P v̄ini (xni s̄ni )) →                          at the leaves of a case tree always form a covering, hence case trees
+                                                                                  guarantee completeness. Secondly, they give an efficient method
+          P ūi (ci t̄ x1 . . . xni )                                             to evaluate functions defined by pattern matching. Thirdly and
+i.e. it is of the form                                                            most importantly for our purposes, each internal node in a case
+      elimD : (P : D̄ → Seti )(m1 : . . .) . . . (mk : . . .) →                   tree corresponds exactly to the application of an eliminator for an
+                                                                      (17)        inductive family, so constructing a case tree is a useful first step in
+                 (x̄ : D̄) → P x̄                                                 the translation of dependent pattern matching to pure type theory as
+where the types of m1 , . . . , mk are as given above.                            demonstrated by Goguen et al. (2006).
+Definitional and propositional equality. In (intensional) type the-               Structural recursion. In order to guarantee termination, functions
+ory, there are two distinct notions of equality. On the one hand,                 are required to be structurally recursive. This means that the
+two terms s and t are definitionally equal (or convertible) if we                 arguments of recursive calls should be structurally smaller than
+can derive Γ ` s = t : T , i.e. if s and t are equal up to βη-                    the pattern on the left-hand side. The structural order ≺ is defined
+conversion. On the other hand, two terms s and t are propositionally              in Figure 4 . For functions with multiple arguments, the function
+equal if we can prove their equality, i.e. if we can give a term of               should be structurally recursive on one of its arguments, i.e. there
+type s ≡ t. Propositional equality was introduced by Martin-Löf                   should be some k such that sk ≺ pk for each clause f p̄ = t and
+(1984). In UTT, it can be defined as an inductive family with two                 each recursive call f s̄ in t.
+parameters A : Seti and a : A, one index b : A, and one con-
+structor refl : a ≡ a. The standard eliminator for this datatype                  3.3   Homogeneous telescopic equality
+is exactly the J rule (10). Substitution by a propositional equality              There is a reason why it is hard to see where exactly the K axiom
+subst : (P : A → Seti ) → x ≡ y → P x → P y can readily                           is used in the translation from pattern matching to eliminators
+be defined from J by dropping the dependence of P on the equal-                   by Goguen et al. (2006): they do not use the axiom directly, but
+ity proof in the type of J. In the style of HoTT, we write e∗ for                 instead depend on the heterogeneous propositional equality. The
+subst P e when P is clear from the context.                                       heterogeneous equality allows the formation of equalities between
+                                                                                  terms of different types, but still only allows a proof when the types
+3.2   Definitions by pattern matching                                             are in fact the same. This heterogeneous equality is convenient for
+A definition by pattern matching of a function f consists of a number             expressing equality between sequences of data in a given telescope.
+of equalities called clauses, which are of the form f p̄ = t where p̄ is          Unfortunately, the elimination rule for this heterogeneous equality
+a list of patterns and t is a term called the right-hand side. A pattern          proposed by McBride is equivalent with the K axiom (McBride
+is a term or a list of terms that is built from only (fully applied)              2000). Heterogeneous equality (and its elimination rule) is used
+constructors and (non-applied) variables, which we call the pattern               almost everywhere in the translation, making it impossible to see
+variables. In dependent pattern matching, patterns can also contain               where the K axiom is really needed. So instead we work with the
+inaccessible patterns, which can occur when there is only one type-               homogeneous propositional equality and the standard J eliminator.
+correct term possible in a given position. Like Norell (2007), we                     Working with homogeneous equality also means we have to
+mark inaccessible patterns as btc. For example, let Square n be                   work a little harder to express equality of two sequences of terms in
+an inductive family with one index n : N and one constructor                      the same telescope. We define telescopic equality s̄ ≡ t̄ inductively
+
+
+Pattern matching without K                                                    6                                                                   2014/6/5
+on the length of the telescope as follows:                                       No confusion is also given in two levels. First, NoConfusionD :
+                                                                                    D̄ → D̄ → Setd is a type such that
+             ()      ≡    ()      :=   
+                                                                      (18)                NoConfusionD (ū; c s̄) (v̄; c t̄) = s̄ ≡ t̄
+            s; s̄    ≡    t; t̄   :=   (e : s ≡ t)(ē : e∗ s̄ ≡ t̄)                                                                                    (23)
+                                                                                          NoConfusionD (ū; c s̄) (v̄; c0 t̄) = ⊥ (when c 6= c0 )
+where e∗ (s1 ; . . . ; sn ) := (e∗ s1 ; . . . ; e∗ sn ). Note that the
+substitution e∗ is needed to make the equation between s̄ and t̄ again                 Secondly, we construct
+homogeneous. Telescopic inequality is defined by s̄ 6≡ t̄ := s̄ ≡ t̄ →                    noConfD : (x̄ ȳ : D̄) → x̄ ≡ ȳ → NoConfusionD x̄ ȳ        (24)
+⊥. For each t̄ : ∆, we define refl : t̄ ≡ t̄ as refl; . . . ; refl. We
+also have the telescopic eliminator                                                    We also construct an inverse
+
+           J̄ : (P : (s̄ : ∆) → r̄ ≡ s̄ → Seti )                                        noConfD −1 : (x̄ ȳ : D̄) → NoConfusionD x̄ ȳ → x̄ ≡ ȳ (25)
+                                                                      (19)
+                 P r̄ refl → (s̄ : ∆) → (ē : r̄ ≡ s̄) → P s̄ ē                       and give a proof isLeftInvD that (noConfD −1 x̄ ȳ) ◦
+                                                                                       (noConf x̄ ȳ) is the identity on x̄ ≡ ȳ.2 The need for this inverse
+It is defined by eliminating the equations ē from left to right using J.              will become clear when we construct the unification transitions
+Each elimination of an equation ei : ri ≡ si fills in refl for all                     in Section 3.5.
+occurrences of ei , allowing the next equations to reduce and in
+                                                                                 Acyclicity is yet again given in two levels. First, x̄ 6< ȳ is defined
+particular ensuring that the following equation is of the correct
+                                                                                    as a tuple type stating that x̄ : D̄ is not structurally smaller than
+form. Telescopic substitution subst is defined by dropping the
+                                                                                    ȳ : D̄. For example, x 6< 2 = (x 6≡ 0) × (x 6≡ 1). Secondly,
+dependence of Φ on r̄ ≡ s̄ in the definition of J̄. Again, we write ē∗
+                                                                                    noCycleD : (x̄ ȳ : D̄) → x̄ ≡ ȳ → x̄ 6< ȳ states that no term
+for subst P ē when P is clear from the context. A formalization
+                                                                                    can be structurally smaller than itself.
+of homogeneous telescopic equality and the constructions in this
+section can be found in the file TelescopicEquality.agda in the                  Basic analysis. Note that elimD , caseD , and recD are all D̄-
+supplementary material.                                                          elimination operators, i.e. for a motive P : D̄ → Setj they return
+                                                                                 something of type (ū : Ξ)(x : D ū) → P (ū; x). However,
+3.4     A few homogeneous constructions on constructors                          we often need a return type where the indices ū of x are more
+                                                                                 specialized, for example to construct a function of type (k : N)(y :
+McBride et al. (2006) developed tools for working with induc-
+                                                                                 k ≤ zero) → zero ≡ k. McBride (2002) solves this problem by
+tive families of datatypes: case analysis, recursion, no confusion
+                                                                                 adding the constraints on the indices as additional arguments to the
+(subsuming both injectivity and disjointness), and acyclicity. In
+                                                                                 motive P , and filling in refl as soon as the constraints are satisfied.
+this section, we present these rules adapted to work with homo-
+                                                                                 This technique is called basic analysis. In the example above, the
+geneous instead of heterogeneous equality. We refer to the ap-
+                                                                                 basic case≤ -analysis of zero ≡ k at k; zero; y has type
+pendix for the actual construction of these tools, as the differ-
+ences with the work of McBride et al. are minor and rather techni-                (m1 : (m : N)(k : N)(y : k ≤ zero) →
+cal. A computer-checked version of these constructions for some                     (zero; m; lz m) ≡ (k; zero; y) → zero ≡ k) →
+concrete data types (binary trees, dependent sums, finite sets, the
+identity type, and indexed containers) can be found in the file                   (m2 : (m n : N)(x : m ≤ n)(k : N)(y : k ≤ zero) →
+ConstructionsOnConstructors.agda in the supplementary ma-                           (suc m; suc n; ls m n x) ≡ (k; zero; y) → zero ≡ k) →
+terial. For the rest of this section, let D : Ξ → Seti be an inductive            (k : N)(y : k ≤ zero) → zero ≡ k
+family.
+                                                                                                                                        (26)
+Case analysis caseD is a weakened version of the standard elimi-                 Note that applying case≤ directly to y : k ≤ zero would lead
+   nator elimD that we get by dropping the inductive hypotheses of               to loss of the information that the second index of y is zero, thus
+   the methods. For example, caseN has type                                      leaving us unable to provide m1 and m2 .
+                                                                                     In general, let elim be any Ξ-elimination operator, and suppose
+         (P : N → Seti ) → (mzero : P zero) →                                    we want to construct a function of type ∆ → Φ by applying this
+                                                                      (20)       eliminator to t̄ where ∆ ` t̄ : Ξ. Then we apply elim to the motive
+         (msuc : (n : N) → P (suc n)) → (n : N) → P n
+                                                                                 λ(s̄ : Ξ). ∆ → s̄ ≡ t̄ → Φ. Filling in t̄ for s̄ and refl for the proof
+Recursion is given in two levels. First, for x : D ū, BelowD P ū x             of s̄ ≡ t̄ gives us the basic elim-analysis of Φ at t̄:
+   is a tuple type that is inhabited whenever P v̄ y holds for                          λm1 ; . . . ; mn ; x̄.
+   all y : D v̄ which are structurally smaller than x : D ū. For                                                                                      (27)
+                                                                                         elim (λs̄. ∆ → s̄ ≡ t̄ → Φ) m1 . . . mn t̄ x̄ refl
+   example for N, we have BelowN P zero = > (the unit type)
+   and BelowN P (suc n) = BelowN P n × P n. Secondly, the                        which is of type
+   helper function belowD constructs this tuple:                                                 (m1 : ∆1 ∆ → s̄1 ≡ t̄ → Φ) → . . . →
+                                                                                                                                                       (28)
+            belowD : (P : (x̄ : D̄) → Seti ) →                                                   (mn : ∆n ∆ → s̄n ≡ t̄ → Φ) → ∆ → Φ
+                         ((x̄ : D̄) → BelowD P x̄ → P x̄) →           (21)           Basic analysis will be used thoughout the proof: once with recD
+                         (x̄ : D̄) → BelowD P x̄                                 for structural recursion, and once with caseD for each case split.
+
+      Finally,                                                                   3.5     Unification without K
+                  recD : (P : (x̄ : D̄) → Seti ) →                               In order to translate a node of the case tree to the application of an
+                                                                                 eliminator, we need terms that give an account of the unification
+                         ((x̄ : D̄) → BelowD P x̄ → P x̄) →           (22)
+                                                                                 2 We could also prove that (noConf                        −1 x̄ ȳ) is the
+                         (x̄ : D̄) → P x̄                                                                              D x̄ ȳ) ◦ (noConfD
+                                                                                 identity on NoConfusionD x̄ ȳ, thus establishing that noConfD x̄ ȳ is an
+      is used for well-founded recursion over values of type D.                  equivalence. However, this is not needed for the present work.
+
+
+Pattern matching without K                                                   7                                                                      2014/6/5
+     solution : (Φ : (x : A)(e : x0 ≡ x) → Seti ) →                                    which can be constructed without K but would be quite useless in
+                                                                                       our situation because Φ cannot depend on e. In contrast, a dependent
+                     (m : Φ x0 refl) →                                                 deletion rule would look like
+                     (x : A)(e : x0 ≡ x) → Φ x e                                                   deletion : (Φ : (e : x0 ≡ x0 ) → Seti ) →
+      solution Φ m x e = J A x0 Φ m x e                                                                           (m : Φ refl) →                             (31)
+                                                                                                                  (e : x0 ≡ x0 ) → Φ e
+ injectivity : (Φ : (ē : ūs ; c s̄ ≡ ūt ; c t̄) → Seti ) →
+                                                                                       which is exactly the K axiom. This is the reason for the first
+                     (m : (ē : s̄ ≡ t̄)                                               restriction on the unification algorithm in our criterion, namely
+                         → Φ (noConfD −1 (ūs ; c s̄) (ūt ; c t̄) ē)) →              that the deletion rule cannot be used.
+                                                                                           A second point of interest in Figure 5 is the type of Φ in the
+                     (ē : ūs ; c s̄ ≡ ūt ; c t̄) → Φ ē                             injectivity function: it is indexed over the equality proof of the
+ injectivity Φ m ē = (isLeftInvD (ūs ; c s̄) (ūt ; c t̄) ē)∗                       indices ūs and ūt as well as the equality proof of c s̄ and c t̄. But this
+                        (m (noConfD (ūs ; c s̄) (ūt ; c t̄) ē))                     does not correspond exactly to the injectivity rule from Section 2.1.
+                                                                                       Rather, we need a more specialized version of injectivity where
+      conflict : (Φ : (ē : ūs ; c1 s̄ ≡ ūt ; c2 t̄) → Seti ) →                      the indices ūs and ūt are already definitionally equal:
+                     (ē : ūs ; c1 s̄ ≡ ūt ; c2 t̄) → Φ ē                                 injectivitybad : (Φ : (e : c s̄ ≡ c t̄) → Seti ) →
+      conflict Φ ē = elim⊥ (λ_ . Φ ē)                                                                           (m : (ē : s̄ ≡ t̄) → Φ ???)) →            (32)
+                                 (noConfD (ūs ; c1 s̄) (ūt ; c2 t̄) ē)                                         (e : c s̄ ≡ c t̄) → Φ e
+                                                                                       However, unlike injectivity such a function can not be con-
+          cycle : (Φ : (ē : ū; x ≡ v̄; c s̄[x]) → Seti ) →                           structed from noConfD . This is because in order to fill in the ques-
+                     (ē : ū; x ≡ v̄; c s̄[x]) → Φ ē                                 tion marks, we need a function g : s̄ ≡ t̄ → c s̄ ≡ c t̄ such that we
+                                                                                       can prove g (noConfD (ūs ; c s̄) (ūt ; c t̄) refl e) ≡ e for arbitrary
+           cycle Φ ē = elim⊥ (λ_ . Φ e)                                               e, but no such g can be found. In fact, wrongly using this transition
+                        (π (noCycleD (ū; x) (v̄; c s̄[x]) ē) refl)                   caused a bug in Agda’s –without-K option, allowing one to prove a
+                                                                                       weaker version of the K axiom (Cockx 2014).
+                     (where π : ū; x 6< v̄; c s̄[x] → ū; x 6≡ ū; x)                     What we can construct from noConfD is the following:
+
+Figure 5. The unification transitions represented as type-theoretic                     injectivity’ : (Φ : (ē : ū; c s̄ ≡ ū; c t̄) → Seti ) →
+terms. Compared to the transitions given by Goguen et al. (2006),                                            (m : (ē : s̄ ≡ t̄) →
+these work with the homogeneous equality and Φ has an additional                                                                                             (33)
+                                                                                                               Φ (noConfD −1 (ū; c s̄) (ū; c t̄) ē)) →
+dependence on the equality proof. While these unification transitions
+are the most general ones we can construct, they are not the ones                                            (e : c s̄ ≡ c t̄) → Φ refl e
+that we use for case splitting in practice. Rather, injectivity,                       This rule is simply a specialized version of the injectivity rule in
+conflict, and cycle are replaced by their more specialized                             Figure 5. However, there is still a problem with this rule. Suppose we
+variants injectivity’ (33), conflict’ (34), and cycle’ (35).                           want to use it to construct a function of type (e : c s̄ ≡ c t̄) → Φ0 e
+                                                                                       where Φ0 : c s̄≡c t̄ → Seti , and we want to apply injectivity’.
+                                                                                       Then we need to find Φ : ū; c s̄ ≡ ū; c t̄ → Seti such that
+                                                                                       Φ refl e = Φ0 e for arbitrary e : c s̄ ≡ c t̄. This is problematic
+process inside of type theory itself. In order to do this, we use                      because we cannot eliminate the equations ū ≡ ū in general without
+the “no confusion” and “no cycle” properties from the previous                         using the K axiom. This is the reason for the second restriction on
+section. The unification transitions are given in Figure 5. A computer-                the unification algorithm in our criterion, namely that the indices
+checked construction of them for some concrete data types can be                       ū should be self-unifiable. This condition guarantees that we can
+found in the file Unification.agda in the supplementary material.                      construct Φ from Φ0 by applying the unification transitions used in
+Compared to Goguen et al. (2006), working with homogeneous                             the self-unification of ū by applying specialization by unification
+equality leads us very naturally to upgraded unification transitions                   (see below).
+which are dependent on the equality proof. For example, consider                            At first sight, the conflict and cycle rule suffer from the same
+a context Ξ = (a : A)(b : B a) and a Ξ-elimination operator                            problem as the injectivity rule because their motive Φ depends
+elim. Basic elim-analysis requires us to construct methods of type                     on the proof of ūs ≡ ūt as well. However, in these cases the
+∆ → a; b ≡ a0 ; b0 → T , or if we expand the definition of telescopic                  problem can be solved because both conflict and cycle factor
+equality:                                                                              through the empty type ⊥. To illustrate this, suppose we want to
+                                                                                       construct a function of type (e : c1 s̄ ≡ c2 t̄) → Φ0 e. First we
+               ∆ → (ea : a ≡ a0 ) → (ea )∗ b ≡ b0 → T                       (29)       apply conflict with Φ = λē. ⊥, giving us a function of type
+                                                                                       (ē : ū; c1 s̄ ≡ ū; c2 t̄) → ⊥. Filling in refl for the equations ū ≡ ū
+The motive for eliminating a ≡ a0 is (ea )∗ b ≡ b0 → T , which                         gives us (e : c1 s̄ ≡ c2 t̄) → ⊥. Now by ⊥-elimination, we also get
+depends on the proof ea . So the dependence of Φ on the equality                       a function (e : c1 s̄ ≡ c2 t̄) → Φ0 e. This gives us the following
+proofs is caused by the need to use substitution in the definition of                  rule:
+homogeneous telescopic equality. Intuitively, it is not surprising that
+                                                                                                   conflict’ : (Φ : (e : c1 s̄ ≡ c2 t̄) → Seti ) →
+not assuming UIP leads us to consider identity proofs relevant!                                                                                              (34)
+    The first thing we want to point out about Figure 5 is the lack                                                 (e : c1 s̄ ≡ c2 t̄) → Φ e
+of a deletion transition. The non-dependent version of deletion                        Analogously we can construct a function
+given by Goguen et al. (2006) has type
+                                                                                                   cycle’ : (Φ : (e : x ≡ c s̄[x]) → Seti ) →
+                                                                                                                                                             (35)
+            (Φ : Seti ) → (m : Φ) → (e : x0 ≡ x0 ) → Φ                      (30)                            (e : x ≡ c s̄[x]) → Φ ē
+
+
+Pattern matching without K                                                         8                                                                      2014/6/5
+In our proof, we will use the primed variants injectivity’,                      In order to construct m, we proceed by induction on the structure
+conflict’, and cycle’.                                                        of f’s case tree. So suppose that we have arrived at some node with
+                                                                              label p̄ where p̄ has pattern variables from a context Θ and we
+Specialization by unification. Given any type of the form ∆ →                 wish to construct m : Θ → BelowD P (v̄; tj )τ → T τ where
+ū ≡ v̄ → T (for example the types of m1 , . . . , mn in the basic            τ = [∆ 7→ dp̄e]. Note that we have Θ = ∆ at the root node. There
+caseD -analysis), we may seek to construct an inhabitant of this              are three cases:
+type, called a specializer, by exhaustively iterating the unification
+transitions as applicable. In case of a positive success, a specializer       Internal node. In this case, the context is split on some variable
+is found, given some m : ∆0 → T σ where σ : ∆0 → ∆ is a                          y where Θ = Θ1 (y : D’ v̄y )Θ2 and D’ is an inductive family.
+substitution. In the case of a negative success, a specializer is found          The basic caseD’ -analysis of BelowD P (v̄; tj )τ → T τ at v̄y ; y
+without any additional assumptions.                                              has type
+    The solution rule removes one variable from ∆, while
+injectivity’ keeps it the same. Hence in the case of a positive                              ... →
+success we have ∆0 ⊆ ∆, and σ is idempotent. So for any t̄ : ∆,                            (mc : (s̄ : ∆c ) → Θ → ūs ; c s̄ ≡ v̄y ; y →
+we can define an inverse σ −1 [t̄] : ∆0 by selecting the variables of                         BelowD P (v̄; tj )τ → T τ ) →                   (43)
+∆0 from ∆. If specialization by unification delivers a specializer s
+satisfying                                                                                   ... →
+                             0                                                                Θ → BelowD P (v̄; tj )τ → T τ
+                    (m : ∆ .T σ) ` s : ∆ → ū ≡ v̄ → T             (36)
+and t̄ : ∆ is such that ū[∆ 7→ t̄] = v̄[∆ 7→ t̄], then we have                  where there is one method mc for each constructor c of D’. In
+s t̄ refl    m σ −1 [t̄]. It is clear why this holds for solution, it            our example, the first case split is on x : m ≤ n, and the basic
+also holds for injectivity’ since both noConf and isLeftInv                      case≤ -analysis has type
+map refl to refl, hence injectivity’ Φ m refl               m refl.                    (mlz : (k m n : N)(x : m ≤ n)(y : n ≤ m) →
+3.6   From case trees to eliminators                                                          (zero; k; lz k) ≡ (m; n; x) →
+Now we use the tools described in the previous sections to translate                          Below P m n x → m ≡ n)
+a function f : (t̄ : ∆) → T given by a structurally recursive case                     (mls : (k l : N)(u : k ≤ l) →
+tree to another one f’ : (t̄ : ∆) → T constructed from eliminators                            (m n : N)(x : m ≤ n)(y : n ≤ m) →               (44)
+only. As a running example, let f = antisym from Definition (5).
+For this example, we have ∆ = (m n : N)(x : m ≤ n)(y : n ≤ m)                                 (suc k; suc l; ls k l u) ≡ (m; n; x) →
+and T = m ≡ n. Define {e}f f’ by replacing all occurrences of f                               Below P m n x → m ≡ n)
+by f’ in e. Then we have moreover that f’ satisfies f’ t̄ ∗ {u}f f’                    (m n : N)(x : m ≤ n)(y : n ≤ m) →
+whenever f t̄      u, i.e. it has the same reduction behaviour as f.
+    Without loss of generality, let f be structurally recursive on                     Below P m n x → m ≡ n
+some tj : D v̄, the jth variable in ∆. In our example, antisym is                To construct the methods mc , we apply specialization by uni-
+structurally recursive all four arguments, so we arbitrarily choose to           fication on the equations ūs ; c s̄ ≡ v̄y ; y, which we know will
+do structural recursion on x : m ≤ n. The basic recD -analysis of T              succeed by definition of a valid case tree. For the method
+at v̄; tj is                                                                     mlz above, the first step is to apply solution to the equation
+                     λms ; t̄. recD P ms (v̄; tj ) t̄ refl         (37)          zero ≡ m, simplifying the goal type to
+
+which has type                                                                        m0lz : (k n : N)(x : zero ≤ n)(y : n ≤ zero) →
+               (ms : (x̄ : D̄) → BelowD P x̄ → P x̄) →                                       (k; lz k) ≡ (n; x) →                             (45)
+                                                                   (38)                      Below P zero n x → zero ≡ n
+               (t̄ : ∆) → T
+where P = λx̄. (t̄ : ∆) → x̄ ≡ v̄; tj → T . In our example, we                   As another example, later on conflict is applied to the equa-
+have P = λm0 ; n0 ; x0 . ∆ → (m0 ; n0 ; x0 ) ≡ (m; n; x) → m ≡ n.                tion suc l ≡ zero to construct a function
+    Suppose we have an m : (t̄ : ∆) → BelowD P (v̄; tj ) → T ,                       mlz;ls : (k l : N)(u : k ≤ l)(y : suc k ≤ zero)
+then we construct ms : (x̄ : D̄) → BelowD P x̄ → (t̄ : ∆) →
+                                                                                              (suc l; ls k l u) ≡ (zero; y) →
+x̄ ≡ v̄; tj → T by applying the telescopic equality eliminator J̄ on                                                                          (46)
+the equations x̄ ≡ v̄; tj . More precisely, ms is defined as                                  Below≤ P zero (suc k) (lz (suc k)) →
+ λx̄; H; t̄; ē. J̄ (λx̄; ē. BelowD P x̄ → T ) (m t̄) (sym ē) H (39)                        zero ≡ suc k
+
+where sym : x̄ ≡ ȳ → ȳ ≡ x̄. For any t̄ : ∆, we have                           For each c with positive success, we have to deliver a
+                         s
+                      m (v̄; tj ) H t̄ refl       m t̄ H           (40)                     m0c : Θ0 → BelowD P (v̄; tj )τ σ → T τ σ          (47)
+We will define f’ as                                                             where σ : Θ0 → ∆c Θ is the substitution found by unification.
+                                 s
+              λt̄. recD P m (v̄; tj ) t̄ refl : (t̄ : ∆) → T       (41)          But the inductive hypothesis for the subtree corresponding to
+                                                                                 the constructor c gives us exactly such a function. For mlz , the
+once we have constructed a suitable m. Note that m may make                      goal type becomes
+‘recursive calls’ to f’ on arguments structurally smaller than tj
+using its argument of type BelowD P (v̄; tj ). Also note that                           m000
+                                                                                         lz : (k : N)(y : k ≤ zero) →
+                ∗
+                                                                                                                                              (48)
+      f’ t̄         recD P ms (v̄; tj ) t̄ refl                                                Below P zero k (lz k) → zero ≡ k
+                ∗
+                    ms (v̄; tj ) (belowD P ms (v̄; tj )) t̄ refl   (42)          after applying solution two more times, at which point we
+                ∗                      s                                         proceed with another case split on y.
+                    m t̄ (belowD P m (v̄; tj ))
+
+
+Pattern matching without K                                                9                                                                2014/6/5
+     For any t̄1 ; c s̄; t̄2 : Θ1 (y : D’ v̄y )Θ2 , we have                                   KN : (n : N)(P : n ≡ n → Set) →
+                                       ∗
+                m (t̄1 ; c s̄; t̄2 )       mc s̄ (t̄1 ; c s̄; t̄2 ) refl                          P refl → (e : n ≡ n) → P e
+                                       ∗                                     (49)
+                                           m0c σ −1 [s̄; t̄1 ; c s̄; t̄2 ]                    KN zero P p refl = p
+Empty node. We follow the same construction as in the previous                                KN (suc n) P p e = subst P (add-drop e)
+  case, noting that all unifications will succeed negatively, hence                                                          (KN n (P ◦ add) p (drop e))
+  no methods mc are needed. Absurd clauses have no right-hand
+  side, so they describe no reduction behaviour.                                         where
+Leaf node. At each leaf node, we have the right-hand side ∆i `                             add            :    n ≡ n → suc n ≡ suc n
+   ei : T τ . We wish to instantiate mi = λs̄; H. ei , but ei may still                    add            =    noConfN −1 (suc n) (suc n)
+   contain recursive calls to f. In our example, the goal type for                            drop        :    suc n ≡ suc n → n ≡ n
+   the second leaf node is                                                                    drop        =    noConfN (suc n) (suc n)
+        m2 : (k l : N)(u : k ≤ l)(v : l ≤ k) →
+                                                                                              add-drop    :    (e : suc n ≡ suc n) → add (drop e) ≡ e
+                    Below≤ P (suc k) (suc l) (ls k l u) →                    (50)             add-drop    =    isLeftInvN (suc n) (suc n)
+                    suc k ≡ suc l
+     and the right-hand side is cong suc (antisym k l u v). We                           Figure 6. A proof that the type N of natural numbers satisfies K,
+     first have to replace these recursive calls by appropriate calls                    using dependent pattern matching with our criterion. The match on
+     to H : BelowD P (v̄; tj )τ . So consider a recursive call f r̄ in                   refl in the first clause passes our criterion because the unification
+     ei . Since f is structurally recursive, we have rj ≺ dpij e where                   problem is zero = zero, which can be solved by injectivity. The
+     rj : D w̄. By construction of BelowD , we have a projection π                       recursive call to KN in the second clause is permitted because the
+     such that π H : (t̄ : ∆) → w̄; rj ≡ v̄; tj → T . Hence we can                       first argument decreases from suc n to n. We use the functions
+     define e0i by replacing f r̄ by π H r̄ refl : T [∆ 7→ r̄] in ei ,                   noConf, noConf−1 and isLeftInv constructed from eliminators
+     and take mi = λs̄; H. e0i . For antisym, we have                                    in the appendix, but we could define these functions using pattern
+                                                                                         matching as well.
+             π1 H : (m n : N)(x : m ≤ n)(y : n ≤ m) →
+                                                                             (51)
+                      (k; l; u) ≡ (m; n; x) → m ≡ n
+     so we replace the recursive call antisym k l u v by
+     π1 H k l u v refl.                                                                      Looking back at the construction of the unification transitions
+                                                                                         in Section 3.5, we disallowed using deletion on an equation x = x
+     When we fill in H = belowD P ms (v̄; tj ), we get
+                                                                                         because in general this requires assuming K. However, for certain
+         π (belowD P ms (v̄; tj )) r̄ refl                                               types of x, K can actually be proven without assuming it as an axiom.
+               ∗
+                   ms (w̄; rj ) (belowD P ms (w̄; rj )) r̄ refl              (52)        These types are called (homotopy) sets in HoTT. For example, N is
+               ∗                           s                                             a set (see Figure 6 for a proof of this fact), so it would be fine to
+                   m r̄ (belowD P m (w̄; rj )) = f’ r̄                                   use deletion on n = n when n : N. This would already solve the
+                                                                                         problem described above.
+By induction, we now have the required m : (t̄ : ∆) →                                        The question then remains how to detect which types are sets and
+BelowD P v̄ x → T , thus finishing the construction of f’.                               which are not. One possible solution is to require the user to prove
+   For each clause                                                                       K manually for a particular type, and then use this proof during
+                               f p̄i = ei                          (53)                  unification by means of a typeclass-like system such as given by
+with pattern variables s̄ : ∆i at a leaf node of f’s case tree, we have                  Devriese and Piessens (2014).
+               ∗                                                                             A nicer, but probably also harder approach is to try to detect sets
+ f’ dp̄i e         m dp̄i e (belowD P ms ū dpij e)                                      automatically. This problem is very hard in general, but we could
+               ∗
+                   mc . . . (working our way down the case tree)                         at least try to detect easy cases like N, using Hedberg’s theorem or
+               ∗
+                   mi s̄ (belowD P ms ū dpij e)                                         a generalization of it (Kraus et al. 2013). Hedberg’s theorem states
+                                                                             (54)
+               ∗
+                                                                                         that if a type A has decidable equality, then it is a set. In particular,
+                   e0i [H 7→ belowD P ms ū dpij e]                                      if D is a simple (non-indexed) data type such that each constructor
+               ∗
+                   {ei }f f’                                                             is of the form c : ∆c → D → . . . → D → D where all of the
+                                                                                         types in ∆c have decidable equality, then D itself also has decidable
+Hence we can conclude that whenever f t̄                          u, we also have        equality, hence it is a set by Hedberg’s theorem. For example, this
+f’ t̄ ∗ {u}f f’ , as we wanted to prove.                                                 can be used to see that N is a set. This criterion can be used to
+                                                                                         reintroduce the deletion step of the unification algorithm on a more
+4.    Making pattern matching without K less                                             limited basis, namely to delete an equation x = x only if the type
+                                                                                         of x can be seen to be a set based on the criterion.
+      restrictive
+In Section 2.3, we remarked that our criterion was more general than
+the syntactic one. However, it still has some problems of its own.
+Suppose for example we are working with the inequality ≤ indexed                         5.     Related work
+over finite sets Fin n, and we try to unify two successors in the same                   Most implementations of dependent pattern matching in the style
+finite set. The problem fs n x = fs n y requires solving n = n,                          of Coquand (1992) do this by assuming the K axiom. Examples
+but then we get stuck because we cannot use deletion. It can be                          include Agda (when –without-K is not enabled), Idris (Brady 2013),
+proven that K is not really needed for this example, so the criterion                    and the Equations package for Coq (Sozeau 2010).
+is still overly conservative. We now discuss a possible solution to                         Coq also support a more primitive notion of pattern matching via
+handle cases like this one.                                                              the match construct in Gallina (The Coq development team 2012).
+
+
+Pattern matching without K                                                          10                                                                    2014/6/5
+The full version of this construct is                                            Acknowledgments
+                match e as x in D ū return P with                               This research is partially funded by the Research Fund KU Leuven,
+                  | c1 ȳ1 ⇒ e1                                                  and by the Research Foundation - Flanders under grant number
+                                                                                 G004321N. Jesper Cockx and Dominique Devriese both hold a
+                   | ...                                            (55)         Ph.D. fellowship of the Research Foundation - Flanders (FWO).
+                   | cn ȳn ⇒ en
+                end                                                              References
+                                                                                 T. Altenkirch. Without-K problem, 2012. URL https://lists.
+In the language of this paper, this corresponds to                                   chalmers.se/pipermail/agda/2012/004104.html. On the Agda
+                                                                                     mailing list.
+            caseD (λū; x. P ) (λȳ1 . e1 ) . . . (λȳn . en ) e    (56)         E. Brady. Idris, a general purpose dependently typed programming language:
+                                                                                     Design and implementation. Journal of Functional Programming, 23(5),
+Coq also allows skipping the parts labeled by as, in, and return, in
+                                                                                     2013.
+which case it will attempt to construct the motive P automatically.
+    Note that the motive P must be fully generalized over the indices            J. Cockx. Yet another way Agda –without-K is incompatible with uni-
+                                                                                     valence, 2014. URL https://lists.chalmers.se/pipermail/
+ū, ensuring that no unification is necessary. Hence this kind of
+                                                                                     agda/2014/006367.html. On the Agda mailing list.
+matching also prevents us from proving K. However, it is more
+low-level than the kind of pattern matching described in this paper,             T. Coquand. Pattern matching with dependent types. In Types for proofs and
+                                                                                     programs, 1992.
+because it requires the user to give each case split explicitly, and
+does not perform any unification.                                                P.-E. Dagand. A cosmology of datatypes: reusability and dependent types.
+    An unpublished first version of dependent pattern matching by                    PhD thesis, University of Strathclyde, 2013.
+McBride (1998) also used homogeneous equality with telescopic                    N. A. Danielsson. Experiments related to equality, 2013. URL http:
+substitution and hence a proof-relevant unification algorithm. Sim-                  //www.cse.chalmers.se/~nad/repos/equality/. Agda code.
+ilar to our present work, he observes that the innocent-looking                  D. Devriese and F. Piessens. Instance arguments in Agda. Higher-order and
+deletion rule turns into the rather less innocent K. However, the                    symbolic computation, 2014.
+published version of this work uses the heterogeneous equality, thus             P. Dybjer. Inductive sets and families in martin-löf’s type theory and their
+making it rely on K.                                                                 set-theoretic semantics. In Proceedings of the first workshop on Logical
+                                                                                     frameworks, 1991.
+                                                                                 H. Goguen, C. McBride, and J. McKinna. Eliminating dependent pattern
+6.    Conclusion and future work                                                     matching. In Algebra, Meaning, and Computation. 2006.
+                                                                                 M. Hofmann and T. Streicher. The groupoid model refutes uniqueness of
+Dependent pattern matching is an important tool for writing depen-                   identity proofs. In Logic in Computer Science, pages 208–212, 1994.
+dently typed functions and proofs in a readable way, but so far it
+                                                                                 J.-P. Jouannaud and C. Kirchner. Solving equations in abstract algebras: A
+needed the K axiom to function. What this paper shows, is that there
+                                                                                     rule-based survey of unification. 1990.
+is no need to throw away the baby with the bath water: by carefully
+analysing where K is used, we can give a restricted formulation of               N. Kraus and C. Sattler. On the hierarchy of univalent universes: U(n) is not
+                                                                                     n-truncated. arXiv preprint arXiv:1311.4002, 2013.
+dependent pattern matching that does not need it. We hope that this
+is enough to convince the HoTT community that pattern matching                   N. Kraus, M. Escardó, T. Coquand, and T. Altenkirch. Generalizations of
+does not require K an sich, and maybe even helps in the creation of                  Hedberg’s theorem. In Typed Lambda Calculi and Applications, pages
+                                                                                     173–188. Springer, 2013.
+a practical language based on HoTT.
+    One thing we noticed during the writing of this proof is how                 Z. Luo. Computation and reasoning: a type theory for computer science,
+easily a small mistake can have grave impact on the soundness. For                   volume 11 of International Series of Monographs on Computer Science.
+                                                                                     1994.
+example, it was only after a long time that we realized just disabling
+deletion was not enough, but that the injectivity rule also subtly               P. Martin-Löf. Intuitionistic type theory. Number 1 in Studies in Proof
+depends on K. To increase our confidence, we should make the                         Theory. 1984.
+type checker of our languages perform the translation from pattern               C. McBride. Towards dependent pattern matching in lego. TYPES meeting,
+matching to a core calculus in practice. This is already done in the                 1998.
+Equations package for Coq by Sozeau (2010), but they still need                  C. McBride. Dependently typed functional programs and their proofs. PhD
+the K axiom for the translation. It would be interesting to see if                   thesis, University of Edinburgh, 2000.
+our criterion could be integrated into this approach. Another very               C. McBride. Elimination with a motive. In Types for proofs and programs,
+appealing idea is to write a compiler for dependent pattern matching                 2002.
+inside the type theory by means of datatype-generic programming                  C. McBride, H. Goguen, and J. McKinna. A few constructions on construc-
+as described by Dagand (2013).                                                       tors. In Types for Proofs and Programs, 2006.
+    Our criterion makes it possible to do pattern matching on                    U. Norell. Towards a practical programming language based on dependent
+regular inductive families without assuming K. But HoTT also                         type theory. PhD thesis, Chalmers University of Technology, 2007.
+introduces the concept of higher inductive types, which can have                 U. Norell, A. Abel, and N. A. Danielsson. Release notes for Agda
+nontrivial identity proofs between their constructors. This implies                  2 version 2.3.2, 2012. URL http://wiki.portal.chalmers.se/
+that in general they do not satisfy the injectivity, disjointness, or                agda/pmwiki.php?n=Main.Version-2-3-2.
+acyclicity properties. Luckily, the proof given in this paper is entirely        J. Reed. Another possible without-K problem, 2013. URL https://lists.
+parametric in the actual unification transitions that are used. So in                chalmers.se/pipermail/agda/2013/005578.html. On the Agda
+order to allow pattern matching in a context with higher inductive                   mailing list.
+types, we should just limit the unification algorithm further. Our               A. Sicard-Ramírez. –without-K option too restrictive?, 2013. URL https:
+present paper gives a glimpse of how a theory of pattern matching                    //lists.chalmers.se/pipermail/agda/2013/005407.html. On
+with higher inductive types might look like, but future research will                the Agda mailing list.
+have to show how much of the original pattern matching algorithm                 M. Sozeau. Equations: A dependent pattern-matching compiler. In Interac-
+can be salvaged.                                                                     tive theorem proving, 2010.
+
+
+Pattern matching without K                                                  11                                                                       2014/6/5
+The Coq development team. The Coq proof assistant reference manual.               But this we can do by applying caseD with methods mi x̄ = refl.
+  LogiCal Project, 2012. URL http://coq.inria.fr. Version 8.4.
+                                                                                  Acyclicity. The relation 6< is defined using BelowD : ā 6< b̄ :=
+The Univalent Foundations Program. Homotopy Type Theory: Univalent
+  Foundations of Mathematics. http://homotopytypetheory.org/                      BelowD (λb̄0 . ā 6≡ b̄0 ) b̄. We also define ā 6≤ b̄ := ā 6< b̄ × ā 6≡ b̄. If
+  book, Institute for Advanced Study, 2013.                                       x : D ū and y : D v̄ then we often write x 6< y and x 6≤ y instead of
+                                                                                  ū; x 6< v̄; y and ū; x 6≤ v̄; y to avoid too much clutter (of which we
+                                                                                  have enough already). Note that x 6< ci ∆i x1 . . . xni = (Φi1 →
+A.     A few homogeneous constructions on                                         x 6≤ x1 Φi1 ) × . . . × (Φini → x 6≤ xni Φini ) by definition of
+       constructors                                                               BelowD and 6≤.
+                                                                                      Now to construct noCycleD , we start by eliminating the equation
+Case Analysis. caseD is given by dropping the inductive hypothe-                  ā ≡ b̄ using J̄, which leaves us the goal (ā : D̄) → ā 6< ā. Next we
+ses from the eliminator, i.e. it is itself a D̄-elimination operator with         apply elimD with motive λā. ā 6< ā, producing for each constructor
+methods                                                                           ci : ∆i → (Φi1 → D v̄i1 ) → . . . → (Φini → D v̄ini ) → D ūi
+  mi : (t̄ : ∆i ) →                                                               the subgoal (t̄ : ∆i ) → (x1 : Φi1 → D v̄i1 ) . . . (xni : Φini →
+       (x1 : Φi1 → D v̄i1 ) . . . (xni : Φini → D v̄ini ) → (57)                  D v̄ini ) → (h1 : Φi1 → x1 Φi1 6< x1 Φi1 ) . . . (hni : Φini →
+                                                                                  xni Φini 6< xni Φini ) → ci t̄ x1 . . . xni 6< ci t̄ x1 . . . xni .
+        P ūi (ci t̄ x1 . . . xni )
+                                                                                      In order to continue, we first define the auxiliary types Stepij :
+for i = 1, . . . k.                                                               ∆i → (x1 : Φi1 → D v̄i1 ) . . . (xni : Φini → D v̄ini ) → Φij →
+Recursion. In order to define BelowD P , we apply the eliminator                  D̄ → Setd for i = 1, . . . , k and j = 1, . . . , ni as follows:
+elimD to the motive Φ = λ _. Seti . For the method mi correspond-                              Stepij t̄ x1 . . . xni Φij (ū; b) =
+ing to the constructor ci we give the following:                                                                                                               (63)
+                                                                                                       (xj Φij ) 6< b → (ci t̄ x1 . . . xni ) 6≤ b
+     mi = λt̄; x1 ; . . . ; xni ; h1 ; . . . ; hni .
+                                                                                  Now suppose that we can construct stepij : (t̄ : ∆i ) → (x1 :
+              (Φi1 → h1 Φi1 × P v̄i1 (x1 Φi1 )) × . . .              (58)         Φi1 → D v̄i1 ) . . . (xni : Φini → D v̄ini ) → Φij → (ā : D̄) →
+               × (Φini → hni Φini × P v̄ini (xni Φini ))                          Stepij t̄ x1 . . . xni Φij ā. Then we can solve the subgoal by
+                                                                                  filling in
+i.e. BelowD P x is a tuple asserting P y for all y structurally smaller
+than x.                                                                             λt̄; x̄; h̄.
+     Next, to define belowD P p, we apply elimD with the motive                      (λΦi1 . stepi1 t̄ x̄ Φi1 v̄i1 (x1 Φi1 ) (h1 Φi1 )),
+BelowD P . We give the following for the method mi :                                                                                                           (64)
+                                                                                        ...,
+       mi = λt̄; x1 ; . . . ; xni ; h1 ; . . . ; hni .
+                                                                                        (λΦini . stepini t̄ x̄ Φini v̄ini (xni Φini ) (hni Φini ))
+               (λΦi1 . h1 Φi1 , p v̄i1 x1 (h1 Φi1 )), . . . ,        (59)
+                                                                                  So we only need to construct the stepij .
+               (λΦini . hni Φini , p v̄ini xni (hni Φini ))                          The construction of stepij t̄ x1 . . . xni Φij : (ā : D̄) →
+Finally, we define recD P p D̄ := p D̄ (belowD P p D̄).                           Stepij t̄ x1 . . . xni Φij ā proceeds by applying elimD with
+                                                                                  motive Stepij t̄ x1 . . . xni Φij . The new subgoals are of the form
+No Confusion. First, we define NoConfusionD ā b̄ by applying
+caseD with the motive λ _. Seti on ā. For each method mi x̄, we                  (t̄0 : ∆0p )(x01 : Φ0p1 → D v̄p1
+                                                                                                                0
+                                                                                                                   ) . . . (x0np : Φ0pnp → D v̄pn
+                                                                                                                                               0
+                                                                                                                                                 p
+                                                                                                                                                   )→
+apply caseD again with the same motive, but this time on b̄. This                        (h1 : (s̄01 : Φ0p1 ) → Stepij t̄ x̄ Φij v̄p1
+                                                                                                                                   0
+                                                                                                                                      (x01 s̄01 )) . . .
+gives us k2 methods mij to fill in, one for each pair of constructors.
+On the diagonal (where i = j) we define mii = λx̄; x̄0 . x̄ ≡ x̄0 , and                  (hnp : (s̄0np : Φ0pnp ) → Stepij t̄ x̄ Φij v̄pn
+                                                                                                                                      0
+                                                                                                                                        p
+                                                                                                                                          (x0np s̄0np )) →
+if i 6= j we simply give mij = λx̄; x̄0 . ⊥ (the empty type).                            Stepij t̄ x̄ Φij ū0p (cp t̄0 x̄0 )
+    Next, we define noConfD ā b̄. By telescopic substitution subst                                                                                            (65)
+with motive NoConfusionD ā, it is sufficient to give a function of
+type (ā : D̄) → NoConfusionD ā ā. But this can be done using                   We solve them by giving:
+caseD with motive λ ā. NoConfusionD ā ā: for each method mi x̄                                  λt̄0 ; x01 ; . . . ; x0np ; h1 ; . . . ; hnp ; H. α, β      (66)
+we can fill in refl.
+    For the inverse noConfD −1 ā b̄, we need to do a little more work.           where we still have to construct
+First, we apply caseD twice as in the definition of NoConfusionD .                                α : ci t̄ x1 . . . xni 6< cp t̄0 x01 . . . x0np              (67)
+Now we are left to give methods
+                                                                                  and
+           mij : NoConfusionD (ūi ; ci x̄) (ū0j ; cj x̄0 ) →
+                                                                     (60)                         β : ci t̄ x1 . . . xni 6≡ cp t̄0 x01 . . . x0np              (68)
+                      ūi (ci x̄) ≡ ū0j (cj x̄0 )
+                                                                                  For any s̄ : Φij , we have H : xj s̄ 6< cp ∆0p x01       . . . x0np or, by
+When i 6= j, this is easy: we get an element of type ⊥ from                       definition of 6<, H      = (H1 , . . . , Hnp ) where Hq : (s̄0 : Φ0pq ) →
+NoConfusionD , from which we can conclude anything. On the
+                                                                                  xj s̄ 6≤ x0q s̄0 .
+diagonal (where i = j) we get a proof of x̄ ≡ x̄0 . Applying subst
+                                                                                      The construction of α reduces to the construction of components
+to this equality leaves us the goal ū0j (cj x̄0 ) ≡ ū0j (cj x̄0 ), which
+                                                                                  αq : Φ0pq → ci t̄ x1 . . . xni 6≤ x0q Φ0pq . But these we can give as
+we can fill in with refl.
+                                                                                  αq = λs̄0 . hq (π1 (Hp s̄0 )) (where π1 is projection onto the first
+    Finally, we prove that this is indeed a (left) inverse by construct-
+                                                                                  component).
+ing a function of type
+                                                                                      For constructing β, we assume ci t̄ x1 . . . xni ≡
+   (ā b̄ : D̄)(ē : ā ≡ b̄) → noConfD −1 ā b̄ (noConfD ā b̄ ē) ≡ ē           cp t̄0 x01 . . . x0np and derive an element of ⊥. By noConfD ,
+                                                                      (61)        it suffices to consider the case where i = p, ∆i = ∆0i , and
+                                                                                  x1 ; . . . ; xni = x01 , . . . , x0ni . But then we have Hj s̄ : xj s̄ 6≤ xj s̄,
+By J̄, it is sufficient to give a function of type
+                                                                                  hence π2 (Hj Φij ) refl : ⊥. This finishes the construction of
+   (ā : D̄) → noConfD −1 ā ā (noConfD ā ā refl) ≡ refl          (62)         noCycleD .
+
+
+Pattern matching without K                                                   12                                                                             2014/6/5
+

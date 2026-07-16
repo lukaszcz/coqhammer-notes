@@ -1,0 +1,1171 @@
+                                                                                                                                                                                     tifact
+                                                                                                                                                                           Ar             * Complete
+
+
+
+                    Dependent Types and Multi-monadic Effects in F⋆
+                                                                                                                                                                                      t
+
+
+
+
+                                                                                                                                                                                                       * Well Docum v
+                                                                                                                                                                                   en
+
+
+
+
+                                                                                                                                                                                                   *
+
+                                                                                                                                                                                                        A EC * E
+                                                                                                                                                                            st
+                                                                                                                                                                     OPL *
+                                                                                                                                                                  * P se * Consi
+                                                                                                                                                                             eu
+
+
+
+
+                                                                                                                                                                                                       e
+                                                                                                                                                                                   nt             R
+                                                                                                                                                                                     ed
+                                                                                                                                                                                        * Easy to
+                                                                                                                                                                                               alu
+                                                                                                                                                                              at e d
+
+                   Nikhil Swamy1     Cătălin Hriţcu2    Chantal Keller1,3   Aseem Rastogi4
+          Antoine Delignat-Lavaud2,5    Simon Forest2,5       Karthikeyan Bhargavan2 Cédric Fournet1,3
+        Pierre-Yves Strub6  Markulf Kohlweiss  1    Jean-Karim Zinzindohoue2,5 Santiago Zanella-Béguelin1
+                   1 Microsoft Research               2 Inria         3 MSR-Inria             4 UMD          5 ENS Paris         6 IMDEA Software Institute
+
+
+
+
+Abstract                                                                                            1.    Introduction
+We present a new, completely redesigned, version of F⋆ , a language                                 Proving and programming are inextricably linked, especially in de-
+that works both as a proof assistant as well as a general-purpose,                                  pendent type theory, where constructive proofs are just programs.
+verification-oriented, effectful programming language.                                              However, not all programs are proofs. Effective programmers rou-
+    In support of these complementary roles, F⋆ is a dependently                                    tinely go beyond a language of pure, total functions and use features
+typed, higher-order, call-by-value language with primitive effects                                  like non-termination, state, exceptions, and IO—features that one
+including state, exceptions, divergence and IO. Although primitive,                                 does not usually expect in proofs. Thus, while Coq (The Coq devel-
+programmers choose the granularity at which to specify effects                                      opment team) and Agda (Norell 2007) are functional programming
+by equipping each effect with a monadic, predicate transformer                                      languages, one does not typically use them for general-purpose
+semantics. F⋆ uses this to efficiently compute weakest preconditions                                programming—that they are implemented in OCaml and Haskell is
+and discharges the resulting proof obligations using a combination                                  a case in point. Outside dependent type theory, verification-oriented
+of SMT solving and manual proofs. Isolated from the effects, the                                    languages like Dafny (Leino 2010) and WhyML (Filliâtre and Paske-
+core of F⋆ is a language of pure functions used to write specifications                             vich 2013) provide good support for effects and semi-automated
+and proof terms—its consistency is maintained by a semantic                                         proving via SMT solvers, but have logics that are much less pow-
+termination check based on a well-founded order.                                                    erful than Coq or Agda, and only limited support (if at all) for
+    We evaluate our design on more than 55,000 lines of F⋆ we                                       higher-order programming.
+have authored in the last year, focusing on three main case studies.                                    We aim for a language that spans the capabilities of interac-
+Showcasing its use as a general-purpose programming language,                                       tive proof assistants like Coq and Agda, general-purpose program-
+F⋆ is programmed (but not verified) in F⋆ , and bootstraps in both                                  ming languages like OCaml and Haskell, and SMT-backed semi-
+OCaml and F#. Our experience confirms F⋆ ’s pay-as-you-go cost                                      automated program verification tools like Dafny and WhyML. This
+model: writing idiomatic ML-like code with no finer specifications                                  language would provide the nearly arbitrary expressive power of a
+imposes no user burden. As a verification-oriented language, our                                    logic like Coq’s, but with a richer, effectful dynamic semantics. It
+most significant evaluation of F⋆ is in verifying several key modules                               would provide the flexibility to mix SMT-based automation with
+in an implementation of the TLS-1.2 protocol standard. For the                                      interactive proofs when the SMT solver times out (not uncommonly
+modules we considered, we are able to prove more properties, with                                   when working with rich theories and quantifiers). And it would
+fewer annotations using F⋆ than in a prior verified implementation                                  support idiomatic higher-order, effectful programming with the pre-
+of TLS-1.2. Finally, as a proof assistant, we discuss our use of F⋆ in                              dictable, call-by-value cost model of OCaml, but with the encapsu-
+mechanizing the metatheory of a range of lambda calculi, starting                                   lation of effects provided by Haskell.
+from the simply typed lambda calculus to System Fω and even µF⋆ ,                                       Although such a language may seem beyond reach, several
+a sizeable fragment of F⋆ itself—these proofs make essential use                                    research groups have made significant progress, targeting various
+of F⋆ ’s flexible combination of SMT automation and constructive                                    pieces of this agenda. For example, with Hoare Type Theory,
+proofs, enabling a tactic-free style of programming and proving at a                                Nanevski et al. (2008) extend Coq with support for interactive proofs
+relatively large scale.                                                                             of imperative programs. With Trellys and Zombie, Casinghino et al.
+                                                                                                    (2014) design new dependently typed languages for interactive
+Categories and Subject Descriptors D.3.1 [Programming Lan-                                          proving and programming while accounting for non-termination
+guages]: Formal Definitions and Theory—Semantics; F.3.1 [Logics                                     as an effect. With prior versions of F⋆ , Swamy et al. (2013a)
+and Meanings of Programs]: Specifying and Verifying and Reason-                                     provide SMT-based automated proving for an ML-like programming
+ing about Programs—Mechanical verification                                                          language, but lack the ability to do interactive proofs. Still, as far as
+Keywords verification; proof assistants; effectful programming                                      we are aware, currently no tool enables the mixture of proving and
+                                                                                                    general-purpose programming with the degree of automation that
+Permission to make digital or hard copies of all or part of this work for personal or               we desire.
+classroom use is granted without fee provided that copies are not made or distributed
+for profit or commercial advantage and that copies bear this notice and the full citation               Building on this prior work, we present a fresh design and
+on the first page. Copyrights for components of this work owned by others than ACM                  implementation of F⋆ , a new candidate in pursuit of this goal, that
+must be honored. Abstracting with credit is permitted. To copy otherwise, or republish,             straddles the threefold roles of programming language, program-
+to post on servers or to redistribute to lists, requires prior specific permission and/or a
+fee. Request permissions from Permissions@acm.org.                                                  verification tool, and proof assistant.1 We use F⋆ to write effectful
+Copyright is held by the owner/author(s). Publication rights licensed to ACM.                       programs; to specify them (to whatever extent necessary) within
+POPL’16, January 20–22, 2016, St. Petersburg, FL, USA                                               1 Henceforth, we refer to the new language presented in this paper as “F⋆ ”
+ACM. 978-1-4503-3549-2/16/01...$15.00
+http://dx.doi.org/10.1145/2837614.2837655                                                           while referring to the old, defunct version as “old-F⋆ ”.
+
+
+
+                                                                                              256
+its functional core using dependent and refinement types; and to                effect for it, together with a predicate transformer that fully captures
+verify them using an SMT solver that automatically discharges                   the semantics of that computation. It then generates proof obligations
+proofs. Where proof obligations exceed the capabilities of SMT                  to show that the specification is compatible with the inferred
+solving, interactive proofs can be provided within the language.                predicate transformer. These proof obligations can be discharged
+Full verification is not mandatory in F⋆ —the language encourages               semi-automatically using a combination of SMT solving and user-
+a style in which programs are verified incrementally. Programs                  provided proof terms.
+with ML types are easily type-checked syntactically, while more                 Summary of contributions Overall, our contribution is a com-
+precise specifications demand deeper proofs. After type-checking,               prehensive, new language design, evaluated both theoretically and
+F⋆ programs can be extracted to OCaml or F# for execution.                      empirically. The specific technical advances of our work include the
+    Validating F⋆ ’s capabilities for programming, we have boot-                following:
+strapped it using about 20,500 lines of F⋆ (in addition to a few
+platform-specific libraries in OCaml and F#). We have also used F⋆              (1) We present the design of a new programming language, F⋆ , with
+to verify key parts of other complex, effectful programs, such as the               a dependent type-and-effect system, based on a new, extensible,
+cryptographic protocols underlying the TLS-1.2 standard (Dierks                     multi-monadic predicate-transformer semantics (introduced in
+and Rescorla 2008). Evaluating F⋆ as a proof assistant, we have for-                §2, and covered throughout).
+malized several lambda calculi, and have even used it to mechanize              (2) To ensure that F⋆ ’s core language of pure functions is normal-
+part of the metatheory of µF⋆ , a sizable fragment of F⋆ . While it is              izing, we employ a novel semi-automatic semantic termination
+premature to claim that F⋆ is simultaneously a replacement for, say,                checker based on a well-founded relation (§3.3).
+Coq, OCaml and Dafny, our initial experience is encouraging—we
+know of no other language that supports semi-automated proving                  (3) We illustrate the expressiveness and flexibility of F⋆ ’s multi-
+and general-purpose programming to the same extent as F⋆ . Next,                    monadic design using a series of programming examples, includ-
+we summarize a few key features of the language.                                    ing an encoding of hyper-heaps, a new, region-inspired (Tofte
+                                                                                    and Talpin 1997) model of the heap that provides lightweight
+Primitive effects in a lattice of monads Enabling F⋆ to play its                    support for separation and framing for stateful verification (§5).
+varied roles is a design that structures the language around an                     This illustrates that F⋆ is flexible enough to allow programmers
+extensible lattice of monadic effects. F⋆ ’s runtime system provides                to use memory abstractions of their own.
+primitive support for all the effects provided by its extraction
+targets. Although available primitively, programmers can specify                (4) We have formalized a core calculus µF⋆ : a substantial fragment
+the semantics of each effect using several monads of weakest-                       of F⋆ , distilling the main ideas of the language. We prove
+precondition predicate transformers.                                                syntactic type soundness, which implies partial correctness of
+    The granularity at which to model effects is the programmer’s                   the program logic (§6.1). Additionally, we use logical relations
+choice, as long as (1) a distinguished PURE monad isolates pure                     to prove consistency and weak normalization of pF⋆ , a fragment
+computations from all other effects; (2) a monad GHOST encapsu-                     of µF⋆ with only pure computations (§6.2).
+lates purely specificational computations (for erasure); and, (3) a             (5) We have developed a full-fledged open source implementation
+monad ALL provides a semantics to all the primitive effects together.               of F⋆ , and report on our experience using it. As a programming
+Within these bounds, the programmer has the freedom to refine the                   language, we report on using F⋆ as its own implementation
+effects of the language as she sees fit, arranging them in a join semi-             language (§7.1). As a proof assistant, we use F⋆ to formalize
+lattice. By default, the lattice F⋆ provides is shown below (with an                several lambda calculi, including µF⋆ (§3, §6.1, and §7.2). As
+implicit top element, ⊤).                                                           a verification system, we report on using F⋆ in the re-design
+                                                                                    and verification of key portions of an existing implementation of
+          PURE             // DIV       // STATE       //33 ALL                     TLS-1.2 by Bhargavan et al. (2013) (§5.3 and §7.3). In all cases,
+                       ,, GHOST
+                                                                                    the expressiveness of F⋆ ’s type system, the flexibility afforded
+                                           ,, EXN
+PURE computations are at the very bottom. Using the PURE monad,                     by its user-configurable effects, the semantic termination check,
+programmers write pure, recursive functions. This monad forms                       and the proof automation helped make verification feasible at
+F⋆ ’s logical core. It soundness depends crucially on a semantic                    scale.
+termination check based on a well-founded order. The DIV effect is
+for possibly divergent code; STATE for stateful computations; and               Online material The F⋆ toolchain is open source, and binary
+EXN for programs that may raise exceptions. Each edge in the lattice
+                                                                                packages are available for all major platforms. We provide an
+corresponds to a monad morphism. Using these morphisms, the F⋆                  interactive editor mode in addition to the batch-mode compiler.
+type-checker implicitly lifts specifications in one monad to another.           An extensive interactive, online tutorial presents many examples
+Other arrangements of the effects are possible (e.g., splitting readers         and discusses details of the language beyond the limits of this
+and writers from STATE) depending on the needs of an application,               paper. Additional materials are available online, including the
+as long as the semantics of each user-defined effect is compatible              full definitions and proofs for µF⋆ and pF⋆ . By necessity, the
+with the semantics of ALL the effects.                                          examples in this paper are greatly simplified versions of larger F⋆
+                                                                                developments available online. All of these additional materials are
+Expressive specifications with dependent, refinement types Spec-                available at https://www.fstar-lang.org/papers/mumon/.
+ifications in F⋆ are expressed using dependent types—types indexed
+by arbitrary total expressions, with type-level computation defining            2.   Dijkstra monads, generalized in F⋆
+an equivalence relation on types. In addition to predicate trans-
+                                                                                One point of departure for the new design of F⋆ is the work of
+formers, programmers use indexed inductive types and refinement
+                                                                                Swamy et al. (2013b), who propose the Dijkstra monad as a way
+types (types of the form x:t{φ }, the sub-type of t restricted to those
+                                                                                of structuring and inferring specifications for higher-order stateful
+expressions e:t that validate the logical formula φ [e/x]). Refinement
+                                                                                programs. In this section, we briefly review their proposal, note
+types provide a natural notion of proof irrelevance and promote
+                                                                                several shortcomings, and discuss how these are alleviated by F⋆ ’s
+code re-use via subtyping.
+                                                                                generalized notion of a lattice of Dijkstra monads.
+Type-and-effect inference, with semi-automated proving Given                        We intend for this section to serve as a high-level introduction
+a program and a user-provided specification, F⋆ infers a type and               to the new design of F⋆ . While the details are also important, we
+
+
+
+                                                                          257
+suggest that a reader not already familiar with monads and dependent               downsides. Using a single monad to describe all computations is
+types pay attention mainly to the high-level points in the prose.                  akin to using a single type to describe all values. A uni-effect system,
+                                                                                   arguably adequate from a semantic perspective, is too coarse for
+2.1 Background: A single Dijkstra monad                                            practical purposes, particularly in a verification-oriented language.
+Dijkstra (1975) defines the semantics of a program in terms of its
+weakest pre-condition, a function that transforms a predicate on the               Non-modular specifications. With just a single monad, even in
+outcome of a computation to a predicate on that computation’s                      effect-free code, or in code that only uses some effects, one must
+input. In the context of a dependently-typed language, Swamy                       write specifications that mention all the effectful constructs. For
+et al. (2013b) observe that these weakest pre-condition predicate                  example, with only a single monad at one’s disposal, even a pure
+transformers form a monad at the level of types (rather than at the                computation 1 + 2 is specified as M int (fun post h → post (Inl 3) h),
+level of computations).                                                            i.e., one explicitly states that 1 + 2 returns 3 without raising an ex-
+    To illustrate this point, consider the semantics of stateful compu-            ception and does not modify the state. Similarly, the computation !x,
+tations that may raise exceptions. The outcome of such a computa-                  when x:ref t would be typed as M t (fun post h → post (Inl (h[x])) h)
+tion is a possibly exceptional result and a final state, whereas its input         meaning that it returns the value of x dereferenced in the current
+is an initial state. Weakest pre-conditions for such computations, as              heap; that it does not raise an exception; and that it leaves the state
+usual, transform predicates on the outcome (aka post-conditions) to                unmodified. This is cumbersome from a notational perspective and
+predicates on the input (aka pre-conditions).                                      non-modular. While the notational overhead may be minimized by
+    Using the notation of F⋆ (which we explain more later), we can                 adopting various abbreviations, the non-modularity is pervasive: es-
+express these weakest pre-conditions as follows, where state is the                tablishing that !x does not modify the state and raises no exceptions
+type of the program state; either a string represents either a normal              requires a logical proof about its predicate transformer. Worse, while
+result Inl (v:a) or an error Inr (msg:string); and Type is the universe            one can prove (via its predicate transformer) that 1 + 2 does not mu-
+of types. We define WP a, the signature of a weakest pre-condition                 tate the state and does not raise exceptions, that it does not read the
+predicate transformer for stateful, exceptional computations that                  state is not evident from its specification. Indeed, to prove that it
+may return a-typed results, i.e., wp:WP a is a function that trans-                does not read the state would require moving to a richer logic, using,
+forms a post-condition predicate q:Post a into a pre-condition p:Pre.              for example, separation logic, or a logic of program equivalence.
+It may be useful to some readers to think of WP a as a continuation                Likewise, proving that !x does not internally modify the state before
+monad.                                                                             restoring it is also difficult.
+Post (a:Type) = either a string → state → Type
+                                                                                   Combinatorial explosion of VCs. Consider sequentially compos-
+Pre = state → Type
+WP (a:Type) = Post a → Pre                                                         ing n computations e1 , . . . , en . When all these computations are
+                                                                                   typed in a single monad M of state and exceptions, the verification
+    Viewing WP a as a monad, Swamy et al. define two combinators                   condition (VC) built by repeated applications of bind contains n
+return and bind. The weakest pre-condition of a pure computation                   control paths, rather than just one. In the worst case where each sub-
+returning x:t is return t x—to prove any post, it suffices to prove                computation may indeed raise an exception, one cannot do much
+post (Inl x) s, for the normal result x and the (unchanged) initial state          better. Unfortunately, even in the common case where, say, many of
+of the computation.                                                                the ei are exception-free, using a single monad produces VCs with
+return (a:Type) (x:a) : WP a = fun (post:Post a) (s:state) → post (Inl x) s        a number of paths equal to the worst case. When combined with
+                                                                                   conditionals and exception handlers, this results in an exponential
+    The weakest pre-condition of the sequential composition of two                 explosion of VCs, even for simple, pure code. Proving that many
+computations is bind t1 t2 wp1 wp2: when run in s0, if the first com-              of these paths are infeasible requires building and then performing
+putation produces state s1 and either (1) raises an exception Inr msg,             logical proofs over needlessly enormous VCs.
+in which case one must prove the post-condition immediately; or
+(2) returns normally with Inl v, in which case one runs the second                 2.3 Multiple Dijkstra monads in F⋆
+computation with v and s1, proving the post-condition of its result.
+                                                                                   We would prefer instead to type a computation e in a monad suited
+bind (a:Type) (b:Type) (wp1:WP a) (wp2 : (a → WP b)) : WP b =                      specifically to the effects exhibited by e, and no others. For example,
+    fun (post:Post b) (s0:state) → wp1 (fun x s1 →                                 pure expressions like 1 + 2 should be typed using the PURE monad,
+         match x with
+          | Inr msg → post (Inr msg) s1
+                                                                                   whose predicate transformers make no mention of exceptions or
+          | Inl v → wp2 v post s1) s0                                              state; !x in, say, a Reader monad which makes no mention of ex-
+                                                                                   ceptions or the output state. With multiple monads, specifications
+    Swamy et al. relate a computation to its semantics by introducing              are compact and modular; infeasible paths in verification conditions
+computation types M t wp, where M is itself a monad parameterized                  are pruned at the outset without needless logical proof; and many
+by its result type t (as usual) and additionally indexed by wp: WP t,              properties (e.g., state independence) can be established with simple
+its monadic weakest-precondition predicate transformer, i.e., M is                 syntactic arguments. Of course, multiple monads are a strict gener-
+a monad-indexed monad. Informally, in a total correctness setting,                 alization: when syntactic arguments are insufficient, one can always
+given a computation e : M t wp, and a post-condition q, if e is run                fall back on detailed logical proofs. F⋆ ’s lattice of Dijkstra monads
+in a state s satisfying wp q s, then e produces a result v and state s’            enables all of this, as described next.
+satisfying q v s’. This technique is reminiscent of the parameterized                  Rather than committing to a single Dijkstra monad at the outset,
+monad of Atkey (2009) and the Hoare monad of Nanevski et al.                       F⋆ provides a lattice of such monads, each describing the semantics
+(2008), who use computation types H p t q to describe computations                 of some subset of all the effects provided by the language. For the
+with pre-condition p, t-typed result, and post-condition q.                        moment, as in the previous section, we focus on state and exceptions
+                                                                                   as the only effects (returning to non-termination later). We define
+2.2 Some limitations of a single Dijkstra monad                                    three Dijkstra monads, PURE.WP, STATE.WP, EXN.WP, and show
+The Dijkstra monad has several benefits, e.g., type inference is built             how they can be combined piecewise to produce ALL.WP, a single
+into the weakest pre-condition calculus. However, we observe that                  monad (identical to the monad WP defined in §2.1) that captures the
+using just a single monad for all computations also has significant                semantics of all the effects together.
+
+
+
+                                                                             258
+PURE.WP To define the semantics of pure computations, we intro-                 primitive semantics. To combine state and exceptions, we define the
+duce (below) a Dijkstra monad PURE.WP. A weakest pre-condition                  two morphisms below:
+for pure computations with an a-typed result transforms pure post-              STATE.lift all a (wp:STATE.WP a) : ALL.WP a =
+conditions (predicates on a) to pre-conditions (propositions). The                 fun (post:ALL.Post a) s → wp (fun x s’ → post (Inl x) s’) s
+semantics of returning a value requires simply proving the post-
+condition of the value; and sequential composition of pure computa-             EXN.lift all a (wp:EXN.WP a) : ALL.WP a =
+tions is just function composition of their WPs. The main point of                 fun (post:ALL.Post a) s → wp (fun x → post x s)
+distinction is that PURE.WP makes no mention of any of the effects.
+                                                                                   The metatheory of F⋆ (§6.1) requires these lift functions to be
+PURE.Post a = a → Type                                                          monad morphisms, and it is easy to check that they satisfy the
+PURE.Pre = Type                                                                 morphism laws, i.e., that the returns, binds and lifts commute in the
+PURE.WP a = PURE.Post a → PURE.Pre                                              expected way.
+PURE.return a (x:a) (post:PURE.Post a) = post x
+PURE.bind a b (wp1:PURE.WP a) (wp2: a → PURE.WP b) : WP b =                     2.4 A lattice of monad-indexed monads for computations
+ fun (post:PURE.Post b) → wp1 (fun x → wp2 x post)
+                                                                                The type system of F⋆ includes higher-rank polymorphism, type
+STATE.WP The predicate transformer semantics of stateful func-                  operators of arbitrary order, inductive type families, dependent
+tions is captured by STATE.WP below, which, as always, transforms               function types, and refinement types.
+post-conditions to pre-conditions. Stateful post-conditions relate the              F⋆ is a call-by-value language. Following Moggi (1989), we
+result of a computation to the final state; while pre-conditions are            observe that such a language has an inherently monadic semantics.
+predicates on the input state. Notice there is nothing about excep-             Every expression has a computation type M t wp, for some effect M,
+tions. The combinator return t x shows how to return a value as a               while functions have arrow types with effectful co-domains, e.g.,
+                                                                                fun x → e has a dependent type of the form x:t → M t’ wp, where the
+stateful computation—the state is unchanged. Meanwhile, bind de-
+fines the semantics of sequential composition by threading the state            formal parameter x is in scope to the right of the arrow. Traditionally,
+through. In addition to the combinators below, we also give seman-              the effect M is left implicit in type systems for ML; but, in F⋆ ,
+tics for the primitives for reading, writing and allocating state—we            the computation type M t wp ties a computation to its semantic
+leave that for §5.2.                                                            interpretation as a predicate transformer, i.e., its wp. We introduce
+                                                                                a computation type constructor M for each Dijkstra monad, e.g.,
+STATE.Post a = a → state → Type                                                 PURE for PURE.WP, EXN for EXN.WP etc.
+STATE.Pre = state → Type                                                            The main typing judgment for F⋆ has the following form:
+STATE.WP a = STATE.Post a → STATE.Pre
+STATE.return a (x:a) (post:STATE.Post a) = fun s → post x s                                                 Γ ⊢ e : M t wp
+STATE.bind a b (wp1:STATE.WP a) (wp2: a → STATE.WP b) : WP b =
+ fun (post:STATE.Post b) s0 → wp1 (fun x s1 → wp2 x post s1) s0                 meaning that in a context Γ, for any property post dependent on
+                                                                                the result of an expression e and its effect, if wp post is valid in the
+                                                                                initial configuration, then (1) e’s effects are delimited by M; and (2)
+EXN.WP For exceptions, post-conditions are predicates on ex-
+                                                                                e returns a t-typed result and a final configuration satisfying post, or
+ceptional results, while pre-conditions are just propositions. The
+                                                                                diverges, if permitted by M.
+semantics of exceptional computations is just as in §2.1, except with
+                                                                                    The lattice on the Dijkstra monads induces a lattice on the
+no mention of state. To complete the semantics of exceptions, one
+                                                                                computation-type constructors—we have M ⊑ M′ whenever we
+would also provide a semantics for raise and exception handlers.
+                                                                                have a morphism M.lift M’ between M.WP and M’.WP. Every two
+EXN.Post a = either a string → Type                                             elements M and M’ are guaranteed to have a least upper-bound, but
+EXN.Pre = Type                                                                  if the upper bound happens to be the implicit ⊤ element, we reject
+EXN.WP a = EXN.Post a → EXN.Pre                                                 the program—this means that effects M and M’ cannot be composed.
+EXN.return a (x:a) (post:EXN.Post a) = post (Inl x)                             We write M ⊔ M’ for the partial function computing the non-⊤ least
+EXN.bind a b (wp1:EXN.WP a) (wp2: a → EXN.WP b) : WP b =
+ fun (post:EXN.Post b) → wp1 (fun x → match x with
+                                                                                upper-bound of two computation-type constructors.
+     | Inr msg → post (Inr msg)                                                     The type system of F⋆ is designed to infer the least effect for
+     | Inl v → wp2 v post)                                                      a computation, if one exists. The lattice and monadic structure of
+                                                                                the effects are relevant throughout the type system, but nowhere as
+Combining effects, piecewise To describe how effects compose,                   clearly as in (T-Let), the (derived) rule for sequential composition,
+we specify morphisms among the monads. The morphisms define a                   which we illustrate below.
+partial order on the effects; for coherence, we require this order to              Γ ⊢ e1 : M1 t1 wp 1     Γ, x:t1 ⊢ e2 : M2 t2 wp 2   M = M1 ⊔ M2
+form a join semi-lattice. For instance, to combine pure and stateful               wp ′1 = M1 .lift M wp 1     wp ′2 = M2 .lift M wp 2    x 6∈ FV (t2 )
+computations, we define:                                                               Γ ⊢ let x = e1 in e2 : M t2 (M.bind wp ′1 (fun x → wp′2 ))
+PURE.lift state a (wp:PURE.WP a) : STATE.WP a =                                 The sequential composition of computations is captured semanti-
+   fun (post:STATE.Post a) s → wp (fun x → post x s)
+                                                                                cally by the sequential composition of predicate transformers, i.e.,
+To combine pure functions with exceptions, we define:                           by M.bind. (We will see the role of M.return in §3.2.) To compose
+                                                                                computations with different effects, M1 and M2 , we lift them to M,
+PURE.lift exn a (wp:PURE.WP a) : EXN.WP a =
+                                                                                the least non-⊤ effect that includes them both. Since M is unique,
+   fun (post:EXN.Post a) s → wp (fun x → post (Inl x))
+                                                                                the effect computed for the program is unambiguous—this would
+   When combining state and exceptions, one usually has two                     not be the case if we used only, say, a partial order instead of a join
+choices, depending on whether the state is propagated or reset                  semi-lattice on the effects. Since the lifts are morphisms, we get the
+when an exception is raised. However, since exceptions and state                expected properties of associativity of sequential composition and
+are primitive in F⋆ , we do not have the freedom to choose. In the              lifting—the specific placement of lifts is semantically irrelevant.
+primitive semantics of F⋆ , as is typical, when an exception is raised,              The next three sections present F⋆ in detail via examples of
+the state is preserved and propagated, rather than being reset—                 pure, divergent, ghost and stateful computations—we leave detailed
+the monad ALL.WP (exactly the monad from §2.1) captures this                    examples of exceptions to the online material.
+
+
+
+                                                                          259
+3.   Purity and divergence                                                       For better readability, we write Pure t (requires p) (ensures q) ,
+F⋆ treats divergence differently than it does all other effects. Whereas         Pure t p q; “requires” and “ensures” are semantically insignificant.
+the semantics of effects like state are given using predicate trans-             Arrows Function types and kinds are written b → m t—note the
+formers, the semantics of divergence is built in to the language.                lack of enclosing parentheses on b; as we will see, this convention
+In essence, given a predicate transformer like STATE.WP, one can                 leads to a more compact notation when used with refinement types.
+read its semantics in either a total- or partial-correctness setting—a           The variable bound by b is in scope to the right of the arrow. When
+programmer-provided attribute specifies which. By default, only                  the co-domain does not mention the formal parameter, we may omit
+the PURE and GHOST monads are interpreted in a total-correctness                 the name of the parameter. For example, we may write int → m int.
+semantics; the other effects implicitly include divergence and are               We use the Tot effect by default in our notation for curried function
+interpreted in a partial-correctness setting.                                    types: on all but the last arrow, so long as the result type is not Type,
+    To control the use of divergence, the language provides two                  the implicit effect is Tot.
+constructs for building recursive computations. The first, is for
+fixpoints in PURE and GHOST; the second for general-recursive                    b1 → ... → bn → M t wp , b1 → Tot ( ... → Tot (bn → M t wp))
+computations in any of the partial correctness monads. In this
+section, we focus on the PURE monad, its fixpoint construct, and                 So, the polymorphic identity function has type #a:Type → a → Tot a.
+other core features of F⋆ including refinement and indexed types.                When the result type of the final computation is Type, then the
+We illustrate how these features are used for both programming                   default effect is Tot. For example, the type of the list type constructor
+and proving in the PURE monad, F⋆ ’s logical core; we also give an               is written Type → Type. These defaults reflect the common cases
+example of divergence in the DIV monad.                                          in our code base and our intention to interoperate smoothly with
+    For our examples, we present fragments of the metatheory of a                existing ML dialects.
+tiny lambda calculus. Although tiny, this is representative of many              Inductive types Aside from arrows and primitive types like int, the
+calculi for which we have mechanized soundness proofs in F⋆ . For                basic building blocks of types in F⋆ are recursively defined indexed
+example, our online materials illustrate how the proof techniques                datatypes. For example, we give below the abstract syntax of the
+sketched here scale to our formalization of µF⋆ . We start, however,             simply typed lambda calculus in the style of de Bruijn (we only
+with a brief overview of F⋆ ’s concrete syntax and summarize the                 show a few cases).
+main typing features it provides.
+                                                                                 type typ = | TUnit : typ | TArr: arg:typ → res:typ → typ
+3.1 Basic F⋆                                                                     type var = nat
+                                                                                 type exp = | EVar : x:var → exp | ELam : t:typ → body:exp → exp ...
+Expressions in F⋆ are essentially the same as F# or Caml-light, with
+some minor differences that we point out as necessary. The main                  The type of each constructor is of the form b1 → ... → bn → T τ1 ... τm ,
+innovation of F⋆ is at the level of types—we point out the main                  where T is type being constructed. This is syntactic sugar for b1 →
+typing features and provide a brief summary of their semantics,                  ... → bn → Tot (T τ1 ... τm ), i.e., constructors are total functions.
+next.                                                                                 Given a datatype definition, F⋆ automatically generates a few
+                                                                                 auxiliary functions: for each constructor C, it provides a discrimi-
+Lambdas, binders and applications The syntax fun (b1 ) ... (bn ) →               nator is C; and for each argument a of each constructor, it provides
+t introduces a lambda abstraction, where the bi range over binding               a projector C.a. We also use syntactic sugar for records, tuples and
+occurrences for variables. Binding occurrences are of the form                   lists, all of which are encoded as datatypes. Unlike Coq, F⋆ does not
+x:t for binding a variable at type t. A binding occurrence may be                generate induction principles for datatypes. Instead, as we will see in
+preceded by an optional #-mark, indicating the binding of an implicit            §3.3, the programmer directly writes fixpoints and general recursive
+parameter. In lambda abstractions, we generally omit annotations                 functions, and a semantic termination checker ensures consistency.
+on bound variables (and the enclosing parentheses) when they can                      Types can be indexed by both pure terms and other types. For
+be inferred. Applications are written using juxtaposition, as usual.             example, we show below an inductive type that defines the typing
+                                                                                 judgment of the simply-typed lambda calculus. The TyVar case
+Logical specifications The language of logical specifications φ
+                                                                                 shows discriminators and projectors in action, and also illustrates
+and predicate transformers wp is included within the language of
+                                                                                 refinement types in F⋆ , which we discuss next.
+types. We use standard syntactic sugar for the logical connectives
+∀, ∃, ∧ , ∨ , =⇒ , and ⇐⇒ , which can be encoded in types. We also               type env = var → Tot (option typ)
+overload these connectives for use with boolean expressions—F⋆                   val extend: env → typ → Tot env
+automatically coerces booleans to Type as needed.                                let extend g t y = if y=0 then Some t else g (y − 1)
+                                                                                 type typing : env → exp → typ → Type =
+Computation types Computation types m t have the form M t τ1 . . . τn ,          | TyLam : #g:env → #t:typ → #e1:exp → #t’:typ →
+where M is an effect constructor, t is the result type, and each τi is a                    typing (extend g t) e1 t’ → typing g (ELam t e1) (TArr t t’)
+term (e.g., a type or an expression). For primitive effects, computa-            | TyApp : #g:env → #e1:exp → #e2:exp → #t11:typ → #t12:typ →
+tion types have the shape M t wp, where the index wp is a predicate                         typing g e1 (TArr t11 t12) → typing g e2 t11 →
+                                                                                            typing g (EApp e1 e2) t12
+transformer. We also use a number of derived forms. For example,                 | TyVar : #g:env → x:var{is Some (g x)}
+the primitive computation-type PURE (t:Type) (wp:PURE.WP t) has                          → typing g (EVar x) (Some.v (g x))
+two commonly used derived forms, shown below. For terms that are
+unconditionally pure, we introduce Tot:
+                                                                                 Refinement types A refinement of a type t is a type x:t{φ } inhab-
+effect Tot (t:Type) = PURE t (fun post → ∀x. post x)                             ited by expressions e : Tot t that additionally validate the formula
+                                                                                 φ [e/x]. For example, F⋆ defines the type nat = x:int{x ≥ 0}. Using
+When writing specifications, it is often convenient to use traditional           this, we can write the following code:
+pre- and post-conditions instead of predicate transformers—the
+abbreviation Pure defined below enables this.                                    let abs : int → Tot nat = fun n → if n < 0 then −n else n
+
+effect Pure (t:Type) (p:PURE.Pre) (q:PURE.Post t)                                   Unlike strong sums Σx:t.φ (Sozeau 2007) in other dependently
+        = PURE t (fun post → p ∧ ∀x. q x =⇒ post x)                              typed languages, F⋆ ’s refinement types x:t{φ } are subtypes of t (as
+
+
+
+                                                                           260
+such, they more closely resemble predicate subtyping (Rushby et al.               type theory. This style of “extrinsic” proof allows proving lemmas
+1998)); for example, nat <: int. Furthermore, n:int can be implicitly             about pure functions separately from the definitions of those func-
+refined to nat whenever n ≥ 0. Specifically, the representations of               tions. F⋆ also provides a mechanism to enrich the type of a function
+nat and int values are identical—the proof of x ≥ 0 in x:int{x ≥ 0} is            extrinsically, i.e., after proving a lemma about a function, we can
+never materialized. As in other languages with refinement types, this             use F⋆ ’s subtyping relation to give the function a more precise type.
+is convenient in practice, as it enables data and code reuse, proof                   The typing rule below enables this feature by using monadic
+irrelevance, as well as automated reasoning.                                      returns. In effect, having proven that a term e is pure, we can lift
+    A new subtyping rule allows refinements to better interact with               it wholesale into the logic and reason about it there, using both its
+function types and effectful specifications, further improving code               type t and its definition e.
+reuse. For example, the type of abs declared above is equivalent by                                                Γ ⊢ e : Tot t
+subtyping to the following refinement-free type:                                               (T-Ret)
+                                                                                                         Γ ⊢ e : PURE t (PURE.return t e)
+x:int → Pure int (requires true) (ensures (fun y → y ≥ 0))                            We discuss in detail the tradeoffs between intrinsic and extrinsic
+We also introduce syntactic sugar for mixing refinements and                      proofs, and transitioning between them, in our online tutorial.
+dependent arrows, writing x:t{φ } → m t for x:(x:t{φ }) → m t.                    3.3 Semantic proofs of termination
+    Refinement types are more than just a notational convenience:
+nested refinements within types can be used to specify properties                 As in any type theory, the soundness of our logic relies on
+of unbounded data structures, and other invariants. For example,                  the normalization of pure terms. We provide a new fully se-
+the type list nat describes a list whose elements are all non-negative            mantic termination criterion based on a well-founded partial or-
+integers, and the type ref nat describes a heap reference that always             der (≺ ) : #a:Type → #b:Type → a → b → Type, over all terms (pro-
+contains a non-negative integer.                                                  nounced “precedes”). Our rule for typing fixpoints makes use of the
+    Refinements and indexed types work well together. Notably,                    ≺ order to ensure that the fixpoint always exists, as shown below:
+pattern matching on datatypes comes with a powerful exhaustiveness                            t f = y:t → PURE t’ wp        Γ ⊢ δ : Tot (y:t → Tot t’’)
+checker: one only needs to write the reachable cases, and F⋆ relies                          Γ, x:t, f:(y:t{δ y ≺ δ x} → PURE t’ wp) ⊢ e : PURE t’ wp
+on all the information available in the context, not just the types of             (T-Fix)
+the terms being analyzed. For example, we give below an inversion                                      Γ ⊢ let rec fδ : t f = fun x → e : Tot t f
+lemma proving that the canonical form of a well-typed closed value                When introducing a recursive definition of the form let rec fδ : (y:t →
+with an arrow type is a λ -abstraction with a well-typed body. The                PURE t’ wp) = fun x → e, we type the expression e in a context that
+indexing of d with emp, combined with the refinements on e and t,                 includes x:t and f at the type y:t{δ y ≺ δ x} → PURE t’ wp, where the
+allows F⋆ to prove that the only reachable case for d is TyLam.                   decreasing metric δ is any pure function. Intuitively, this rule ensures
+Furthermore, the equations introduced by pattern matching allow F⋆                that, when defining the i-th iterate of f x, one may only use previous
+to prove that the returned premise has the requested type.                        iterates of f defined on a strictly smaller domain. We think of δ as
+let emp x = None                                                                  a decreasing metric on the parameter, which F⋆ picks by default
+let value = function ELam    | EVar | EUnit → true | → false                      (as shown below) but which can also be provided explicitly by the
+val inv lam: e:exp{value e} → t:typ{is TArr t} → d:typing emp e t →               programmer.
+  Tot (typing (extend emp (TArr.arg t)) (ELam.body e) (TArr.res t))                   We illustrate rule (T-Fix) for typing factorial:
+let inv lam e t (TyLam premise) = premise
+                                                                                  let rec factorial (n:nat) : nat = if n=0 then 1 else n ∗ factorial (n 1)
+
+3.2 Intrinsic vs. extrinsic proofs                                                The body of factorial is typed in a context that includes n:nat and
+                                                                                  factorial: m:nat{m ≺ n} → Tot nat, i.e., in this case, F⋆ picks δ =id.
+F⋆ ’s refinement types are more powerful than prior systems of re-
+                                                                                  At the recursive call factorial (n-1), it generates the proof obligation
+finement types, including old-F⋆ (Swamy et al. 2013a), the line of
+                                                                                  n-1 ≺ n. Given the definition of the ≺ relation below (which includes
+work on liquid types (Rondon et al. 2008), and the style of refine-
+                                                                                  the usual ordering on nat), F⋆ easily dispatches this obligation.
+ment types used by Freeman and Pfenning (1991), that only support
+                                                                                      Our style of termination proofs is in contrast with the type
+type-based reasoning about programs, i.e., the only properties one
+                                                                                  theories underlying systems like Coq, which rely instead on a
+can derive about a term are those that are deducible from its type.
+                                                                                  syntactic “guarded by destructors” criterion. As has often been
+    For example, in those systems, given id: int → int, even though
+                                                                                  observed (e.g., by Barthe et al. 2004, among several others),
+we may know that id=fun x → x, proving that id 0 = 0 is usually not
+                                                                                  this syntactic criterion is brittle with respect to simple semantics-
+possible (unless we give id some other, more precise type). This
+                                                                                  preserving transformations, and hinders proofs of termination for
+limitation stems from the lack of a fragment of the language in
+                                                                                  many common programming patterns.
+which functions behave well logically; int → int functions may have
+arbitrary effects, thereby excluding direct reasoning. Specifically,              3.3.1      The built-in well-founded ordering
+given id:int → int, we cannot prove that 0 has type x:int{x=id 0}.
+In the aforementioned systems, this type may not even be well-                    The F⋆ type-checker relies on the following ≺ ordering:
+formed, since id 0 is not necessarily effect-free. In those systems, one          (1) Given i, j : nat, we have i ≺ j ⇐⇒ i < j. The negative integers are
+can ask the question whether id 0 : x:int{x=0}—the type x:int{x=0}                    not related by the ≺ relation.
+is well-formed, since it does not contain any potentially effectful
+expressions. Still, given id:int → int, prior refinement type systems             (2) Elements of the type lex t are ordered lexicographically, as
+fail to prove id 0 : x:int{x=0}. One would have to enrich the type of                 detailed below.
+id to x:int → y:int{x=y} to conclude the proof—we call the style in               (3) The sub-terms of an inductively defined term precede the term
+which one enriches the type of a function as part of its definition                   itself, that is, for any pure term e with inductive type T6=lex t, if
+“intrinsic” proving.                                                                  e=D e1 . . . en we have ei ≺ e. for all i.
+    With its semantic treatment of effects, F⋆ supports direct rea-               (4) For any function f : x:t → Tot t’ and v:t, f v ≺ f.
+soning on pure terms, simply by reduction. For example, F⋆ proves
+List.map (fun x → x + 1) [1;2;3] = [2;3;4], given the standard definition            For lexicographic orderings, F⋆ includes in its standard prelude
+of List.map with no further annotations—as expected by users of                   the following inductive type (with its syntactic sugar):
+
+
+
+                                                                            261
+ 1 type presub = {
+                                                                                   argument is just a renaming (meaning that its range contains only
+ 2 sub:var → Tot exp; (∗ the substitution itself ∗)                             variables), so deeper recursive calls will only use the EVar case,
+ 3 renaming:bool; (∗ an additional field for the proof; made ghost in Sec. 4 ∗) which   terminates immediately. This idea was originally proposed
+ 4 } (∗ sub invariant: if the flag is set, then the map is just a renaming ∗)   by Altenkirch and Reus (1999).
+ 5 type sub = s:presub{s.renaming =⇒ (∀ x. is EVar (s.sub x))}                      To formalize this intuition in F⋆ , we instrument substitutions
+ 6 let sub inc : sub = {renaming=true; sub=(fun y → EVar (y+1))}                sub with a boolean flag renaming, with the invariant that if the
+ 7 let ord b = function true → 0 | false → 1 (∗ an ordering on bool ∗)          flag is true, then the substitution is just a renaming (lines 1–5).
+ 8 val subst : e:exp → s:sub → Pure exp (requires true)                         This field is computationally irrelevant; in §4, we’ll see how to use
+ 9      (ensures (fun e’ → s.renaming ∧ is EVar e =⇒ is EVar e’))               F⋆ ’s ghost monad to ensure that it can be erased. Notice that given
+10      (decreases %[ord b (is EVar e); ord b (s.renaming); e])
+11 let rec subst e s = match e with
+                                                                                a nat → Tot exp, it is impossible to decide whether or not it is a
+12 | EUnit → EUnit                                                              renaming; however, by augmenting the function with an invariant,
+13 | EVar x → s.sub x                                                           we can prove that substitutions are renamings as they are defined.
+14 | EApp e1 e2 → EApp (subst e1 s) (subst e2 s)                                Using this, we provide a decreases metric (line 10) as the lexical
+15 | ELam t body →                                                              ordering %[ord b (is EVar e); ord b (s.renaming); e]).
+16     let shift sub : var → Tot (e:exp{s.renaming =⇒ is EVar e}) =                 Now consider the termination of the recursive call at line 17. If s
+17       fun y → if y=0 then EVar y else subst (s.sub (y-1)) sub inc in         is a renaming, we are done; since e is not an EVar, and s.sub (y -1) is,
+18     ELam t (subst body ({s with sub=shift sub}))                             the first component of the lexicographic ordering strictly decreases.
+                                                                                   If s is not a renaming, then since e is not an EVar, the first component
+             Figure 1. Parallel substitutions on λ -terms                          of the lexicographic order may remain the same or decrease; but
+                                                                                   sub inc is certainly a renaming, so the second component decreases
+ type lex t = LexTop : lex t | LexCons: #a:Type → a → lex t → lex t                and we are done again.
+ where %[v1;...;vn] , LexCons v1 ... (LexCons vn LexTop)                                Turning to the call at line 18, if body is an EVar, we are done since
+                                                                                   e is not an EVar and thus the first component decreases. Otherwise,
+ For well-typed pure terms v, v1, v2, v1’, v2’, the ordering on lex t is           body is a non-EVar proper sub-term of e; so the first component
+ the usual one:                                                                    remains the same while the third component strictly decreases. To
+  • LexCons v1 v2 ≺ LexCons v1’ v2’, if and only if, either v1 ≺ v1’;              conclude, we have to show that the second component remains the
+    or v1=v1’ and v2 ≺ v2’.                                                        same, that is, subst shift is a renaming if s is a renaming. The type
+                                                                                   of subst shift captures this property. In order to complete the proof
+  • If v:lex t and v 6= LexTop, then v ≺ LexTop.                                   we finally need to strengthen our induction hypothesis to show that
+     For functions of several arguments, one aims to prove that a                  substituting a variable with a renaming produces a variable—this is
+ metric on some subset of the arguments decreases at each recursive                exactly the purpose of the ensures-clause at line 9.
+ call. By default, F⋆ chooses the metric to be the lexicographic list                   Such lexicographic orderings are used at scale not just in our
+ of all the non-function-typed arguments in order. When the default                definitions but also in our proofs. For instance, in the type soundness
+ does not suffice, the programmer can override it with an optional                 proof for µF⋆ (§6) substitution composition, the substitution lemma,
+ decreases annotation, as we will see below.
+                                                                                   and preservation all use lexicographic orderings.
+     As an illustration of the flexibility of F⋆ ’s termination check, our
+                                                                                   3.4 Divergence in the DIV effect
+ online materials show how to encode accessibility predicates (Bove
+ 2001), a technique that encompasses a wide range of termination ar-               The predicate transformer DIV.WP is identical to PURE.WP, ex-
+ guments. Programmers can use this to define their own well-founded                cept its semantics is read in a partial-correctness setting. Accord-
+ orders for custom termination arguments. While this illustrates the               ingly, a computation with effect DIV may not terminate. The non-
+ power of F⋆ ’s termination check, we found that the detour via ac-                termination is safely encapsulated within the monad, ensuring that
+ cessibility predicates is very rarely needed (as opposed to Coq, for              the logical core remains consistent. We use the abbreviations Dv,
+ instance).                                                                        which is to DIV as Tot is to PURE.
+
+ 3.3.2   Parallel substitutions: A non-trivial termination proof                   effect Dv (a:Type) = DIV a (fun post → ∀x. post x)
+
+ Consider the simply typed lambda calculus from §3.1. It is con-                       We may use DIV when a termination proof of a pure function
+ venient to equip it with a parallel substitution that simultaneously              requires more effort than the programmer is willing to expend, and,
+ replaces a set of variables in a term. Proving that parallel substitu-            of course, when a function may diverge intentionally.
+ tions terminate is tricky—e.g., Adams (2006); Benton et al. (2012);                   For example, we give below a strongly typed, but potentially
+ Schäfer et al. (2015) all give examples of ad hoc workarounds to                 divergent evaluator for simply typed lambda calculus programs—the
+ Coq’s termination checker. Figure 1 shows a succinct, complete                    type guarantees that the type of the term being reduced is preserved.
+ development in F⋆ .                                                               The evaluator is defined using typecheck and typed step, a type-
+     Before looking at the details, consider the general structure of              checker and single-step reducer—we only show their signatures.
+ the function subst at the end of the listing. The first three cases are
+ easy. In the ELam case, we need to substitute in the body of the                  val typecheck: env → exp → Tot (option typ)
+ abstraction but, since we cross a binder, we need to increment the                val typed step : e:exp{is Some (typecheck emp e) ∧ not(value e)}
+                                                                                                   → Tot (e’:exp{typecheck emp e’ = typecheck emp e})
+ indexes of the free variables in all the expressions in the range of
+                                                                                   val eval : e:exp{is Some (typecheck emp e)}
+ the substitution—of course, incrementing the free variables is itself                      → Dv (v:exp{value v ∧ typecheck emp v = typecheck emp e})
+ a substitution, so we just reuse the function being defined for that              let rec eval e = if value e then e else eval (typed step e)
+ purpose: we call subst recursively on body, after shifting the range
+ of the substitution itself, using shift subst.                                        When defining computations in one of the partial-correctness
+     Why does this function terminate? The usual argument of being                 effects, F⋆ allows the use of a general-recursive variant of the
+ structurally recursive on e does not work, since the recursive call               let rec form and does not check that recursive calls respect the
+ at line 17 uses s.sub (y-1) as its first argument, which is not a sub-            well-founded ordering. Of course, with more effort, one can also
+ term of e. Intuitively, it terminates because in this case the second             prove that an evaluator for the simply typed lambda calculus is
+
+
+
+                                                                             262
+normalizing. We provide several such proofs online, e.g., using                 which the heap is modeled—specific choices in the model have
+hereditary substitutions.                                                       a profound impact on the manner in which programs are specified
+                                                                                and verified, particularly with respect to (anti-)aliasing properties
+4.   Translucent abstractions with GHOST                                        of heap references. We show how to instantiate F⋆ ’s STATE monad,
+                                                                                picking different representations for the state and discussing various
+Leveraging its lattice of effects, F⋆ uses a monad GHOST to                     tradeoffs. A new contribution is a region-inspired, structured model
+encapsulate computationally irrelevant code. Using this feature, we             of memory that we call hyper-heaps. Illustrating the use of hyper-
+revisit the example of Figure 1 and show how to mark specification-             heaps, we present an example adapted from our ongoing work on
+only parts of the program for erasure. In particular, we redefine the           verifying an implementation of TLS-1.2.
+type presub as shown below:
+                                                                                5.1 A simple model of the heap
+type presub = { sub: var → Tot exp; renaming: erased bool }
+                                                                                F⋆ ’s dynamic semantics provides state primitively, where the state
+The field renaming is now typed as an erased bool, meaning that its             is a map from heap references, locations ℓ : ref t, to values of type t.
+value is irrelevant to all non-GHOST code, and hence safe to erase.             To model this, F⋆ ’s standard library provides a type heap, with the
+    We define GHOST (a:Type) (wp:GHOST.WP a) to be an abstract                  following purely specificational (i.e., ghost) functions. The functions
+alias of the PURE (a:Type) (wp:PURE.WP a), i.e., the predicate trans-           sel and upd obey the standard McCarthy (1962) axioms, as well as
+former semantics of GHOST computations is identical to that for                 has (upd h r v) s = (r=s || has h s). Using the function has, we define
+PURE computations (interpreted in the total correctness sense),                 dom, the set of references in the domain of the heap. We trust that
+except the GHOST monad is a distinct point in F⋆ ’s effect lat-                 this model is a faithful, logical representation of F⋆ ’s primitive heap.
+tice. We provide a morphism, PURE.lift GHOST, an identity from                  val sel: #t:Type → heap → ref t → G t
+PURE.WP a to GHOST.WP a, but none in the other direction. Type-                 val upd: #t:Type → heap → ref t → t → G heap
+level expressions are allowed to be GHOST computations—pure                     val has: #t:Type → heap → ref t → G bool
+computations are implicitly lifted to GHOST when used at the type
+level. Computations with GHOST effect cannot be composed di-                        When defining the STATE monad in §2.3, we left the represen-
+rectly with any non-ghost computations. In essence, specification-              tation of the type state unspecified. One obvious instantiation for
+only computations are isolated from computationally relevant code.              state is heap, using which one can provide signatures for the stateful
+For convenience, we define the abbreviation G, which is to GHOST                primitives to dereference, mutate, and allocate references. Although
+as Tot is to PURE.                                                              feasible—we have written a fair amount of code using heap as our
+                                                                                model of memory—we find the style wanting, for the following
+effect G (a:Type) = GHOST (a:Type) (fun p → ∀x. p x)                            reason. A common verification task is to prove that mutations to
+                                                                                a data structure a do not interfere with the invariants of another
+    When combined with the other abstraction features provided
+                                                                                structure b whose references are disjoint from the references of a.
+F⋆ , the encapsulation of specifications provided by the GHOST
+                                                                                Stating and proving this property using just the heap type is heavy:
+monad can be used for targeted erasure within computations. For
+                                                                                we need to state a quadratic number of inequalities between the
+example, F⋆ ’s standard library includes the module Ghost below,
+                                                                                references of a and b, and we must reason about all of them using
+which provides an abstract type erased a—the private qualifier hides
+                                                                                a quadratic number of proof steps. Our online tutorial provides a
+the definition of erased a from clients of the module, while within the
+                                                                                detailed example illustrating the problem, which is not unique to
+module, erased a simply unfolds to a. The only function we provide
+                                                                                our system but also affects tools like Dafny (Leino 2010) that adopt
+to destruct the erased type is reveal, which is marked with the G
+                                                                                a similar, flat memory model.
+effect—meaning it can only be used in specifications. As such, the
+                                                                                    This “framing” problem for stateful verification has been ex-
+erased a type is opaque to clients and any total expression returning
+                                                                                plored in depth, not least by the vast literature on separation logic.
+an erased t can safely be erased to ().
+                                                                                Rather than moving to separation logic (which could, we speculate,
+module Ghost                                                                    be encoded within F⋆ ’s higher-order logic, at the expense of giving
+private type erased (a:Type) = a                                                up on SMT automation), we address the framing problem by adopt-
+val reveal: #a:Type → erased a → G a                                            ing a richer, structured model of memory, called hyper-heaps and
+let reveal x = x                                                                described next.
+val erase: #a:Type → x:a → Tot (e:erased a{reveal e = x})
+let erase x = x                                                                 5.2 Hyper-heaps
+    Importantly, the abstraction of erased a is not completely opaque.          Hyper-heaps provide an abstraction layer on top of the con-
+Within specifications, the abstraction is “translucent”—using reveal,           crete, flat heap provided by the F⋆ runtime. Like separation
+one can extract the underlying a-typed value, as in the revised type            logic, hyper-heaps provide a memory model that caters well
+sub below. To construct erased values, we use the erase function, as            to the common case of reasoning about mutations to objects
+in the initializer of the renaming field below.                                 that reside in disjoint regions of memory. The basic structure
+                                                                                provided by hyper-heaps is illustrated in the figure alongside.
+type sub = s:presub{reveal s.renaming =⇒ (∀ x. is EVar (s.sub x))}              At the bottom, we hyper-heap:            region
+                                                                                                                        region       region
+                                                                                                                                    region
+let sub inc : sub = {renaming=erase true; sub=(fun y → EVar (y+1))}             have the concrete
+    The rest of the code in Figure 1 is unchanged, except that every            heap with a flat ar-                           0 … n
+use of s.renaming in the specifications is wrapped with a call to               rangement of heap
+                                                                                                            region
+                                                                                                            region                             region
+                                                                                                                                              region
+reveal. We plan to implement a procedure to automatically insert                cells (correspond-
+calls to reveal within specifications, along the lines of the bool-to-          ing to references).                  0.0 … 0.i     n.0 … n.j
+Type coercion that we already insert automatically.                             The      abstraction
+                                                                                layer above parti- abstract             …                 …
+                                                                                tions these heap concrete
+5.   Specifying and verifying stateful programs                                 cells into several
+We now turn to some examples of verified stateful programming.                  disjoint regions— heap:            …             …          …
+A primary concern that arises in this context is the manner in                  the disjointness of
+
+
+
+                                                                          263
+heap cells between regions is a key invariant of the abstraction. By              a number of inequalities quadratic in the number of references is
+allocating references from disjoint objects in separate regions, the              now quadratic in the number of regions—in this case, just one. Of
+invariant guarantees that all their references are pairwise distinct.             course, in the degenerate case where one has just one reference
+Beyond the disjointness invariant, hyper-heaps provide a tree-shaped              per region, this devolves back to the performance one would get
+hierarchy of regions, by associating with each region a region identi-            without regions at all. However, typically the number of regions is
+fier, a path from a distinguished root to a specific region associated            much smaller than the number of references they contain. The use
+with a particular fragment of the heap. The hierarchical structure                of region hierarchies serves to further reduce the number of region
+supports allocating an object v in some region 0, and its disjoint                identifiers that one refers to, making the constants smaller still.
+sub-objects in regions 0.0 and 0.1; by allocating another object v’ in                Whereas regions have generally been used for memory man-
+a set of regions rooted at region 1, our disjointness invariant ensures           agement, hyper-heaps are just an abstraction for reasoning about
+that all the references in v and v’ are pairwise distinct.                        anti-aliasing. As such, we run programs using the flat heap provided
+    Formalizing this in F⋆ , we define below the type of hyper-heaps,             by the runtime system of our target language. Rather than moving
+hh, which maps region identifiers rid to disjoint heap fragments—the              to a region-based type system, F⋆ is expressive enough to encode
+type map t s is a map from t to s with functions msel, mupd, mhas,                a region-like discipline—hyper-heaps are just implemented as a
+and mdom with a semantics analogous to the corresponding func-                    library in F⋆ . Other heap models can be used instead, so long as they
+tions on the heap type. Note that rid is an erased type; it has no                can be realized on a flat heap. The metatheory of F⋆ discussed in §6
+computational content. We define the type of hyper-heap references:               identifies sufficient conditions for a user-defined memory model to
+rref r a is a reference to an a-value residing in region r—the index r            be realized on the flat heap provided primitively—we have shown
+is ghost. We also define some utilities to easily read and write rrefs.           that hyper-heaps meet those conditions.
+type rid = erased (list nat)                                                      5.3 Hyper-heaps in action: Stateful authenticated encryption
+type hh = m:map rid heap{∀ {r1,r2} ⊆ mdom m. r16=r2
+                                =⇒ dom (msel m r1) ∩ dom(msel m r2)=0}  /         The example of this section distills some essential elements from our
+private type rref (r:rid) (a:Type) = ref a                                        verification of two modules in the core stateful, transport encryption
+let hsel #a #r hh (l:rref r a) = Heap.sel (msel hh r) l                           scheme of TLS-1.2—the focus is on modeling and verifying their
+let hupd #a #r hh (l:rref r a) v = mupd hh r (Heap.upd (msel hh r) l v)           ideal functionality. The full development, with further subtleties, is
+   Next, we provide signatures for stateful operations to create a                available online. The TLS verification is further discussed in §7.3.
+new region, to allocate a reference in a region, and to dereference                   At a high level, one of the guarantees provided by the TLS
+and mutate a reference.                                                           protocol is that the messages are received in the same order in which
+                                                                                  they were sent. To achieve this, TLS builds a stateful, authenticated
+val new region: r0:rid → STATE rid (fun post hh →                                 encryption scheme from a (stateless) “authenticated encryption with
+     ∀r h0. not (mhas hh r) ∧ extends r r0 =⇒ post r0 (mupd hh r h0))             additional data” (AEAD) scheme (Rogaway 2002). Two counters are
+val alloc: #t:Type → r:rid → v:t → STATE (rref r t) (fun post hh →
+     ∀l. fresh hh l =⇒ post l (hupd hh l v))
+                                                                                  maintained, one each for the sender and receiver. When a message
+val (!): #t:Type → #r:rid → l:rref r t → STATE t (fun post hh →                   is to be sent, the counter value is authenticated using the AEAD
+     post (hsel hh l) hh)                                                         scheme along with the rest of the message payload and the counter is
+val (:=): #t:Type → #r:rid → l:rref r t → v:t → STATE unit (fun post hh →         incremented. The receiver, in turn, checks that the sender’s counter
+     post () (hupd hh l v))                                                       in the message matches hers each time a message is received and
+                                                                                  increments her counter.
+    Hyper-heaps are a strict generalization of heaps. One can always
+                                                                                      Cryptographically, the ideal functionality behind this scheme
+allocate all objects in the same region, in which case the hyper-heap
+                                                                                  involves associating a stateful log with each instance of a encryp-
+structure provides no additional invariants. However, making use of
+                                                                                  tor/decryptor key pair. At the level of the stateless functionality, the
+the hyper-heap invariants where possible makes specifications much
+                                                                                  guarantee is that every message sent is in the log and the receiver
+more concise. As it turns out, they also make verifying programs
+                                                                                  only accepts messages that are in the log—no guarantee is provided
+much more efficient. On some benchmarks, we have noticed a
+                                                                                  regarding injectivity or the order in which messages are received.
+speedup in verification time of more than a factor of 20 when using
+                                                                                  At the stateful level, we again associate a log with each key pair and
+hyper-heaps, relative to heap—we explain below why.
+                                                                                  here we can guarantee that the sends and receives are in injective,
+    First, without hyper-heaps, consider a computation f () run in a
+                                                                                  order-preserving correspondence. Proving this requires relating the
+heap h0 and producing a heap h1 related by modifies {x1,...,xn} h0 h1,
+                                                                                  contents of the logs at various levels, and, importantly, proving that
+meaning that h1 differs from h0 at most in x1 ... xn (and in some
+                                                                                  the logs associated with different instances of keys do not interfere.
+new references). Next, consider Q = fun h → P (sel h y1) ... (sel h ym),
+                                                                                  We sketch the proof in F⋆ .
+such that Q h0 is true. In general, to prove Q h1 one must prove a
+                                                                                      We start with a few types provided by the AEAD functionality.
+quadratic number of inequalities, e.g., to prove sel h1 y1 = sel h0 y1
+requires proving y1 6∈ {x1,...,xn}.                                               module AEAD
+    However, if one can group references that are generally read                  type encryptor = Enc : #r:rid → log:rref r (seq entry) → key → encryptor
+and updated together into regions with a common root, one can                     and decryptor = Dec : #r:rid → log:rref r (seq entry) → key → decryptor
+                                                                                  and entry = Entry : ad:nat → c:cipher → p:plain → basicEntry
+do much better. For example, moving to hyper-heaps, suppose we
+place all the x1, ..., xn in region rx. Suppose y1,...,ym are all allo-           An encryptor encapsulates a key (an abstract type whose hidden
+cated in some region ry. Now, given two hyper-heaps hh0 and hh1                   representation is the raw bytes of a key) with a log of entries stored in
+related by modifies {rx} hh0 hh1, consider proving the implication                the heap for modeling the ideal functionality. Each entry associates
+P (hsel hh0 y1) ... (hsel hh0 yn) =⇒ P (hsel hh1 y1) ... (hsel hh1 ym). Ex-       a plain text p, with its cipher c and some additional data ad:nat.
+panding the definition of hsel, it is easy to see that to prove this,             The log is stored in a region r, which we maintain as an additional
+we only need to prove that msel hh0 ry = msel hh1 ry, which involves              (erasable) field of Enc. The decryptor is similar. It is worth pointing
+proving that rx and ry do not overlap. Having proven this fact once,              out that although AEAD is a stateless functionality, its cryptographic
+we can simply rewrite all occurrences of the sub-term msel hh0 ry to              modeling involves the introduction of a stateful log. Based on a
+msel hh1 ry everywhere in our formula and conclude immediately—                   cryptographic assumption, one can view this log as ghost.
+in an SMT solver, such rewrites are immediate via unification. Thus,                  On top of AEAD, we add a Stateful layer, providing stateful
+in such (arguably common) cases, what initially required proving                  encryptors and decryptors. StEnc encapsulates an encryption key
+
+
+
+                                                                            264
+provided by AEAD together with the sender’s counter, ctr, and its                   regions that are not present in h0). Next, we prove that the stateful
+own log of stateful entries, associates plain-texts with ciphers. The               logs are unmodified, and that the invariant is maintained. Finally, we
+log and the counter are stored in a region r associated with the                    prove that we return the current entry in the reader’s current position
+stateful encryptor. StDec is analogous.                                             in the log and then advance the position, except if there are no more
+                                                                                    entries or if the cipher is incorrect.
+module Stateful
+type st enc = StEnc : #r:rid → log: rref r (seq st entry) → ctr: rref r nat
+            → key:encryptor{extends (Enc.r key) r} → st enc                         6.   Metatheory
+and st dec = StDec : #r:rid → log: rref r (seq st entry) → ctr: rref r nat
+            → key:decryptor{extends (Dec.r key) r} → st dec
+                                                                                    Working out the metatheory of the full F⋆ language is a work in
+and st entry = StEntry : c:cipher → p:plain → st entry                              progress. Our eventual goal is a mechanized metatheory for F⋆ in
+                                                                                    F⋆ , and given that F⋆ is also implemented in F⋆ , we aim to use its
+   Exploiting the hierarchical structure of hyper-heaps, we store the               verification machinery to verify the implementation as well—we are
+AEAD.encryptor in a distinct sub-region of r—this is the meaning                    still far from this goal.
+of the extends relation. By doing this, we ensure that the state                        For the moment, we identify two subsets of F⋆ called µF⋆ (micro-
+associated with the AEAD encryptor is distinct from both log and                    F⋆ ) and pF⋆ (pico-F⋆ ), which contain many interesting features of
+ctr. By allocating distinct instances k1 and k2 in disjoint regions,                the full language, and study their metatheory in various ways. For
+we can prove that using k1 (say decrypt k1 c) does not alter the                    µF⋆ , we prove partial correctness for the specifications of effectful
+state associated with k2. In this simplified setting with just three                computations via a syntactic progress and preservation argument.
+references, the separation provided is minimal; when manipulating                   For pF⋆ , a pure fragment of µF⋆ , we prove weak normalization and
+objects with sub-objects that contain many more references (as                      logical consistency using logical relations. Both these developments
+in our full development), partitioning them into separate regions                   are manual proofs.
+provides disequalities between their references for free.
+                                                                                    6.1 Partial correctness of µF⋆
+Encryption To encrypt a plain text p, we call Stateful.encrypt,
+shown below. It calls AEAD GCM.encrypt with its current counter                     µF⋆ is a lambda calculus with dependent types; type operators;
+as the additional data to associate with this message, and obtains a                subtyping; semantic termination checking; a lattice of user-defined
+cipher text c. Then, we increment the counter, and return c. In the                 monads; predicate transformers; user-defined heap models, and
+ideal cryptographic functionality, we formally model this by also                   higher-order state. This covers most of the semantically interesting
+associating c with p and recording it by snoc’ing it to the log.                    features of the language; however, there are some notable exclusions.
+                                                                                    Prominently, µF⋆ lacks inductive datatypes (we bake-in a few
+let encrypt (StEnc log ctr key) p =                                                 constants, like int and bool) and their corresponding match construct,
+  let c = AEAD GCM.encrypt key !ctr p in                                            providing if0, a branch-on-zero construct, instead. µF⋆ also does
+  log := snoc !log (StEntry c p); ctr := !ctr + 1; c                                not cover erasure via GHOST. We aim to scale µF⋆ to cover the full
+                                                                                    language in the future.
+Main invariant The main invariant of these modules is captured                           Figure 2 lists the expression typing rules of µF⋆ that have
+by the predicate st inv (e:st enc) (d:st dec) (hh:hh). It states that the           not already been shown earlier (except the trivial rule for typing
+log at the AEAD level is in point-wise correspondence with the                      constants). We use a more compact notation here rather than the
+Stateful log, where the additional data at each entry in the AEAD                   concrete syntax of F⋆ (e.g. λ instead of fun and math fonts). The
+log is the index of the corresponding entry in the Stateful log.                    rules for variables and λ -abstractions are unsurprising. In each case,
+Additionally, the encryptor’s counter is always the length of the log,              the expression is in Tot, since it has no immediate side-effects.
+and the decryptor’s counter never exceeds the encryptor’s counter.                       Typing an application is subtle—we have two rules, depending
+In addition, we have several technical heap invariants: the stateful                on whether the function’s result type is dependent on its argument.
+encryptor and decryptor are in the same region; they share the same                 If it is, then only rule (T-App1) applies, since we need to substitute
+log at both levels, but their counters are distinct.                                the formal parameter x with the argument, we require the actual
+                                                                                    argument e2 to be pure; if e2 were impure, the substitution would
+Decryption To try to decrypt a cipher c with a stateful key d, we                   cause an effectful term to escape into types, which is meaningless.
+need to first prove that d satisfies the invariant. Then, decrypt d c               In rule (T-App2), since the result is not dependent on the argument,
+calls AEAD GCM with the current value of the counter. If it succeeds,               no substitution is necessary and the argument can be effectful. Note
+we increment the counter.                                                           that, in both cases, the formal parameter x can appear free in the
+val decrypt: d:st dec → c:cipher → ST (option plain)                                predicate transformer wp of the function’s (suspended) body.
+ (requires (fun h → ∃e. st inv e d h))                                                   Rule (T-If0) connects the predicate transformers using an iteM
+ (ensures (fun h0 res h1 → modifies {StDec.r d} h0 h1                               operator, which we expect to be defined for each effect. For instance,
+  ∧ let log0, log1 = hsel h0 (StDec.log d), hsel h1 (StDec.log d) in                for PURE it is defined as follows:
+       let r0, r1 = hsel h0 (StDec.ctr d), hsel h1 (StDec.ctr d) in
+       log0 = log1 ∧ (∃ e. st inv e d h1) ∧
+                                                                                             itePURE wp wp1 wp2 p =
+       (match res with                                                                            bindPURE wp λ i. i=0 ⇒ wp1 p ∧ i6=0 ⇒ wp2 p
+         | Some p → r1 = r0 + 1 ∧ p = Entry.p (index log r0)                           Subsumption (T-Sub) connects expression typing to the subtyp-
+         | → length log=r0 ∨ c 6= Entry.c (index log r0))))                         ing judgment for computations, which has the form Γ ⊢ M ′ t ′ wp′ <:
+let decrypt (StDec log ctr key) c =
+                                                                                    M t wp. The subtyping judgment for computations only has the
+    let res = AEAD GCM.decrypt key !ctr c in
+    if is Some res then ctr := !ctr + 1; res                                        (S-Comp) rule, listed in Figure 3; it allows lifting from one effect to
+                                                                                    another, strengthening the predicate transformer, and weakening the
+   Via the invariant, we can prove several properties about a well-                 type using a mutually inductive judgment Γ ⊢ t <: t ′ . To strengthen
+typed call to decrypt d c. First, we prove that it modifies only regions            the predicate transformer, it uses a separate logical validity judg-
+that are rooted at the region of d. In this the hierarchical structure of           ment Γ |= φ that gives a semantics to the typed logical constants and
+hyper-heaps is helpful— modifies rs h0 h1 is a predicate defined to                 equates types and pure expressions up to convertibility—this is the
+mean that h1 may differ from h0 only in regions that are rooted at                  judgment that our implementation encodes to the SMT solver. The
+one of the regions in the set rs (and, possibly, in any new allocated               judgment Γ ⊢ t <: t ′ includes a structural rule (Sub-Fun) and a rule
+
+
+
+                                                                              265
+   (T-Var)                            (T-Abs)                                             v ::= n | λ x:t. e | let rec ( f d :t) x = e         n ::= O | S n
+        Γ, x : t, Γ′ ⊢ ok               Γ ⊢ t : Type      Γ, x:t ⊢ e : M t wp          e, d ::= x | v | e1 e2 | S e | pred e eO eS
+     Γ, x : t, Γ′ ⊢ x : Tot t            Γ ⊢ λ x:t. e : Tot (x:t → M t wp)                t ::= nat | x:t → c                             c ::= PURE t wp
+ (T-App1)                                                                              wp ::= bind wp1 (x:t).wp2 | return e | tot | up φ |
+   x ∈ FV (t ′ ) Γ ⊢ e1 : M (x:t → M t ′ wp) wp1    Γ ⊢ e2 : Tot t                              and wp1 wp2 | ite φ wp1 wp2 | forall x:t. wp
+                         ′
+         Γ ⊢ e1 e2 : M (t [e2 /x]) (bindM wp1 λ .wp[e2 /x])                              φ ::= e1 <e2 | e1 =e2 | φ1 ⇒ φ2 | φ1 ∧ φ2 | ∀x:t.φ | ∀αt . φ | α(e)
+(T-App2)
+                                                                                                              Figure 4. Syntax of pF⋆
+ x 6∈ FV (t ′ ) Γ ⊢ e1 : M (x:t → M t ′ wp) wp1 Γ ⊢ e2 : M t wp2
+                       ′
+        Γ ⊢ e1 e2 : M t (bindM wp1 (λ .bindM wp2 λ x.wp))                              between a state s in such a heap model and the primitive heap H,
+           Γ ⊢ e0 : M int wp0     Γ ⊢ e1 : M t wp1     Γ ⊢ e2 : M t wp2                Γ ⊢ s ∼ asHeap(H), and show that it is preserved by reduction.
+(T-If0)
+              Γ ⊢ if 0 e0 then e1 else e2 : M t (iteM wp0 wp1 wp2 )                    Meta-theorems We prove a partial correctness theorem for M
+                                                                                       computations (where M is any point in the user-defined monad
+                    Γ ⊢ e : M ′ t ′ wp′    Γ ⊢ M ′ t ′ wp′ <: M t wp                   lattice) w.r.t. the standard CBV operational semantics of µF⋆ . The
+          (T-Sub)                                                                      theorem states that a well-typed M expression is either a value that
+                                      Γ ⊢ e : M t wp
+                                                                                       satisfies ALL post-conditions consistent with its (lifted) predicate
+          Figure 2. Remaining expression typing rules of µF⋆                           transformer, or it steps to another well-typed M expression.
+                                                                                       Theorem 1 (Partial Correctness of M). If Γ ⊢ (H, e) : M t wp then
+                                                                                       for all s, post such that Γ ⊢ s ∼ asHeap(H), Γ ⊢ post : PostALL (t)
+                       Γ ⊢ t ′ <: t      Γ, x:t ′ ⊢ M s wp <: M ′ s′ wp′                             ALL wp post s, either e is a value and Γ |= post e s, or
+          (Sub-Fun)                                                                    and Γ |= liftM
+                       Γ ⊢ (x:t → M s wp) <: (x:t ′ → M ′ s′ wp′ )                     (H, e) → (H ′ , e′ ) such that for some Γ′ ⊇ Γ, Γ′ ⊢ (H ′ , e′ ) : M t wp′ ,
+  (Sub-Conv)                                    (Sub-Trans)                            Γ′ ⊢ s′ ∼ asHeap(H ′ ), and Γ′ |= liftMALL wp′ post s′ .
+
+    Γ |= t1 = t2    Γ ⊢ t2 : Type                 Γ ⊢ t1 <: t2    Γ ⊢ t2 <: t3            For PURE expressions, we prove the analogous property, but in
+             Γ ⊢ t1 <: t2                                 Γ ⊢ t1 <: t3                 the total correctness sense and with respect to liberal reduction.
+                       M ⩽ M′    Γ ⊢ t <: t ′ Γ ⊢ wp′ : KM ′ (t ′ )                    Theorem 2 (Total Correctness of PURE). If · ⊢ e : PURE t wp then
+                                                        ′                              for all p s.t. · ⊢ p : PostPURE (t) and · |= wp p, we have e →∗ v such
+                         Γ |= downM ′ (wp′ =⇒M ′ (liftM
+                                                      M   wp))
+          (S-Comp)                                                                     that v is a value, and · |= p v.
+                                 Γ ⊢ M t wp <: M ′ t ′ wp′
+                                                                                           Both these results assume the consistency of the validity judg-
+                      Figure 3. Subtyping rules of µF⋆                                 ment and total correctness additionally relies on the weak normal-
+                                                                                       ization of PURE terms.
+for type conversion via the logical validity judgment (Sub-Conv).                      6.2 Consistency and weak normalization of pF⋆
+Conversion based on logical reasoning gives F⋆ a flavor of exten-
+sional type theories like Nuprl (Constable et al. 1986). We find this                  We have proved both consistency and weak normalization for pF⋆ , a
+to be of central importance to the usability of the language since it                  pure fragment of µF⋆ including: dependent function types, a weakest
+enables cast-free conversions via SMT-based logical proofs.                            precondition calculus, logical formulas and the validity judgment,
+    We write wp =⇒M wp′ for the predicate transformer built from                       fixpoints with metrics and our semantic termination check, a well-
+the point-wise implication of wp and wp′ , e.g., wp =⇒PURE wp′                         founded ordering on naturals, and subtyping.
+is λ p.wp p =⇒ wp′ p. This notation extends to other connectives                           The syntax of pF⋆ is listed in Figure 4. Values (v) include natural
+naturally. We also write downM wp for a universally quantified                         numbers (n), lambda expressions, and fixpoints with metrics as in F⋆ .
+application of wp, e.g., downPURE wp = ∀p. wp p. We also expect                        Expressions (e) include variables, values, applications, and successor
+predicate transformers to be monotone, e.g., in the PURE monad,                        and predecessor operations on naturals. Types (t) are simplified and
+∀p1 p2 .(p1 =⇒ p2 ) =⇒ wp p1 =⇒PURE wp p2 .                                            only include naturals and dependent functions (x:t → c), where
+                                                                                       computation types c are always of the form PURE t wp. In pF⋆
+Dynamic semantics µF⋆ expressions have a standard CBV op-                              weakest preconditions (wp) and logical formulas (φ ) are represented
+erational semantics. Reduction has the form (H, e) → (H ′ , e′ ), for                  not as types, as in F⋆ and µF⋆ , but as separate syntactic categories—
+heaps H and H ′ mapping locations to values. We additionally give a                    the wp connectives (like bind and return) are built in as primitives,
+liberal reduction semantics to µF⋆ types (t   t ′ ) and pure expres-                   rather than encoded as type-level computation. The logic includes
+sion (e → e′ ) that includes both CBV and CBN. The type system                         order and equality comparison on naturals (e1 <e2 and e1 =e2 ) as
+considers types up to conversion.                                                      atomic formulas, and second-order quantification over predicates
+                                                                                       (∀αt . φ ), which we use for quantification over post-conditions.
+Monad lattice In addition to lifts being monad morphisms, our
+                                                                                           The type system is simplified with respect to F⋆ and µF⋆ , but still
+theorems rely on the following properties: the lifts should be
+                                                                                       includes the semantic termination check, a logical validity judgment
+transitively closed; should preserve validity of the downM operator;
+                                                                                       (|=), and subtyping. Reduction (→) in pF⋆ is CBV, deterministic,
+commute over lifted connectives like =⇒M ; and should preserve
+                                                                                       and otherwise standard.
+monotonicity of predicate transformers. Additionally, the signatures
+                                                                                           The termination argument uses logical relations and is similar to
+of the effectful primitives like ! and := in a user-defined monad
+                                                                                       the arguments of System T (Harper 2015) and Trellys/Zombie (Cas-
+must, when lifted to ALL, match the semantics expected for these
+                                                                                       inghino et al. 2014). The logical relation is defined as 4 mutually
+operations in the ALL monad.
+                                                                                       recursive functions: E for computation types, V for regular types, W
+Heap model abstraction We have formalized the conditions re-                           for wps, and P for formulas. Each of these functions carries an extra
+quired of a user-defined heap model to ensure that it can be re-                       parameter, σ , a map from predicate variables to sets of values which
+alized using the primitive flat heap. We define an isomorphism                         we use to interpret post-conditions π. Post-conditions π are sets of
+
+
+
+                                                                                 266
+                                                                                    (1) Describing the use of F⋆ as general purpose programming lan-
+EJ      c   , σ K = {e | ∀π∈W Jc, σ K. ∃v. e→∗ v ∧ v∈V Jt, σ K ∧ π v}                   guage, we discuss how the F⋆ implementation is bootstrapped;
+                                                   where c = PURE t wp
+                                                                                    (2) using F⋆ as a proof assistant, we provide a brief overview of the
+V J nat , σ K = {n}                                                                     formalization of µF⋆ ;
+V J x:t → c , σ K = {λ x:t. e | ∀v∈V Jt, σ K. e[v/x]∈EJc[v/x], σ K}
+                                                                                    (3) using F⋆ as a program verification system, we discuss our
+                  ∪ {let rec ( f d :t) x = e | ∀v∈V Jt, σ K.                            ongoing verification of the TLS protocol.
+                             e[v/x][let rec ( f d :t) x/ f ]∈EJc[v/x], σ K}
+                                                                                       We refer the reader to our online material for a large number of
+W JPURE t (return e), σ K = {π | ∀v. e →∗ v ⇒ π v}                                  other examples, particularly emphasizing F⋆ ’s use as a proof assis-
+W JPURE t (bind wp1 (x:t ′ ).wp2 ), σ K =                                           tant and program verification system. The experimental numbers we
+  {π | W JPURE t ′ wp1 , σ K ∋ (λ v. π ∈ W JPURE t wp2 [v/x], σ K}                  report below were collected on a Dell Precision 5810 workstation
+                                                                                    (Core E5 1620v3 CPU with 16 GB of RAM) running the official
+W JPURE t tot, σ K = {π | ∀v ∈ V Jt, σ K. π v}                                      0.9.1.1 binary of F⋆ and Z3 4.4.0.
+W JPURE t (up φ ), σ K = {π | PJφ , σ K}
+W JPURE t (and wp1 wp2 ), σ K =                                                     7.1 Bootstrapping F⋆
+                          W JPURE t wp1 , σ K ∩W JPURE t wp2 , σ K                  F⋆ is implemented in about 20,500 lines of F⋆ code. We use excep-
+W JPURE t (ite φ (wp1 wp2 ), σ K =                                )                 tions pervasively; IO for calling the SMT solver and reading source
+                          (PJφ , σ K ⇒ π ∈ W JPURE t wp1 , σ K)∧                    files; state for unification, memoization, and in selected places for
+                   π                                                                fast lookup of symbols in the environment. Via bootstrapping (as
+                        (¬PJφ , σ K ⇒ π ∈ W JPURE t wp2 , σ K)
+                                                                                    described next), F⋆ supports easy interoperability with both F# and
+W JPURE t (forall x:t ′ . wp), σ K =                                                OCaml. As such, our compiler relies on the standard libraries and
+                  {π | ∀v ∈ V Jt ′ , σ K. π ∈ W JPURE t wp[v/x], σ K                parser generators provided by F# and OCaml.
+                                                                                        Using a technique similar to the one in Coq (Letouzey 2008),
+     PJ e1 <e2 , σ K = ∃n1 ∃n2 . e1 →∗ n1 ∧ e2 →∗ n2 ∧ n1 < n2                      F⋆ implements code extraction to OCaml and F#. This extraction
+     PJ e1 =e2 , σ K = ∃n. e1 →∗ n ∧ e2 →∗ n                                        mechanism selectively emits casts (Obj.magic in OCaml; checked
+     PJ φ1 ⇒ φ2 , σ K = PJφ1 , σ K ⇒ PJφ2 , σ K                                     casts in F#) to ensure typability in the weaker type systems of
+                                                                                    our target languages, while also erasing dependent types, higher-
+     PJ φ1 ∧ φ2 , σ K = PJφ1 , σ K ∧ PJφ2 , σ K                                     rank polymorphism, and ghost computations. To bootstrap F⋆ , we
+     PJ α(e) , σ K = ∀v. e →∗ v ⇒ σ (α)(v)                                          programmed it initially in a subset of F⋆ that overlaps with F#;
+     PJ ∀αt . φ , σ K = ∀π. PJφ , σ [α 7→ π]K                                       compiled it with F#; then extracted F⋆ with itself to OCaml or F#;
+                                                                                    and finally compiled the result with the standard toolchain for the
+                 Figure 5. Logical relation for pF⋆                                 target language in question and distributed the resulting binaries.
+                                                                                        Our experience attests to the ability to use F⋆ as any other ML
+values that are closed under strong beta reduction and expansion (i.e.              dialect and its “pay as you go” verification model—if one only
+below lambdas). The interpretation of computation types EJc, σ K                    writes ML types, then verification is essentially no more than ML
+is sets of expressions e that for all post-conditions π for which the               type inference.
+pre-condition of c holds (π∈W Jc, σ K) reduce to a value v that is in
+the right V interpretation (v∈V Jt, σ K) and for which π v holds. Note              7.2 Formalizing µF⋆ in F⋆
+that termination of e is conditioned on W Jc, σ K being non-empty,                  We have also mechanically checked in F⋆ most of the progress and
+i.e. on the existence of at least one post-condition π for which the                preservation proof for the PURE effect of µF⋆ —there are still a few
+pre-condition of c holds. The interpretation V of regular types as                  technical lemmas that we admit, as discussed below. This proof was
+sets of values is standard. The interpretation W is more interesting                developed over a period of four months by one of the authors and
+and maps each wp to the set of post-conditions π for which the                      comprises ≈6,500 lines—checking the proof takes 3 minutes and
+corresponding pre-condition with respect to wp holds. W is formally                 12 seconds. In the process of mechanically checking the proof of
+defined on computation types instead of just wps, since in case the                 µF⋆ , as may be expected, we found and fixed several bugs in our
+wp is tot we only select post-conditions which hold for all values of               formal definitions.
+the right type. return e is interpreted as those post-conditions which                  To build up to the formalization of µF⋆ , several of the authors
+hold for all values to which e reduces. bind is interpreted as the bind             completed formalizations of several other typed lambda calculi,
+of the set monad. P associates a standard Tarski-style semantics to                 starting from the simply typed lambda calculus and progressing
+formulas, using the mapping σ for predicate variables.                              up to Fω , including some variants with sub-typing. The style of
+    The consistency and weak normalization of pF⋆ are corollaries                   mechanization is rather different than what is typical in tools like
+of the soundness of syntactic validity and typing with respect to this              Coq. The proof is developed without tactics, and employs a mixture
+logical relation model.                                                             of constructive proofs (i.e., we directly write a proof term) and SMT
+                                                                                    solving. This is enabled by our heavy reliance on SMT solving and
+Theorem 3 (Consistency of validity for pF⋆ ). · 6|= false
+                                                                                    termination arguments based on lexical orderings—lacking these
+Theorem 4 (Weak normalization of PURE for pF⋆ ).                                    features, such a style of proof seems unthinkable in Coq and maybe
+If · ⊢ e : PURE t wp and there exists a post-condition π for which the              even Agda. Still, this style of proving is not yet ideal. The admitted
+pre-condition with respect to wp holds (i.e. π ∈ W JPURE t wp, ·K),                 lemmas in µF⋆ fall in two main classes and point to the need for
+then there exists a value v so that e →∗ v.                                         higher level control over proofs, as discussed next.
+                                                                                        First, several proofs require massaging derivations in F⋆ ’s deeply
+                                                                                    embedded entailment relation to prove logical tautologies. These
+7.    Summary of experiments                                                        proofs are tedious to do by hand, and since they are tautologies
+In this section we discuss three main applications of F⋆ , supporting               in F⋆ ’s deeply embedded logic, they are not easily dispatched by
+our claim that the language is well suited to play three roles.                     Z3 either. Instead of pushing them through by brute force, we
+
+
+
+                                                                              267
+hope to program tactics that can build proofs of these tautologies               8.   Related work
+automatically.                                                                   Adding dependency to an effectful language Integrating depen-
+    Second, within proofs, F⋆ relies primarily on Z3 for automati-               dent types within a full-fledged, effectful programming language
+cally performing reduction. When this works, it works very well.                 has been a long-standing goal for many researchers. An early effort
+However, there are times when one needs to precisely control the                 in pursuit of this agenda was Cayenne (Augustsson 1998) which
+amount of reduction that is done (e.g, reduce by unfolding defi-                 integrated dependent types within a Haskell-like language. Cayenne
+nitions n times, following by k β -reductions etc.). Exercising this             intentionally permitted the use of non-terminating code within types,
+level of control requires intimate knowledge of F⋆ ’s SMT encodings,             making it inconsistent as a logic. Nevertheless, Cayenne was able to
+which ought to be transparent to the programmer. Once again, we                  check many useful program properties statically. More recently, old-
+hope to use a tactic language to provide better control over reduction.          F⋆ (Swamy et al. 2013a) adds value-dependent types to an ML-like
+    Rather than devising a separate language, our current plan is                language; Rondon et al. (2008) add decidable, refinement types to
+to base our design on Mtac (Ziliani et al. 2013) to allow the tactic             OCaml and Vazou et al. (2014) adapt that work to Haskell—we have
+language of F⋆ to be F⋆ itself.                                                  compared these prior refinement type systems to F⋆ in §3.2. Mean-
+                                                                                 while, monadic old-F⋆ (Swamy et al. 2013b) adds a single monad
+                                                                                 to a variant of old-F⋆ without refinement types—§2.1 discusses its
+7.3 Verifying parts of TLS                                                       limitations in detail. Liquid Haskell only has non-termination as an
+As a long-term application of F⋆ , we aim to produce a high-                     effect and for soundness requires a termination check based on the
+performance, verified implementation of the TLS protocol (includ-                integer ordering, which is less expressive than ours. All these lan-
+ing its latest 1.3 revision, currently under review by the IETF). Our            guages provide SMT-based automation, but do not have the ability
+starting point is miTLS (Bhargavan et al. 2013), a reference imple-              to support interactive proofs or to carry out functional correctness
+mentation of TLS (from SSL 3.0 to TLS 1.2) with detailed proofs of               proofs of effectful programs.
+functional correctness, authentication, and confidentiality. miTLS is
+verified using a patchwork of SMT-based proofs in F7 (Bhargavan                  Clean-slate designs The Zombie language (Casinghino et al.
+et al. 2010), Coq proofs where F7 is inadequate, code reviews, and               2014) investigates the design of a dependently typed language
+manual arguments. Because of the variety of tools and techniques                 that includes non-termination via general recursion. Zombie arose
+used, the overall proof is hard to follow and maintain. Lacking sup-             from a prior language, Trellys (Kimmell et al. 2013)—we focus
+port for full dependent types, a weakest pre-condition calculus, and             primarily on Zombie here. Rather than using an effect system, Zom-
+refinement type inference, F7 programs are both axiom-heavy and                  bie adds a “consistency qualifier” to isolate potentially divergent
+annotation-heavy, and require a careful coding discipline to prevent             programs from logical terms, with a notion of mobility that allows
+inconsistencies. Large parts of miTLS are also purely functional,                moving first-order types implicitly from one fragment to another.
+since F7 does not support stateful verification, sometimes leading to            For functions, Zombie requires programmers to explicitly designate
+unnatural, inefficient code.                                                     the fragment in which they belong. While our effect system with
+    In re-designing and verifying a few modules in F⋆ , we already               predicate transformers has a very different structure, there are also
+observe substantial improvements over miTLS. For example, we                     some similarities. For example, we also require function types to be
+largely eliminate the use of axioms in the modules we verified. By               explicit about the effects they may exhibit, in particular whether they
+relying on inference, we reduced the type annotations for message-               include divergence or not. In addition to general recursion, Zombie
+processing code roughly by half. We also make use of multiple                    provides a rule for fixpoints. Their rule (T-Ind) is similar in spirit
+monads, including PURE, GHOST, DIV and STATE, with a mixture                     to our (T-Fix). However, (T-Fix) is integrated with F⋆ ’s refinement
+of flat and hyper-heaps. Randomness and IO are encoded using state               types, WPs and other verification machinery, including the SMT
+at the moment, although we hope to model them more precisely in                  solver, enabling concise termination proofs in practice. On the other
+the future. Exceptions are avoided because they would give raise                 hand, Zombie supports reasoning extrinsically about potentially
+to side channels. We also re-proved handshake log integrity and                  divergent code, whereas in F⋆ , proofs about divergent programs are
+properties such as partial inverses between parsing and marshalling              carried out intrinsically, within its program logic. Zombie does not
+messages directly in F⋆ , without relying on Coq. By using stateful              address other effects or provide proof automation.
+models of cryptography, we avoid the informal code-review argu-                      Another recent clean-slate design is Idris (Brady 2013), which
+ments about the linear uses of keys of miTLS. Additionally, our                  provides non-termination primitively and also an elegant style of al-
+verified model of the ideal functionality of AEAD GCM is the first               gebraic effects. Brady points out that algebraic effects are preferable
+of its kind—this proof was omitted in miTLS.                                     since they avoid some of the complications of composing effects
+    So far, we have re-designed, implemented and verified in F⋆                  posed by monads. In F⋆ , we show some of these complications can
+eight (out of 45) modules from miTLS, containing 2416 lines of                   be mitigated through the use of a type- and effect-system based on a
+code that take a total of 40 seconds to verify. Our verified modules             lattice of monads, which automates effect composition in a modular
+cover message formatting and the core stateful record encryption                 manner. Additionally, effects in F⋆ are supported primitively in the
+scheme, and can be found on the artifacts page of the online                     language, whereas in Idris, effectful programming is provided via
+materials. In addition, we have ported the proof of injectivity of               an embedded DSL which elaborates effectful code to the underlying
+handshake message formatting from Coq to F⋆ . While the new proof                pure language. This has the benefit in Idris of making the effects
+is considerably shorter (4466 lines of F⋆ , compared to 8577 lines of            fully extensible; the monad lattice in F⋆ is also user extensible, but
+Coq), it takes over half an hour to verify.                                      only within the bounds of what is provided primitively by the lan-
+    In the future, we plan to further this verification effort, first by         guage. On the plus side, primitive effects in F⋆ are more efficiently
+completing the proof of the full TLS 1.2 stack, then by extending                implemented than effects encoded in a pure language. Idris’ metathe-
+the proof to the upcoming version 1.3 of the protocol. We also                   ory has yet to be studied significantly—as far as we are aware, the
+plan to continue to make pervasive use of stateful verification                  language does not attempt to ensure that non-termination does not
+to make the code more natural and efficient. We believe that the                 compromise logical consistency. Idris also lacks SMT-based proof
+reduced annotation burden, uniform proof methodology, and runtime                automation.
+efficiency of F⋆ will ease the task of maintaining a verified TLS                    Another related language is ATS (Chen and Xi 2005), which, like
+stack as the standard evolves.                                                   F⋆ , aims to combine effectful programming and theorem proving.
+
+
+
+                                                                           268
+However, the design of ATS is substantially different from F⋆ .                   abelle/HOL; another uses SMT-based tools like Dafny and F7. De-
+Notably, rather that dependent types, ATS partitions the language                 spite their successes, neither approach is without difficulties, e.g.,
+into separate fragments, the statics and dynamics; the former is used             interactive provers could benefit from more automation and the abil-
+for specifications that describe the latter and is pure, by construction.         ity to more freely use imperative features; users of automated tools
+In that regard, ATS is closer to old-F⋆ than it is to the language                would benefit from greater expressive power, and a way to provide
+of this paper. As discussed in §3.2, the indirection of a separate                interactive proofs when the SMT solver fails. F⋆ seeks to be a bridge
+specification language and the inability to use pure functions directly           between these communities.
+in specifications was one of the main reasons we abandoned the                        F⋆ is a living language: it is a work in progress currently, and
+design of old-F⋆ . Furthermore, ATS only has limited support for                  will continue to be for the foreseeable future. However, given the
+automated theorem proving, unlike F⋆ ’s SMT integration.                          significant experience we already have had with it, we are optimistic
+                                                                                  that its design provides the flexibility and expressive power needed
+Adding effects to a type-theory based proof assistant Nanevski                    to satisfy the growing demand for producing formally verified
+et al. (2008) develop Hoare type theory (HTT) as a way of extend-                 software, at a cost that compares favorably with that offered by
+ing Coq with effects. The strategy there is to provide an axiomatic               existing tools.
+extension of Coq with a single catch-all monad in which to encapsu-
+late imperative code—the discussion about a single monad in §2.1                  Acknowledgments We are grateful to Abhishek Anand, Benjamin
+applies to HTT as well. Tools based on HTT have been developed,                   Beurdouche, Leonardo de Moura, Maxime Dénès, Deepak Garg,
+notably Ynot (Chlipala et al. 2009). This approach is attractive in               Niklas Grimm, Michael Hicks, Benjamin C. Pierce, Gordon Plotkin,
+that one retains all the tools for specification and interactive proving          and Jonathan Protzenko for interesting discussions. We also thank
+from Coq. On the downside, one also inherits Coq’s limitations, e.g.,             the anonymous reviewers for their helpful feedback.
+the syntactic termination check and lack of SMT-based automation.
+                                                                                  References
+Non-syntactic termination checks Most dependent type theories
+                                                                                  A. Abel. foetus – termination checker for simple functional programs.
+rely crucially on normalization for consistency, many researchers
+                                                                                      Programming Lab Report 474, LMU München, 1998.
+have been investigating improving on Coq’s syntactic termination
+check via more semantic approaches. Agda offers two termination                   A. Abel. Type-based termination: a polymorphic lambda-calculus with sized
+                                                                                      higher-order types. PhD thesis, LMU München, 2007.
+checkers. The first one is based on fœtus (Abel 1998), and tries
+to discover a suitable lexicographic ordering on the arguments of                 R. Adams. Formalized metatheory with terms represented by an indexed
+mutually-defined functions automatically. Contrary to fœtus, our                      family of types. In Types for Proofs and Programs, International
+                                                                                      Workshop, TYPES 2004, Jouy-en-Josas, France, December 15-18, 2004,
+termination checker does not aim to find an ordering automatically                    Revised Selected Papers, 2006.
+(although well-chosen defaults mean that the user often has to
+provide no annotation); nonetheless, our check is more flexible,                  T. Altenkirch and B. Reus. Monadic presentations of lambda terms
+                                                                                      using generalized inductive types. In Computer Science Logic, 13th
+since it is not restricted to a structural decreasing of arguments,                   International Workshop, CSL ’99, 8th Annual Conference of the EACSL,
+but the decreasing of a measure applied to the arguments. The                         Madrid, Spain, September 20-25, 1999, Proceedings, 1999.
+second one is based on sized types (Abel 2007; Barthe et al.
+                                                                                  R. Atkey. Parameterised notions of computation. Journal of Functional
+2004), where the size on types approximates the depth of terms.                       Programming, 19:335–376, 2009.
+In contrast, in F⋆ , the measures are defined by the user and are
+                                                                                  L. Augustsson. Cayenne—a language with dependent types. In Proceedings
+first-class citizens of the language and can be reasoned about using
+                                                                                      of the Third ACM SIGPLAN International Conference on Functional
+all its reasoning machinery. Isabelle/HOL also supports semantic                      Programming, 1998.
+termination checking, however, the approach of Krauss et al. (2011)
+                                                                                  G. Barthe, M. J. Frade, E. Giménez, L. Pinto, and T. Uustalu. Type-
+seems very different from ours, and only applies to a first-order
+                                                                                      based termination of recursive definitions. Mathematical Structures
+fragment.                                                                             in Computer Science, 14(1):97–141, 2004.
+Semi-automated program verifiers Software verification frame-                     N. Benton, C. Hur, A. Kennedy, and C. McBride. Strongly typed term
+works, such as Why3 (Filliâtre and Paskevich 2013) and Dafny (Leino                  representations in Coq. J. Autom. Reasoning, 49(2):141–159, 2012.
+2010), also use SMT solvers to verify the logical correctness of                  K. Bhargavan, C. Fournet, and A. D. Gordon. Modular verification of security
+(mostly) first-order programs. Unlike F⋆ , they do not provide the                    protocol code by typing. In 37th ACM SIGPLAN-SIGACT Symposium on
+expressiveness of dependent types and do not provide the flexibility                  Principles of Programming Languages (POPL’10), 2010.
+of user-defined effects and memory models.                                        K. Bhargavan, C. Fournet, M. Kohlweiss, A. Pironti, and P. Strub. Imple-
+                                                                                      menting TLS with verified cryptographic security. In IEEE Symposium
+Memory abstractions for aliasing Our hyper-heap model is                              on Security and Privacy, 2013.
+closely related to local stores in Euclid (Lampson et al. 1977).                  A. Bove. Simple general recursion in type theory. Nordic Journal of
+Local stores are also a partitioned heap abstraction realized on a                    Computing, 8(1):22–42, 2001.
+flat heap. However, local stores lack the hierarchical scheme of                  E. Brady. Programming and reasoning with algebraic effects and depen-
+hyper-heaps, which we find convenient for hiding from clients the                     dent types. In Proceedings of the 18th ACM SIGPLAN International
+details of the partitioning scheme used within an object. Utting                      Conference on Functional Programming, 2013.
+(1996) describes a variation on local heaps that supports a “transfer”            C. Casinghino, V. Sjöberg, and S. Weirich. Combining proofs and programs
+operation, moving references dynamically from one region to an-                       in a dependently typed language. In The 41st Annual ACM SIGPLAN-
+other. This may be a useful variation on hyper-heaps as well, at the                  SIGACT Symposium on Principles of Programming Languages, POPL
+cost of losing the stable, state-independent invariants obtained by                  ’14, San Diego, CA, USA, January 20-21, 2014, 2014.
+pinning a reference to a (dynamically chosen) region.                             C. Chen and H. Xi. Combining Programming with Theorem Proving. In
+                                                                                      Proceedings of the Tenth ACM SIGPLAN International Conference on
+                                                                                      Functional Programming, September 2005.
+9.   Looking ahead
+                                                                                  A. Chlipala, G. Malecha, G. Morrisett, A. Shinnar, and R. Wisnesky.
+In the past decade, several research groups have made remarkable                      Effective interactive proofs for higher-order imperative programs. In
+progress in building formally verified software artifacts. One co-                    Proceedings of the 14th ACM SIGPLAN International Conference on
+hort of researchers mainly use interactive tools like Coq and Is-                     Functional Programming, 2009.
+
+
+
+                                                                            269
+R. L. Constable, S. F. Allen, H. M. Bromley, W. R. Cleaveland, J. F. Cremer,          U. Norell. Towards a practical programming language based on depen-
+   R. W. Harper, D. J. Howe, T. B. Knoblock, N. P. Mendler, P. Panangaden,               dent type theory. PhD thesis, Department of Computer Science and
+   J. T. Sasaki, and S. F. Smith. Implementing Mathematics with the Nuprl                Engineering, Chalmers University of Technology, 2007.
+   Proof Development System. Prentice-Hall, 1986.
+                                                                                      P. Rogaway. Authenticated-encryption with associated-data. In 9th ACM
+T. Dierks and E. Rescorla. The Transport Layer Security (TLS) Protocol                   Conference on Computer and Communications Security, 2002.
+   Version 1.2. IETF RFC 5246, 2008.
+                                                                                      P. M. Rondon, M. Kawaguchi, and R. Jhala. Liquid types. In Proceedings of
+E. W. Dijkstra. Guarded commands, nondeterminacy and formal derivation
+                                                                                         the ACM SIGPLAN 2008 Conference on Programming Language Design
+   of programs. Commun. ACM, 18(8):453–457, Aug. 1975.
+                                                                                         and Implementation, Tucson, AZ, USA, June 7-13, 2008, 2008.
+J.-C. Filliâtre and A. Paskevich. Why3 — where programs meet provers. In
+   M. Felleisen and P. Gardner, editors, Proceedings of the 22nd European             J. Rushby, S. Owre, and N. Shankar. Subtypes for specifications: Predicate
+   Symposium on Programming. Mar. 2013.                                                   subtyping in pvs. IEEE Transactions on Software Engineering, 24:709–
+                                                                                          720, 1998.
+T. Freeman and F. Pfenning. Refinement types for ML. In Proceedings of the
+   ACM SIGPLAN’91 Conference on Programming Language Design and                       S. Schäfer, T. Tebbi, and G. Smolka. Autosubst: Reasoning with de Bruijn
+   Implementation (PLDI), Toronto, Ontario, Canada, June 26-28, 1991,                    terms and parallel substitutions. In Interactive Theorem Proving - 6th
+   1991.                                                                                 International Conference, ITP 2015, Nanjing, China, August 24-27, 2015,
+R. Harper. Practical foundations for programming languages. Cambridge                    Proceedings. 2015.
+   University Press, second edition, 2015.                                            M. Sozeau. Subset Coercions in Coq. In T. Altenkirch and C. McBride,
+G. Kimmell, A. Stump, H. D. E. III, P. Fu, T. Sheard, S. Weirich, C. Casingh-           editors, TYPES’06. 2007.
+   ino, V. Sjöberg, N. Collins, and K. Y. Ahn. Equational reasoning about
+                                                                                      N. Swamy, J. Chen, C. Fournet, P. Strub, K. Bhargavan, and J. Yang. Secure
+   programs with general recursion and call-by-value semantics. Progress
+                                                                                         distributed programming with value-dependent types. J. Funct. Program.,
+   in Informatics, 2013.
+                                                                                         23(4):402–451, 2013a.
+A. Krauss, C. Sternagel, R. Thiemann, C. Fuhs, and J. Giesl. Termination of
+   Isabelle functions via termination of rewriting. In Second International           N. Swamy, J. Weinberger, C. Schlesinger, J. Chen, and B. Livshits. Verifying
+   Conference on Interactive Theorem Proving. 2011.                                      higher-order programs with the Dijkstra monad. In Proceedings of the
+                                                                                         34th annual ACM SIGPLAN conference on Programming Language
+B. W. Lampson, J. J. Horning, R. L. London, J. G. Mitchell, and G. J. Popek.             Design and Implementation, 2013b.
+   Report on the programming language Euclid. SIGPLAN Not., 12(2):1–79,
+   Feb. 1977.                                                                         The Coq development team. The Coq proof assistant.
+K. R. M. Leino. Dafny: An automatic program verifier for functional                   M. Tofte and J.-P. Talpin. Region-based memory management. Inf. Comput.,
+   correctness. In Proceedings of the 16th International Conference on                  132(2):109–176, Feb. 1997.
+   Logic for Programming, Artificial Intelligence, and Reasoning. 2010.               M. Utting. Reasoning about aliasing. In The Fourth Australasian Refinement
+P. Letouzey. Coq extraction, an overview. In LTA ’08. 2008.                             Workshop, 1996.
+J. McCarthy. Towards a mathematical science of computation. In IFIP                   N. Vazou, E. L. Seidel, R. Jhala, D. Vytiniotis, and S. L. P. Jones. Re-
+   Congress, 1962.                                                                       finement types for Haskell. In Proceedings of the 19th ACM SIGPLAN
+E. Moggi. Computational lambda-calculus and monads. In Proceedings of                    international conference on Functional programming (ICFP’14), 2014.
+   the Fourth Annual Symposium on Logic in Computer Science (LICS ’89),               B. Ziliani, D. Dreyer, N. R. Krishnaswami, A. Nanevski, and V. Vafeiadis.
+   Pacific Grove, California, USA, June 5-8, 1989, 1989.                                 Mtac: a monad for typed tactic programming in Coq. In G. Morrisett
+A. Nanevski, J. G. Morrisett, and L. Birkedal. Hoare type theory, polymor-               and T. Uustalu, editors, ACM SIGPLAN International Conference on
+   phism and separation. J. Funct. Program., 18(5-6):865–911, 2008.                      Functional Programming. 2013.
+
+
+
+
+                                                                                270
+

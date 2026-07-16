@@ -1,0 +1,978 @@
+       Eliminating Dependent Pattern Matching
+
+             Healfdene Goguen1 , Conor McBride2 and James McKinna3
+                                1
+                              Google, New York, New York
+2
+    School of Computer Science and Information Technology, University of Nottingham
+                3
+                  School of Computer Science, University of St Andrews
+
+
+        Abstract. This paper gives a reduction-preserving translation from Co-
+        quand’s dependent pattern matching [4] into a traditional type theory [11]
+        with universes, inductive types and relations and the axiom K [22].
+        This translation serves as a proof of termination for structurally recur-
+        sive pattern matching programs, provides an implementable compilation
+        technique in the style of functional programming languages, and demon-
+        strates the equivalence with a more easily understood type theory.
+
+
+     Dedicated to Professor Joseph Goguen on the occasion of his 65th birthday.
+
+1     Introduction
+Pattern matching is a long-established notation in functional programming [3,
+19], combining discrimination on constructors and selection of their arguments
+safely, compactly and efficiently. Extended to dependent types by Coquand [4],
+pattern matching becomes still more powerful, managing more complexity as we
+move from simple inductive datatypes, like Nat defined as follows,
+                       Nat : ? = zero : Nat | suc (n : Nat) : Nat
+to work with inductive families of datatypes [6] like Fin, which is indexed over
+Nat (Fin n is an n element enumeration), or Fin’s ordering relation, ≤, indexed
+over indexed data.4
+       Fin (n : Nat) : ?              = fzn                      : Fin (suc n)
+                                       | fsn (i : Fin n)         : Fin (suc n)
+       (i : Fin n) ≤n (j : Fin n) : ? = leqzn;j                  : fzn ≤(suc n) j
+                                       | leqsn;i;j (p : i ≤n j ) : fsn i ≤(suc n) fsn j
+Pattern matching can make programs and proofs defined over such structures
+just as simple as for their simply-typed analogues. For example, the proof of
+transitivity for ≤ works just the same for Fin as for Nat:
+      trans (p : i ≤ j ; q : j ≤ k ) : i ≤ k
+      trans                    leqzn;j                         q        7→ leqzn;k
+      trans (leqs p 0 ) 7→ leqsn;i 0 ;k 0 (trans p 0 q 0 ) (leqs q 0 ) 7→ leqs (trans p 0 q 0 )
+4
+    Here we write as subscripts arguments which are usually inferrable; informally, and
+    in practice, we omit them entirely.
+    There is no such luxury in a traditional type theory [14, 20], where a datatype
+is equipped only with an elimination constant whose type expresses its induction
+principle and whose operational behaviour is primitive recursion. This paper
+provides a translation from dependent pattern matching in Coquand’s sense to
+such a type theory—Luo’s UTT [11], extended with the Altenkirch-Streicher K
+axiom ‘uniqueness of identity proofs’ [22]. Coquand observed that his rules admit
+K; Hofmann and Streicher have shown that K does not follow from the usual
+induction principle for the identity relation [9]. We show that (a variant of) K is
+sufficient to bridge the gap: it lets us encode the constructor-based unification
+which Coquand built directly into his rules.
+
+    Our translation here deploys similar techniques to those in [18], but we now
+ensure both that the translated pattern matching equations hold as reductions
+in the target theory and that the equations can be given a conventional oper-
+ational semantics [1] directly, preserving termination and confluence. By doing
+so, we justify pattern matching as a language construct, in the style of ALF [13],
+without compromising the rôle of the elimination constant in characterising the
+meaning of data.
+
+   An early approximant of our translation was added to the Lego system [12]
+and demonstrated at ‘Types 1998’. To date, McBride’s thesis [15] is the only
+account of it, but there the treatment of the empty program is unsatisfying,
+the computational behaviour is verified only up to conversion, and the issue of
+unmatched but trusted terms in pattern matching rules is barely considered.
+
+    Our recent work describes the key equipment. The account of elimination
+in [16] uses a heterogeneous equality to express unification constraints over de-
+pendently typed data. Hence where Coquand’s pattern matching invokes an
+external notion of unification and of structural recursion, we have built the tools
+we need within type theory [17]. Now, finally, we assemble these components to
+perform dependent pattern matching by elimination.
+
+    Overview The rest of the paper is organised as follows. Section 2 ex-
+amines pattern matching with dependent types, and develops basic definitions,
+including that of specialisation in patterns, as well as the programs which will
+eventually be translatable to type theory. The key technical definition here is
+that of splitting tree; novel here is the recording of explicit evidence for impos-
+sible case branches. Section 3 describes the target type theory. This is extended
+by function symbols with defining equations which determine reduction rules,
+subject to certain conditions. The allowable such function definitions arise from
+the existence of valid splitting trees. Finally, Section 4 shows how such func-
+tion definitions may be eliminated in favour of closed terms in the type theory
+with the same reduction behaviour; the valid splitting trees precisely correspond
+to the terms built from constructor case analysis and structural recursion on
+inductive families, modulo the heterogeneous equality Eq.
+2    Dependent Pattern Matching
+Let us first take a look at what dependent pattern matching is, and why it is
+a more subtle notion than its simply typed counterpart. Inductive families gain
+their precision from the way their constructors have specialised return types. For
+example, the constructors of Fin can only make elements of sets whose ‘size’ is
+non-zero. Consider writing some function p (i : Nat; x : Fin i ) : · · ·. Trying to
+match on x without instantiating i is an error. Rather, one must take account
+of the fact that i is sure to be a suc, if p is to typecheck:
+          · · · 6` p i fz     : Nat                             p (suc j ) fz      7→ · · ·
+          · · · 6` p i (fs y) : Nat                             p (suc j ) (fs y) 7→ · · ·
+Of course, there need not be any actual check at run time whether these (suc j )
+patterns match—the type system guarantees that they must if the patterns for
+x do. This is not merely a convenient optimisation, it is a new and necessary
+phenomenon to consider. For example, we may define the property of ‘being in
+the image of f ’ for some fixed f : S → T , then equip f with an ‘inverse’:
+      Imf (t : T ) : ? = imf (s : S) : Imf (f s)                   inv (t : T ; p : Imf t) : S
+                                                                   inv (f s) (imf s) 7→ s
+The typing rules force us to write (f s) for t, but there is no way in general that
+we can compute s from t by inverting f . Of course, we actually get s from the
+constructor pattern (imf s) for p, together with a guarantee that t is (f s).
+    We have lost the ability to consider patterns for each argument independently.
+Moreover, we have lost the distinction of patterns as the sub-language of terms
+consisting only of the linear constructor forms, and with this, the interpretation
+of defining equations as rewriting rules is insufficient. It is not enough just to
+assign dependent types to conventional programs: specialised patterns change
+what programs can be.
+    Let us adapt to these new circumstances, and gain from specialisation, ex-
+ploiting the information it delivers ‘for free’. For example, in a fully decorated
+version of the step case of the above definition of the trans function,
+             trans(suc n);(fsn i);(fsn j );(fsn k ) (leqsn;i;j p 0 ) (leqsn;j ;k q 0 ) 7→
+                 leqsn;i;k (transn;i;j ;k p 0 q 0 )
+it is precisely specialisation that ensures the p 0 and q 0 are not arbitrary ≤ proofs,
+but rather appropriate ones, which justify the recursive call to trans. Meanwhile,
+we need not analyse the case
+          · · · 6` trans(suc n);(fsn i);?;k (leqsn;i;j p 0 ) leqzn;k : fs i ≤(suc n) k
+because the two proof patterns demand incompatible specialisations of the mid-
+dle value upon which they must agree. In general, specialisation is given by the
+most general unifier for the type of the value being analysed and the type of the
+pattern used to match it. Later, we shall be precise about how this works, but
+let us first sketch how we address its consequences.
+2.1     Patterns with Inaccessible Terms
+The key to recovering an operational interpretation for these defining equations
+is to find the distinction between those parts which require constructor matching,
+and those which merely report specialisation. We shall show how to translate the
+terms on the left-hand sides of definitional equations written by the programmer
+into patterns which, following Brady [2], augment the usual linear constructor
+forms with a representation for the arbitrary terms reported by specialisation
+and presupposed to match.
+Definition 1 (Patterns)
+
+              pat := x             dx e =⇒ x            av(x ) =⇒ {x }
+                    | c pat ∗     dc p~e =⇒ c d~
+                                               pe      av(c p~) =⇒ av(~
+                                                                      p)
+                    | term          dte =⇒ t             av(t) =⇒ ∅
+              lhs := f pat ∗      df p~e =⇒ f d~
+                                               pe      av(f p~) =⇒ av(~
+                                                                      p)
+
+   We say the terms marked t are inaccessible to the matcher and may not bind
+variables. The partial map av(−)
+                             U computes the set of accessible variables, where
+av(~p) is the disjoint union, i av(pi ), hence av(−) is defined only for linear
+patterns. The map d−e takes patterns back to terms.
+   We can now make sense of our inv function: its left-hand side becomes
+
+                                    inv (f s) (im s)
+
+Matching for these patterns is quite normal, with inaccessible terms behaving like
+‘don’t care’ patterns, although our typing rules will always ensure that there is
+actually no choice! We define match to be a partial operation yielding a match-
+ing substitution, throwing a conflict exception5 , or failing to make progress
+only in the case of non-canonical values in a nonempty context.
+
+Definition 2 (Matching) Matching is given as follows:
+
+                match(x ,       t)        =⇒ [x 7→ t]
+                match(chalk p~, chalk ~t) =⇒ matches(~p, ~t)
+                                        ~
+                match(chalk p~, cheese t) ⇑ conflict
+                match(u,        t)        =⇒ ε
+                matches(ε, ε) =⇒ ε
+                matches(p; p~, t; ~t) =⇒ match(p, t); matches(~
+                                                              p, ~t)
+
+    So, although definitional equations are not admissible as rewriting rules just
+as they stand, we can still equip them with an operational model which relies
+only on constructor discrimination. This much, at least, remains as ever it was.
+    Before we move on, let us establish a little equipment for working with pat-
+terns. In our discussion, we write p[x ] to stand for p with an accessible x ab-
+stracted. We may thus form the instantiation p[p0 ] if p0 is a pattern with variables
+5
+    We take chalk and cheese to stand for an arbitrary pair of distinct constructors.
+disjoint from those free in p[−], pasting p0 for the accessible occurrence of x and
+dp0 e for the inaccessible copies. In particular, p[c ~y ] is a pattern, given fresh ~y .
+Meanwhile, we shall need to apply specialising substitutions to patterns:
+
+Definition 3 (Pattern Specialisation) If σ is a substitution from variables
+∆ to terms over ∆0 with av(p) = ∆ ] ∆0 (making σ idempotent), we define the
+specialisation σp, lifting σ to patterns recursively as follows:
+
+        σx =⇒ σx if x ∈ ∆                 σ(c p~) =⇒ c σ~
+                                                        p             σt =⇒ σt
+        σx =⇒ x if x ∈ ∆0
+
+Observe that av(σp) = ∆0 .
+
+    Specialisations, being computed by unification, naturally turn out to be idem-
+potent. Their effect on a pattern variable is thus either to retain its accessibility
+or to eliminate it entirely, replacing it with an inaccessible term. Crucially, spe-
+cialisation preserves the availability of a matching semantics despite apparently
+introducing nonlinearity and non-constructor forms.
+
+
+2.2     Program Recognition
+
+The problem we address in this paper is to recognize programs as total functions
+in UTT+K. Naturally, we cannot hope to decide whether it is possible to con-
+struct a functional value exhaustively specified by a set of arbitrary equations.
+What we can do is fix a recognizable and total fragment of those programs whose
+case analysis can be expressed as a splitting tree of constructor discriminations
+and whose recursive calls are on structurally decreasing arguments.
+    The idea is to start with a candidate left-hand side whose patterns are just
+variables and to grow a partition by analysing a succession of pattern variables
+into constructor cases. This not only gives us an efficient compilation in the style
+of Augustsson [1], it will also structure our translation, with each node mapping
+to the invocation of an eliminator. Informally, for trans, we build the tree
+
+ trans p q   
+             trans leqz q 0 7→ leqz
+             
+             trans (leqs p ) 
+                              q
+      p:i ≤j
+                                trans (leqs p 0 ) leqz
+              q : fs j ≤ k
+             
+             
+                                trans (leqs p 0 ) (leqs q 0 ) →
+                                                              7 leqs (trans p 0 q 0 )
+
+The program just gives the leaves of this tree: finding the whole tree guaran-
+tees that it partitions the possible input. The recursion reduces the size of one
+argument (both, in fact, but one is enough), so the function is total.
+    However, if we take a ‘program’ just to be a set of definitional equations,
+even this recognition problem is well known to be undecidable [4, 15, 21]. The
+difficulty for the recognizer is the advantage for the programmer: specialisation
+can prune the tree! Above, we can see that q must be split to account for (leqsq 0 ),
+and having split q, we can confirm that no leqz case is possible. But consider the
+signature empty (i : Fin zero) : X. We have the splitting tree:
+
+                          empty i           
+                                                empty fz
+                             i : Fin zero
+                                                empty (fs i 0 )
+
+If we record only the leaves of the tree for which we return values, we shall
+not give the recognizer much to work from! More generally, it is possible to
+have arbitrarily large splitting trees with no surviving leaves—it is the need to
+recover these trees from thin air that makes the recognition of equation sets
+undecidable. Equations are insufficient to define dependently typed functions,
+so we had better allow our programs to consist of something more. We extend
+the usual notion of program to allow clauses f ~t t x which refute a pattern
+variable, requiring that splitting it leaves no children. For example, we write
+
+                                empty (i : Fin zero)
+                                empty i t i
+
+   We now give the syntax for programs and splitting trees.
+Definition 4 (Program, Splitting Tree)
+
+      program := f (context) : term                 splitting := compRule
+                  clause +                                      | [context]
+                                                                        lhs
+        clause := f term ∗ rhs                                       x splitting +
+           rhs := 7→ term                         compRule := [context] lhs rhs
+                 |tx
+
+We say that a splitting tree solves the programming problem [∆] f p~, if these are
+the context and left-hand side at its root node. Every such programming problem
+must satisfy av(~p) = ∆, ensuring that every variable is accessible.
+     To recognize a program with clauses {f ~ti ri | 0 ≤ i ≤ n} is to find a
+valid splitting tree with computation rules {[∆i ] f p~i ri | 0 ≤ i ≤ n} such that
+df p~i e = f ~ti and to check the guardedness of the recursion. We defer the precise
+notion of ‘valid’ until we have introduced the type system formally, but it will
+certainly be the case that if an internal node has left-hand side f p~[x ], then
+its children (numbering at least one) have left-hand sides f σ~    p[c ~y ] where c is
+a constructor and σ is the specialising substitution which unifies the datatype
+indices of x and c ~y .
+     We fix unification to be first-order with datatype constructors as the rigid
+symbols [10]—we have systematically shown constructors to be injective and
+disjoint, and that inductive families do not admit cyclic terms [17]. Accordingly,
+we have a terminating unification procedure for two vectors of terms which will
+either succeed positively (yielding a specialising substitution), succeed negatively
+(establishing a constructor conflict or cyclic equation), or fail because the prob-
+lem is too hard. Success is guaranteed if the indices are in constructor form.
+   We can thus determine if a given left-hand side may be split at a given
+pattern variable—we require all the index unifications to succeed—and generate
+specialised children for those which succeed positively. We now have:
+
+Lemma 5 (Decidable Coverage) Given f (~x : S)        ~ : T ; {f ~ti ri | 0 ≤ i ≤ n},
+it is decidable whether there exists a splitting tree, with root [~x : S]  ~ f ~x : T and
+                                                                      ~
+computation rules {[∆i ] f p~i ri | 0 ≤ i ≤ n} such that df p~i e = f ti .
+
+Proof The total number of constructor symbols in the subproblems of a split-
+ting node strictly exceeds those in the node’s problem. We may thus generate all
+candidate splitting trees whose leaves bear at most the number of constructors
+in the program clauses and test if any yield the program.                     
+
+    Coquand’s specification of a covering set of patterns requires the construction
+of a splitting tree: if we can find a covering for a given set of equations, we may
+read off one of our programs by turning the childless nodes into refutations.
+As far as recursion checking is concerned, we may give a criterion a little more
+generous than Coquand’s original [4].
+
+Definition 6 (Guardedness, Structural Recursion) We define the binary
+relation ≺, ‘is guarded by’, inductively on the syntax of terms:
+
+                                               f ≺t       r≺s s≺t
+                                     1≤i≤n
+                ti ≺ c t1 . . . tn             fs≺t         r≺t
+
+                              ~ : T ; {f ~ti ri | 0 ≤ i ≤ n} is structurally recursive
+We say that a program f (~x : S)
+if, for some argument position j, we have that every recursive call f ~s which is a
+subterm of some ri satisfies sj ≺ tij .
+
+    It is clearly decidable whether a program is structurally recursive in this
+sense. Unlike Coquand, we do permit one recursive call within the argument of
+another, although this distinction is merely one of convenience. We could readily
+extend this criterion to cover lexicographic descent on a number of arguments,
+but this too is cosmetic. Working in a higher-order setting, we can express the
+likes of Ackermann’s function, which stand beyond first-order primitive recur-
+sion. Of course, the interpreter for our own language is beyond it.
+
+
+3    Type Theory and Pattern Matching
+
+We start from a predicative subsystem of Luo’s UTT [11], with rules of inference
+given in Figure 1. UTT’s dependent types and inductive types and families are
+the foundation for dependent pattern matching. Programs with pattern match-
+ing are written over types in the base type universe ?0 , which we call small
+types. Eliminations over types to solve unification are written in ?1 , and the
+Logical-Framework-level universe 2 is used to define a convenient presentation
+of equality from the traditional I, J and K. Our construction readily extends to
+validity context ` valid                             Γ ` S : α      α ∈ {?0 , ?1 , 2}
+                                 E ` valid        Γ ; x : S ` valid
+
+typing context ` term : term
+
+                Γ ` valid                      Γ ` valid           Γ ` valid
+                          x :S ∈ Γ
+                Γ ` x : S                     Γ ` ?0 : ?1         Γ ` ?1 : 2
+                    Γ ` S : α  Γ;x : S ` T : α
+                                                            α ∈ {?0 , ?1 , 2}
+                         Γ ` Πx : S. T : α
+                Γ;x : S ` t : T             Γ ` f : Πx : S. T   Γ ` s : S
+              Γ ` λx : S. t : Πx : S. T          Γ ` f s : [x 7→ s]T
+                           Γ ` t : S        ST     Γ ` T : σ
+                                          Γ ` t : T
+
+reduction term ; term                                       plus contextual closure
+                                (λx : S. t) s ; [x 7→ s]t
+
+conversion term ∼
+                = term           equivalence closure of ;
+
+cumulativity         term  term
+
+                              S1 ∼ = S2      T1  T2        S ∼
+                                                              = T        RS ST
+    ?0  ?1       ?1  2     Πx : S1 . T1  Πx : S2 . T2    ST            RT
+
+
+                           Fig. 1. Luo’s UTT (functional core)
+
+
+
+the additional hierarchy of universes of full UTT. The impredicative universe of
+propositions in UTT is not relevant to explaining pattern matching through the
+primitive constructs of type theory, and so we omit it.
+    We identify terms that are equivalent up to the renaming of bound variables,
+and we write [x 7→ s]t for the usual capture-free substitution of s for the free
+variable x in t.
+    UTT is presented through the Logical Framework, a meta-language with
+typed arities for introducing the constants and equalities that define a type the-
+ory. While the Logical Framework is essential to the foundational understanding
+of UTT, it is notationally cumbersome, and we shall hide it as much as possible.
+We shall not distinguish notationally between framework Π kinds and object-
+level Π types, nor between the framework and object representations of types.
+We justify this by observing that 2 represents the types in the underlying frame-
+work, and that ?0 and ?1 are universes with names of specific types within 2.
+However, informality with respect to universes may lead to size issues if we are
+not careful, and we shall explicitly mention the cases where it is important to
+distinguish between the framework and object levels.
+    There is no proof of the standard metatheoretic properties for the theory
+UTT plus K that we take as our target language. Goguen’s thesis [8] establishes
+the metatheory for a sub-calculus of UTT with the Logical Framework, a single
+universe and higher-order inductive types but not inductive families or the K
+combinator. Walukiewicz-Chrzaszcz [23] shows that certain higher-order rewrite
+rules are terminating in the Calculus of Constructions, including inductive fam-
+ilies and the K combinator, but the rewrite rules do not include higher-order
+inductive types, and the language is not formulated in the Logical Framework.
+     However, our primary interest is in justifying dependent pattern matching by
+translation to a traditional presentation of type theory, and UTT plus K serves
+this role very well. Furthermore, the extensions of additional universes, inductive
+relations and the K combinator to the language used in Goguen’s thesis would
+complicate the structure of the existing proof of strong normalization but do not
+seem to represent a likely source of non-termination.
+
+3.1   Telescope Notation
+We shall be describing general constructions over dependent datatypes, so we
+need some notational conveniences. We make considerable use of de Bruijn’s
+telescopes [5]—dependent sequences of types—sharing the syntax of contexts.
+We also use Greek capitals to stand for them. We may check telescopes (and
+constrain the universe level α of the types they contain) with the following
+judgment:
+                 Γ ` valid     Γ ` S : α Γ ; x : S ` ∆ tele(α)
+               Γ ` E tele(α)         Γ ` x : S; ∆ tele(α)
+We use vector notation ~t to stand for sequences of terms, t1 ; . . . ; tn . We identify
+the application f t1 ; . . . ; tn with f t1 . . . tn . Simultaneous substitutions from a
+telescope to a sequence are written [Θ 7→ ~t], or [~t] if the domain is clear. Substi-
+tuting through a telescope textually yields a sequence of typings t1 : T1 ; . . . ; tn : Tn
+which we may check by iterating the typing judgment. We write ~t : Θ for the
+sequence of typings [~t]Θ, asserting that the t’s may instantiate Θ. We also let
+Γ ` σ∆ assert that σ is a type-correct substitution from ∆ to Γ -terms.
+    We write Π∆. T to iterate the Π-type over a sequence of arguments, or
+∆ → T if T does not depend on ∆. The corresponding abstraction is λ∆. t. We
+also let telescopes stand as the sequence of their variables, so if f : Π∆. T , then
+∆ ` f ∆ : T . The empty telescope is E, the empty sequence, ε.
+
+3.2   Global Declarations and Definitions
+A development in our type theory consists of a global context Γ containing dec-
+larations of datatype families and their constructors, and definitions of function
+symbols. To ease our translation, we declare global identifiers g with a tele-
+scope of arguments and we demand that they are applied to a suitable sequence
+wherever they are used. Each function f (∆) : T has a nonempty set of com-
+putation rules. We extend the typing and reduction rules (now contextualised)
+accordingly:
+
+      g(Θ) : T ∈ Γ       Γ ; ∆ ` ~t : Θ
+                                            f ~t ;Γ θe if [∆0 ] f p~ 7→ e ∈ Γ
+             Γ ; ∆ ` g ~t : [~t]T
+                                                          matches(~    p, ~t) =⇒ θ
+   We take the following at least to be basic requirements for defined functions.
+
+Definition 7 (Function Criteria) To extend Γ with f (∆) : T with computa-
+tion rules {[∆i ] f p~i ri | 0 ≤ i ≤ n}, we require that:
+
+ – Γ ; ∆ ` T : 2,
+ – the computation rules arise as the leaves of a splitting tree solving [∆] f ∆,
+ – the corresponding program is structurally recursive,
+ – if ri is 7→ ei , then Γ ; ∆i ` ei : Pi .
+
+   We shall check basic properties of pattern matching computation shortly, but
+we first give our notion of data (and hence splitting) a firm basis.
+
+Definition 8 (Inductive Families) Inductive families with n ≥ 1 construc-
+tors are checked for strict positivity and introduced globally as shown in figure 2.
+We write D for the telescope Ξ; z : D Ξ.
+
+
+
+                 Γ ` Ξ tele(?0 )         {Γ |D(Ξ) : ?0 ` ∆i con(~
+                                                                ui ) | i ≤ n};
+  Γ ; D(Ξ) : ?0 ; {ci (∆i ) : D ~ ui | i ≤ n};
+      ED ({M i : Π∆i . hyps(∆i , big) → ?1 | i ≤ n}; D) : ?1
+        ~ ; ∆i ] ED M
+      {[M             ~ ~
+                        ui (ci ∆i ) 7→ M i ∆i recs(∆i , ED M   ~ ) | i ≤ n};
+      eD (P : D → ?1 ; {m i : Π∆i . hyps(∆i , little(P )) → P ~ui (c ∆i ) | i ≤ n}; D) : P D
+      {[P ; m;
+            ~ ∆i ] eD P M  ~ ~ ui (ci ∆i ) 7→ m i ∆i recs(∆i , eD P m)~ | i ≤ n}
+      ` valid
+
+where               big( , ) =⇒ ?1         little(P )(~v , x) =⇒ P ~v x
+
+           Γ;Θ ` ~   u : Ξ          Γ ; Θ ` A : ?0 Γ |D(Ξ) : ?0 ; Θ; a : A ` ∆ con(~
+                                                                                   u)
+     Γ |D(Ξ) : ?0 ; Θ ` ε con(~
+                              u)            Γ |D(Ξ) : ?0 ; Θ ` a : A; ∆ con(~u)
+         hyps(ε, h) =⇒ ε                    hyps(a : A; ∆, h) =⇒ hyps(∆, h)
+         recs(ε, f ) =⇒ ε                   recs(a : A; ∆, f ) =⇒ recs(∆, f )
+
+         Γ ; Θ ` Φ tele(?0 )  Γ ; Θ; Φ ` ~v : Ξ      Γ |D(Ξ) : ?0 ; Θ ` ∆ con(~
+                                                                              u)
+                        Γ |D(Ξ) : ?0 ; Θ ` r : ΠΦ. D ~v ; ∆ con(~
+                                                                u)
+               hyps(r : ΠΦ. D ~v ; ∆, h) =⇒ r 0 : ΠΦ. h(~v , r Φ); hyps(∆, h)
+               recs(r : ΠΦ. D ~v ; ∆, f ) =⇒ (λΦ. f ~v (r Φ)); recs(∆, f )
+
+
+                  Fig. 2. Declaring inductive types with constructors
+
+
+
+
+   In Luo’s presentation [11], each inductive datatype is an inhabitant of 2; it is
+then given a name in the universe ?0 . There is a single framework-level eliminator
+whose kind is much too large for a UTT type. Our presentation is implemented
+on top: D really computes Luo’s name for the type; our UTT eliminators are
+readily simulated by the framework-level eliminator. This definition behaves as
+usual: for Nat, we obtain
+
+      Nat : ?0 ; zero : Nat; suc(n : Nat) : Nat;
+      ENat (Z : ?1 ; S : Nat → ?1 → ?1 ; n : Nat) : ?1 ;
+         [Z ; S ] ENat Z S zero      7→ Z
+      [Z ; S ; n] ENat Z S (suc n) 7→ S n (ENat Z S n)
+      eNat (P : Nat → ?1 ; z : P zero; s : Πn : Nat. P n → P (suc n); n : Nat) : P n;
+         [P ; z ; s] eNat P z s zero     7→ z
+      [P ; z ; s; n] eNat P z s (suc n) 7→ s n (eNat P z s n)
+
+Given this, the Fin declaration yields the following (we suppress EFin ):
+
+ Fin(n : Nat) : ?0 ; fz(n:Nat) : Fin (suc n); fs(n:Nat; i : Fin n) : Fin (suc n);
+ EFin · · · ;
+ eFin (P : Πn:Nat. Fin n → ?1 ;
+       z : Πn : Nat. P (suc n) (fzn ); s : Πn : Nat; i : Fin n. P n i → P (suc n) (fsn i );
+       n : Nat; i : Fin n) : P n i
+   [P ; z ; s; n] eFin P z s (suc n) (fzn ) 7→ z n
+ [P ; z ; s; n; i ] eFin P z s (suc n) (fsn i ) 7→ s n i (eFin P z s n i )
+
+All of our eliminators will satisfy the function criteria: each has just one split,
+resulting in specialised, inaccessible patterns for the indices. As the indices may
+be arbitrary terms, this is not merely convenient but essential. Rewriting with the
+standard equational laws which accompany the eliminators of inductive families
+is necessarily confluent.
+    Meanwhile, empty families have eliminators which refute their input.
+
+                                     Γ ` Ξ tele(?0 )
+         Γ ; D(Ξ) : ?0 ; ED (D) : ?1 ;                    [Ξ; x ] ED Ξ x t x ;
+                         eD (P : D → ?1 ; D) : P D;   [P ; Ξ; x ] eD P Ξ x t x
+             ` valid
+
+    We have constructed families over elements of sets, but this does not yield
+‘polymorphic’ datatypes, parametric in sets themselves. As Luo does, so we
+may also parametrise a type constructor, its data constructors and eliminators
+uniformly over a fixed initial telescope of UTT types, including ?0 .
+
+3.3    Valid Splitting Trees and their Properties
+In this section, we deliver the promised notion of ‘valid splitting tree’ and show
+it fit for purpose. This definition is very close to Coquand’s original construction
+of ‘coverings’ from ‘elementary coverings’ [4]. Our contribution is to separate the
+empty splits (with explicit refutations) from the nonempty splits (with nonempty
+subtrees), and to maintain our explicit construction of patterns in linear con-
+structor form with inaccessible terms resulting from specialisation.
+Definition 9 (Valid Splitting Tree) A valid splitting tree for f (∆) : T has
+root problem [∆] f ∆. At each node,
+ – either we have ∆0 ` e : [d~
+                             pe]T and computation rule
+
+                                           [∆0 ] f p~ 7→ e
+
+ – or we have problem [∆x ; x : D~v ; x∆]f p~[x ] and for each constructor c(∆c ) : D~u,
+   unification succeeds for ~u and ~v , in which case
+    • either all succeed negatively, and the node is the computation rule
+
+                                       [∆x ; x : D ~v ; x∆] f p~[x ] t x
+
+      • or at least one succeeds positively, and the node is a split of form
+
+                                        [∆x ; x : D ~v ; x∆] f p~[x ]
+                                          x {S
+
+         Each positive success yields a pair (∆0 , σ) where σ is a most general
+         idempotent unifier for ~u and ~v satisfying ∆0 ` σ∆c ; σ∆x and dom(σ) ]
+         ∆0 = ∆c ] ∆x , and contributes a subtree to S with root
+
+                                   [∆0 ; σ[x 7→ c ∆c ]x∆] f σ~
+                                                             p[c ∆c ]
+
+    We shall certainly need to rely on the fact that matching well typed terms
+yields type-correct substitutions. We must also keep our promise to use inacces-
+sible terms in patterns only where there is no choice.
+
+Definition 10 (Respectful Patterns) For a function f (∆) : T , we say that
+a programming problem [∆0 ] f p~ has respectful patterns provided
+ – ∆0 ` d~
+         pe : ∆
+ – if Θ ` ~a : ∆ and matches(~                               pe ∼
+                             p, ~a) =⇒ θ, then Θ ` θ∆0 and θd~  = ~a.
+
+    Let us check that valid splitting trees maintain the invariant.
+
+Lemma 11 (Functions have respectful patterns) If f (∆) : T with compu-
+tation rules {[∆i ] f p~i ri | 0 ≤ i ≤ n} satisfies the function criteria, then [∆i ] f p~i
+has respectful patterns.
+
+Proof The root problem [∆] f ∆ : T readily satisfies these properties. We
+must show that splitting preserves them. Given a typical split as above, taking
+[∆x ; x : D~v ; x∆]f p~[x ] to some [∆0 ; x∆]f σ~ p[c∆c ]. Let us show the latter is respectful.
+                    x
+   We have ∆ ; x : D ~v ; ∆ ` d~ x
+                                          p[x]e : ∆, hence idempotence of σ yields ∆0 ; x :
+          x
+D σ~v ; σ ∆ ` dσ~  p[x]e : ∆. But c σ∆c : D σ~u ∼     = D σ~v , hence ∆0 ; x∆ ` dσ~p[c ∆c ]e : ∆.
+   Now suppose matches(σ~              p[c ∆ ], ~a) =⇒ φ for Φ ` ~a : ∆. For some ~b : ∆c ,
+                                             c
+
+we must have matches(~           p[x ], ~a) =⇒ θ; [x 7→ c ~b]. By assumption, the p~[x] are
+respectful, so Φ ` (θ; [x 7→ c ~b])(∆x ; x : D ~v ; x∆), hence c ~b : D θ~v = D [∆c 7→ ~b]~u,
+and θ; [x 7→ c ~b]d~   p[x]e ∼= ~a. Rearranging, we get θ; [∆c 7→ ~b]d~  p[c ∆c ] ∼= ~ae.
+   But θ; [∆c 7→ ~b]y unifies ~u and ~v and thus factors as θ0 · σ as σ is the most
+general unifier. By idempotence of σ, θ0 and θ; [∆c 7→ ~b]y coincide on ∆0 . But
+φ coincides with θ; [∆c 7→ ~b] on ∆0 because they match the same subterms of
+the ~a, so θ; [∆c 7→ ~b] = φ · σ, hence φdσ~p[c ∆c ]e ∼
+                                                      = ~a. Moreover, we now have
+Φ ` (φ · σ)∆ and Φ ` (φ · σ)(∆ ; x : D ~v ; x∆), but idempotence makes ∆0 a
+               c                     x
+
+subcontext of σ(∆c ; ∆x ), so Φ ` φ(∆0 ; σ x∆) as required.                      
+
+Lemma 12 (Matching Reduction Preserves Type) If Θ ` f ~a : A and
+f (∆) : T has a computation rule [∆0 ] f p~ 7→ e for which matches(~
+                                                                   p, ~a) =⇒ θ,
+then Θ ` θe : A.
+Proof By inversion of the typing rules, we must have [~a]T  A. By respect-
+fulness, we have Θ ` θ∆0 and ~a ∼   pe. By construction, ∆0 ` e : [d~
+                                = θd~                               pe]T , hence
+            pe]T ∼
+Θ ` θe : [θd~    = [~
+                    a ]T  A.                                                 
+
+Lemma 13 (Coverage) If a function f (∆) : T is given by computation rules
+{[∆i ] f p~i ri : Pi | 0 ≤ i ≤ n}, then for any Θ ` ~t : ∆, it is not the case that for
+each i, matches(~      pi , ~t) ⇑ conflict.
+Proof An induction on splitting trees shows that if we have root problem f p~
+and matches(~    p, ~t) =⇒ θ for well typed arguments ~t, matching cannot yield
+conflict at all the leaf patterns. Either the root is the leaf and the result is
+trivial, or the root has a split at some x : D~v . In the latter case, we either have θx
+not in constructor form and matching gets stuck, or θx = c ~b where ~c (∆c ) : D ~v ,
+hence unifying ~u and ~v must have succeeded positively yielding some σ for which
+we have a subtree whose root patterns, σ~     p[c ∆c ] also match ~t. Inductively, not
+all of this subtree’s leaf patterns yield conflict.                                    
+
+   It may seem a little odd to present coverage as ‘not conflict in all cases’,
+rather than guaranteed progress for closed terms. But our result also treats
+the case of open terms, guaranteeing that progress can only be blocked by the
+presence of non-constructor forms.
+Lemma 14 (Canonicity) For global context Γ , if Γ ` t : D~v , with t in normal
+form, then t is c ~b for some ~b.
+Proof Select a minimal counterexample. This is necessarily a ‘stuck function’,
+f ~a. By the above reasoning, we must have some internal node in f ’s splitting
+                                          p[x ]e ∼
+tree [∆x ; x : D ~v ; x∆] f p~[x ] with θd~      = ~a but Γ ` θx : D θ~v a non-constructor
+form. But θx is a proper subterm of f ~a, hence a smaller counterexample.               
+
+Lemma 15 (Confluence) If every function defined in Γ satisfies the function
+criteria, then ;Γ is confluent.
+Proof Function symbols and constructor symbols are disjoint. By construc-
+tion, splitting trees yield left-hand sides which match disjoint sets of terms.
+Hence there are no critical pairs.                                           
+4     Translating Pattern Matching
+In this section, we shall give a complete translation from functions satisfying the
+function criteria and inhabiting small types to terms in a suitable extension of
+UTT, via the primitive elimination operators for inductive datatypes. We do this
+by showing how to construct terms corresponding to the splitting trees which
+give rise to the functions: we show how to represent programming problems as
+types for which splitting trees deliver inhabitants, and we explain how each step
+of problem reduction may be realised by a term.
+
+4.1   Heterogeneous equality
+We must first collect the necessary equipment. The unification which we take
+for granted in splitting trees becomes explicit equational reasoning, step by step.
+We represent problems using McBride’s heterogeneous equality [16]:
+
+              Eq(S ,T :?0 ; s : S ; t : T ) : ?1 ; refl(R:?0 ; r : R) : EqR R r r ;
+              subst(R:?0 ;s,t:R; q : EqR R s t; P : R → ?1 ; p : P s) : P t;
+              [R; r ; P ; p] substR;r ;r (reflR r ) P p 7→ p
+    Eq is not a standard inductive definition: it permits the expression of hetero-
+geneous equations, but its eliminator subst gives the Leibniz property only for
+homogeneous equations. This is just a convenient repackaging of the traditional
+homogeneous identity type family I. The full construction can be found in [15].
+    It is to enable this construction that we keep equations in ?1 . We shall be
+careful to form equations over data sets, but not equality sets. We are unsure
+whether it is safe to allow equality sets in ?0 , even though this would not yield
+an independent copy of ?0 in ?0 . At any rate, it is sufficient that we can form
+equations over data and eliminate data over equations.
+    We shall write s ≃ t for EqS T s t when the types S, T are clear. Furthermore
+Eq precisely allows us to express equations between sequences of data in the same
+telescope: the constraints which require the specialisation of datatype indices
+take exactly this form. Note we always have D tele(?0 ), hence if ~s, ~t : D, we may
+form the telescope of equations q 1 : s1 ≃ t1 ; . . . ; q n : sn ≃ tn tele(?1 ) which
+we naturally abbreviate as ~s ≃ ~t. Correspondingly, we write refl ~t : ~t ≃ ~t.
+
+4.2   Standard Equipment for Inductive Datatypes
+In [17], we show how to equip every datatype with some useful tools, derived from
+its eliminator, which we shall need in the constructions to come. To summarise,
+ caseD is just eD weakened by dropping the inductive hypotheses.
+ BelowD (P : D → ?1 ; D) : ?1 is the ‘course of values’, defined inductively by
+   Giménez [7]; simulated via ED , BelowD P Ξ z computes an iterated tuple
+   type asserting P for every value structurally smaller than z . For Nat we get
+                     BelowNat P zero     7→ 1
+                     BelowNat P (suc n) 7→ BelowNat P n × P n
+ belowD (P : D → ?1 ; p : ΠD. BelowD P D → P D; D) : BelowD P D constructs
+   the tuple, given a ‘step’ function, and is simulated via eD :
+
+     belowNat P p zero    7→ ()
+     belowNat P p (suc n) 7→ (λb : BelowNat P n. (b, p n b)) (belowNat P p n)
+
+ recD (P : D → ?1 ; p : ΠD. BelowD P D → P D; D) : P D is the structural
+   recursion operator for D, given by recD P p D 7→ p D (belowD P p D)
+
+We use caseD for splitting and recD for recursion. For unification, we need:
+
+ noConfusionD is the proof that D’s constructors are injective and disjoint—
+   also a two-level construction, again by example:
+
+   NoConfusionNat (P : ?1 ; x , y : Nat) : ?1
+   NoConfusionNat P zero          zero 7→ P → P
+   NoConfusionNat P zero (suc y) 7→ P
+   NoConfusionNat P (suc x ) zero 7→ P
+   NoConfusionNat P (suc x ) (suc y) 7→ (x ≃ y → P ) → P
+   noConfusionNat (P : ?1 ; x , y : Nat; q : x ≃ y) : NoConfusionNat P x y
+   noConfusionNat P zero          zero      (refl zero) 7→ λp : P . p
+   noConfusionNat P (suc x ) (suc x ) (refl (suc n)) 7→ λp : x ≃ x → P . p (refl x )
+
+   NoConfusionD is simulated by two appeals to ED ; noConfusionD uses
+   subst once, then caseD to work down the ‘diagonal’.
+ noCycleD disproves any cyclic equation in D—details may be found in [17].
+
+Lemma 16 (Unification Transitions) The following (and their symmetric
+images) are derivable:
+
+          deletion m : Π∆. P
+                      ` λ∆; q. m ∆
+                         : Π∆. t ≃ t → P
+          solution m : Π∆0 . [x 7→ t]Π∆1 . P
+                      ` λ∆; q. subst T t x q (λx . Π∆0 ; ∆1 . P ) m ∆0 ∆1
+                         : Π∆. t ≃ x → P
+                     if ∆ ∼ ∆0 ; x : T ; ∆1 and ∆0 ` t : T
+        injectivity m : Π∆. ~s ≃ ~t → P
+                      ` λ∆; q. noConfusion P (c ~s) (c ~t) q (m ∆)
+                         : Π∆. c ~s ≃ c ~t → P
+           conflict   ` λ∆; q. noConfusion P (chalk ~s) (cheese ~t) q
+                         : Π∆. chalk ~s ≃ cheese ~t → P
+             cycle    ` λ∆; q. noCycle P . . . q . . .
+                         : Π∆. x ≃ c d~  p[x ]e → P
+
+Proof    By construction.                                                         
+4.3     Elimination with Unification
+
+In [16], McBride gives a general technique for deploying operators whose types
+resemble elimination rules. We shall use this technique repeatedly in our con-
+structions, hence we recapitulate the basic idea here. Extending the previous
+account, we shall be careful to ensure that the terms we construct not only have
+the types we expect but also deliver the computational behaviour required to
+simulate the pattern matching semantics.
+
+Definition 17 (Elimination operator) For any telescope Γ ` Ξ tele(?0 ), we
+define a Ξ-elimination operator to be any
+
+          e : ΠP : ΠΞ. ?1 . (Π∆1 . P ~s1 ) → · · · → (Π∆n . P ~sn ) → ΠΞ. P Ξ
+
+    Note that eD is a D-elimination operator; caseD and recD are also. We refer
+to the Ξ as the targets of the operator as they indicate what is to be eliminated;
+we say P is the motive as it indicates why; the remaining arguments we call
+methods as they explain how to proceed in each case which may arise. Now let
+us show how to adapt such an operator to any specific sequence of targets.
+
+Definition 18 (Basic analysis) If e is a Ξ-elimination operator (as above),
+∆ tele(?0 ) and ∆ ` T : ?1 , then for any ∆ ` ~t : Ξ, the basic e-analysis of Π∆. T
+at ~t is the (clearly derivable) judgment
+
+          m 1 : Π∆1 ; ∆. Ξ ≃ ~t → T ; . . . ; m n : Π∆n ; ∆. Ξ ≃ ~t → T
+            ` λ∆. e (λΞ. Π∆. Ξ ≃ ~t → T ) m 1 . . . m n ~t ∆ (refl ~t) : Π∆. T
+
+   Notice that when e is caseD and the targets are some ~v ; x where x : D~v ∈ ∆,
+then for each constructor c (∆c ) : D ~u, we get a method
+
+                         m c : Π∆c ; ∆. ~u ≃ ~v → c ∆c ≃ x → T
+
+Observe that the equations on the indices are exactly those we must unify to
+allow the instantiation of x with c ∆c . Moreover, if we have such an instance
+for x , i.e. if θ unifies ~u and ~v , and takes x 7→ c θ∆c , then the analysis actually
+reduces to the relevant method:
+
+        caseD (λD. Π∆. Ξ ≃ ~t → T ) m  ~ θ~v (c θ∆c ) θ∆ (refl θ~v ) (refl (c θ∆c ))
+          ; m c θ∆ θ∆ (refl θ~v ) (refl (c θ∆c ))
+                   c
+
+
+      We may now simplify the equations in the method types.
+
+Definition 19 (Specialisation by Unification) Given any type of the form
+Π∆. ~u ≃ ~v → T : ?1 , we may seek to construct an inhabitant—a specialiser—by
+exhaustively iterating the unification transitions from lemma 16 as applicable.
+This terminates by the usual argument [10], with three possible outcomes:
+
+negative success a specialiser is found, either by conflict or cycle;
+positive success a specialiser is found, given some m : Π∆0 . σT for σ a most
+    general idempotent unifer of ~u and ~v , or
+failure at some stage, an equation is reached for which no transition applies.
+
+Lemma 20 (Specialiser Reduction) If specialisation by unification delivers
+
+                          m : Π∆0 . σT ` s : Π∆. ~u ≃ ~v → T
+
+then for any Θ ` θ∆ unifying ~u and ~v we have s θ∆ (refl θ~u) ;∗ m θ∆0 .
+
+Proof By induction on the transition sequence. The deletion, solution and
+injectivity steps each preserve this property by construction.          
+
+      We can now give a construction which captures our notion of splitting.
+
+Lemma 21 (Splitting Construction) Suppose ∆ ` T : ?1 , with ∆ tele(?0 ),
+∆x ; x : D~v ; x∆tele(?0 ) and ∆x ; x : D~v ; x∆ ` d~
+                                                    p[x ]e : ∆. Suppose further that for each
+c (∆c ) : D ~u, unifying ~u with ~v succeeds. Then we may construct an inhabitant
+f : Π∆x ; x : D ~v ; x∆. [d~
+                           p[x ]e]T over a context comprising, for each c with positive
+success,
+                           m c : Π∆0 ; σ[x 7→ c ∆c ]x∆. [dσ~  p[c ∆c ]e]T
+for some most general idempotent unifier ∆0 ` σ(∆c ; ∆x ). In each such case,
+
+                            f σ∆x (c σ∆c ) x∆ ;∗ m c ∆0 x∆
+
+Proof The construction is by basic caseD -analysis of Π∆x ; x : D ~v ; x∆. [d~  p[x ]e]T
+at ~v ; x , then specialisation by unification for each method. The required reduction
+behaviour follows from lemma 20.                                                       
+
+4.4     Translating Structural Recursion
+We are very nearly ready to translate whole functions. For the sake of clarity,
+we introduce one last piece of equipment:
+
+Definition 22 (Computation Types) When implementing a function f (∆) :
+T , we introduce the family of f -computation types as follows:
+
+                   Comp-f (∆) : ?0 ;    return-f (∆; t : T ) : Comp-f ∆
+                   call-f (Comp-f ) : T
+                   call-f ∆ (return-f ∆ t) 7→ t
+
+where call-f is clearly definable from eComp-f .
+
+    Comp-f book-keeps the connection between f ’s high-level program and the
+low-level term which delivers its semantics. We translate each f -application to the
+corresponding call-f of an f -computation; the latter will compute to a return-f
+value exactly in correspondence with the pattern matching reduction. The trans-
+lation takes the following form:
+Definition 23 (Application Translation) If f (∆) : T is globally defined, but
+∆ ` f : Comp-f ∆ for some f not containing f , the translation {−}ff takes
+
+                           {f ~t}ff =⇒ call-f {~t}ff ([{~t}ff ]f )
+and proceeds structurally otherwise. Recalling that we require global functions to
+be applied with at least their declared arity, this translation removes f entirely.
+Theorem 24 If f (∆) : T has a small type and computation rules [∆i ] f p~i ri
+satisfying the function criteria, then there exists an f such that
+        ∆ ` f : Comp-f ∆          and       s ;Γ ;f t    implies     {s}ff ;+    f
+                                                                            Γ {t}f
+
+Proof It suffices to ensure that the pattern matching reduction schemes are
+faithfully translated. For each i such that ri returns a value 7→ ei , we shall have
+     pi e}ff = call-f d~
+ {f d~                        pi e]f ;∗Γ call-f d~
+                       pi e [d~                                  pi e {ei }ff ) ;Γ {ei }ff
+                                                 pi e (return-f d~
+Without loss of generality, let f be structurally recursive on some x : D ~v , jth in
+∆. The basic recD -analysis of Π∆. Comp-f ∆ at ~v ; x requires a term of type
+                  ΠD. BelowD P D → Π∆. D ≃ ~v ; x → Comp-f ∆
+where P = λD. Π∆. D ≃ ~v ; x → Comp-f ∆. Specialisation substitutes ~v ; x for D,
+yielding a specialiser [m]s of the required type, with
+m : Π∆. BelowD P ~v x → Comp-f ∆; ∆ ` recD P [m]s ~v x ∆ (refl ~v ; x )
+                                  ;∗Γ m ∆ (belowD P [m]s ~v x ) : Comp-f ∆
+by definition of recD and specialisation reduction. We shall take the latter to be
+our f , once we have suitably instantiated m. To do so, we follow f ’s splitting
+tree: lemma 21 justifies the splitting construction at each internal node and at
+each t y leaf. Each programming problem [∆0 ] f p~ in the tree corresponds to the
+task of instantiating some m 0 : Π∆0 . BelowD P ([d~      pe](~v ; x )) → Comp-f d~
+                                                                                  pe where,
+again by lemma 21, m d~      pe ;∗Γ m 0 ∆0 .
+    The splitting finished, it remains to instantiate the m i corresponding to each
+[∆i ] f p~i 7→ ei . Now, [∆ 7→ d~
+                                pi e] takes x : D ~v to some dpij e : D ~u, so we may take
+
+                                                                 pi e e†i
+                  m i 7→ λ∆i ; H : BelowD P ~u dpij e. return-f d~
+
+where e†i is constructed by replacing each call f ~r in ei by an appropriate appeal
+to H . As f is well typed and structurally recursive, so [∆ 7→ ~r] maps x : D ~v to
+       ~ where rj ≺ dpij e. By construction, BelowD P ~u dpij e reduces to a tuple of
+rj : D w
+the computations for subobjects of dpij e. Hence we have a projection g such that
+g H : Π∆. w;~ rj ≃ ~v ; x → Comp-f ∆ and hence we take call-f ~r (g H ~r (refl w;
+                                                                               ~ rj ))
+to replace f ~r, where by construction of belowD ,
+                  call-f ~r (g (belowD P [m]s ~u dpij e) ~r (refl w;
+                                                                   ~ rj ))
+                    ;∗Γ call-f ~r ([m]s w~ rj ~r (refl w;
+                                                       ~ rj ))
+                    ;∗Γ call-f ~r (m ~r (belowD P [m]s w     ~ rj ))
+                              f
+                    = {f ~r}f
+    So, finally, we arrive at
+
+          pi e}ff = call-f d~
+      {f d~                 pi e (m d~pi e (belowD P [m]s ~u dpij e))
+               ;∗Γ call-f d~pi e (m i ∆i (belowD P [m]s ~u dpij e))
+               ;∗Γ call-f d~pi e(return-f d~pi e [H 7→ belowD P [m]s ~u dpij e]e†i )
+               ;∗Γ call-f d~pi e(return-f d~pi e {ei }ff )
+                         f
+                  = {ei }f
+
+as required.                                                                           
+
+
+5    Conclusions
+We have shown that dependent pattern matching can be translated into a power-
+ful though notationally minimal target language. This constitutes the first proof
+that dependent pattern matching is equivalent to type theory with inductive
+types extended with the K axiom, at the same time reducing the problem of the
+termination of pattern matching as a first-class syntax for structurally recursive
+programs and proofs to the problem of termination of UTT plus K.
+    Two of the authors have extended the raw notion of pattern matching that
+we study here with additional language constructs for more concise, expressive
+programming with dependent types [18]. One of the insights from that work is
+that the technology for explaining pattern matching and other programming lan-
+guage constructs is as important as the language constructs themselves, since the
+technology can be used to motivate and explain increasingly powerful language
+constructs.
+
+
+References
+ 1. Lennart Augustsson. Compiling Pattern Matching. In Jean-Pierre Jouannaud,
+    editor, Functional Programming Languages and Computer Architecture, volume
+    201 of LNCS, pages 368–381. Springer-Verlag, 1985.
+ 2. Edwin Brady, Conor McBride, and James McKinna. Inductive families need not
+    store their indices. In Stefano Berardi, Mario Coppo, and Ferrucio Damiani, edi-
+    tors, Types for Proofs and Programs, Torino, 2003, volume 3085 of LNCS, pages
+    115–129. Springer-Verlag, 2004.
+ 3. Rod Burstall. Proving properties of programs by structural induction. Computer
+    Journal, 12(1):41–48, 1969.
+ 4. Thierry Coquand. Pattern Matching with Dependent Types. In Bengt Nordström,
+    Kent Petersson, and Gordon Plotkin, editors, Electronic Proceedings of the Third
+    Annual BRA Workshop on Logical Frameworks (Båstad, Sweden), 1992.
+ 5. Nicolas G. de Bruijn. Telescopic Mappings in Typed Lambda-Calculus. Informa-
+    tion and Computation, 91:189–204, 1991.
+ 6. Peter Dybjer. Inductive Sets and Families in Martin-Löf’s Type Theory. In Gérard
+    Huet and Gordon Plotkin, editors, Logical Frameworks. CUP, 1991.
+ 7. Eduardo Giménez. Codifying guarded definitions with recursive schemes. In Peter
+    Dybjer, Bengt Nordström, and Jan Smith, editors, Types for Proofs and Programs,
+    ’94, volume 996 of LNCS, pages 39–59. Springer-Verlag, 1994.
+ 8. Healfdene Goguen. A Typed Operational Semantics for Type Theory. PhD
+    thesis, Laboratory for Foundations of Computer Science, University of Edin-
+    burgh, 1994. Available from http://www.lfcs.informatics.ed.ac.uk/reports/
+    94/ECS-LFCS-94-304/.
+ 9. Martin Hofmann and Thomas Streicher. A groupoid model refutes uniqueness of
+    identity proofs. In Proc. Ninth Annual Symposium on Logic in Computer Science
+    (LICS) (Paris, France), pages 208–212. IEEE Computer Society Press, 1994.
+10. Jean-Pierre Jouannaud and Claude Kirchner. Solving equations in abstract alge-
+    bras: A rule-based survey of unification. In Jean-Louis Lassez and Gordon Plotkin,
+    editors, Computational Logic: Essays in Honor of Alan Robinson, pages 257–321.
+    MIT Press, 1991.
+11. Zhaohui Luo. Computation and Reasoning: A Type Theory for Computer Science.
+    Oxford University Press, 1994.
+12. Zhaohui Luo and Robert Pollack. LEGO Proof Development System: User’s Man-
+    ual. Technical Report ECS-LFCS-92-211, Laboratory for Foundations of Computer
+    Science, University of Edinburgh, 1992.
+13. Lena Magnusson and Bengt Nordström. The ALF proof editor and its proof engine.
+    In Henk Barendregt and Tobias Nipkow, editors, Types for Proofs and Programs,
+    LNCS 806. Springer-Verlag, 1994. Selected papers from the Int. Workshop TYPES
+    ’93, Nijmegen, May 1993.
+14. Per Martin-Löf. A theory of types. Manuscript, 1971.
+15. Conor McBride. Dependently Typed Functional Programs and their Proofs.
+    PhD thesis, University of Edinburgh, 1999. Available from http://www.lfcs.
+    informatics.ed.ac.uk/reports/00/ECS-LFCS-00-419/.
+16. Conor McBride. Elimination with a Motive. In Paul Callaghan, Zhaohui Luo,
+    James McKinna, and Robert Pollack, editors, Types for Proofs and Programs
+    (Proceedings of the International Workshop, TYPES’00), volume 2277 of LNCS.
+    Springer-Verlag, 2002.
+17. Conor McBride, Healfdene Goguen, and James McKinna. A few constructions on
+    constructors. In Jean-Christophe Filliâtre, Christine Paulin, and Benjamin Werner,
+    editors, Types for Proofs and Programs, Paris, 2004, LNCS. Springer-Verlag, 2004.
+18. Conor McBride and James McKinna. The view from the left. Journal of Functional
+    Programming, 14(1), 2004.
+19. Fred McBride. Computer Aided Manipulation of Symbols. PhD thesis, Queen’s
+    University of Belfast, 1970.
+20. Bengt Nordström, Kent Petersson, and Jan Smith. Programming in Martin-Löf’s
+    type theory: an introduction. Oxford University Press, 1990.
+21. Carsten Schürmann and Frank Pfenning. A coverage checking algorithm for LF.
+    In D. Basin and B. Wolff, editors, Proceedings of the Theorem Proving in Higher
+    Order Logics 16th International Conference, volume 2758 of LNCS, pages 120–135,
+    Rome, Italy, September 2003. Springer.
+22. Thomas Streicher. Investigations into intensional type theory. Habilitation Thesis,
+    Ludwig Maximilian Universität, 1993.
+23. Daria Walukiewicz-Chrzaszcz. Termination of rewriting in the calculus of con-
+    structions. J. Funct. Program., 13(2):339–414, 2003.
+

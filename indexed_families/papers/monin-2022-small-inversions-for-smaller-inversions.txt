@@ -1,0 +1,105 @@
+TYPES 2022 Abstracts           28th International Conference on Types for Proofs and Programs
+
+
+                   Small inversions for smaller inversions
+                                     Jean-François Monin∗
+                                              Abstract
+          We describe recent improvements on small inversions, a technique presented earlier as
+       a possible alternative to Coq standard inversion.
+    Many proofs relying on inductive definitions require so-called inversion steps in order to
+exploit the information contained in a hypothesis H : Ra0 . . . an , where R is a dependent
+inductive relation (or type) applied to actual parameters a0 . . . an . In Coq, such steps are usually
+performed using a powerful tactic called inversion. In previous work [MS13], we proposed an
+alternative lightweight approach, which is not automated (in contrast with Coq inversion)
+but provides a better understanding on what happens, a full control on the proof script and
+smaller proof terms. In particular, no additional (proof of) equalities are introduced. Moreover,
+there are situations involving dependent types where standard inversion fails whereas small
+inversion succeeds. In all approaches, inversion is essentially a complex dependent pattern
+matching on H. In [MS13], this is handled using auxiliary functions.
+    However, we discovered later that standard inversion has an additional important advan-
+tage on the previous version of small inversions: it provides syntactically strict subterms of H
+which can directly be used in recursive calls of a fixpoint definition. In the Braga method de-
+signed with D. Larchey-Wendling [LWM18, LM21], we showed how clear and explicit subterms
+of H can be recovered using projections πR defined with a dependent pattern matching similar
+to small inversions – let us call them smaller inversions.
+    We present here an improvement on small inversions, where auxiliary functions are replaced
+with auxiliary inductive types which are easier to understand and to use. The new small
+inversion is more powerful: it can handle goals involving terms with occurrences of H. Such
+goals naturally arise in direct proofs of partial correctness properties of functions – for instance,
+but not only, fixpoints obtained by the Braga method. Standard inversion turns out to be
+very often unusable there.
+    As a foretaste, consider a reference function for OCaml fold_left – eﬀiciency is then
+irrelevant here – honestly defined by a right to left traversal of its list argument. To this effect
+we introduce an auxiliary non-recursive dependent data type rl l with two constructors: Nilr
+of type rl [] – reflecting the empty list – and Consr of type rl (u + : z) – where u + : z is
+the catenation of a list u and a single element z. Following the Braga method, we first define
+an inductive domain Dlist for termination certificates. Here Dlist contains Nilr, as well as
+Consr u z whenever l2r u, the reflection of u, is itself in Dlist . Given d : Dlist (Consr u z)
+we then define the projection π d which provides its structurally smaller component of type
+Dlist (l2r u), allowing us to easily define fixpoints such as foldl_ref below, where b0 and f
+are respectively an initial value and a function to be folded, and rew d is an administrative
+rewriting step transforming l2r (u + : z) into Consr u z.
+    Fixpoint foldl_ref l (d: Dlist (l2r l)): B :=
+      match l2r l in rl l return Dlist (l2r l) → B with
+      | Nilr      => λ d, b0
+      | Consr u z => λ d, f (foldl_ref u (π (rew d))) z
+      end d.
+
+Reasoning on such functions commonly requires inversion steps on d. For instance we would
+like to prove that the actual standard tail-recursive algorithm returns the same result as
+
+∗
+    Verimag, Université Grenoble Alpes, CNRS, Grenoble INP
+Small inversions for smaller inversions                                                    J-F. Monin
+
+
+foldl_ref. But we already get an issue with a much more elementary fact, stating that for any
+d : Dlist Nilr, we have foldl_ref [] d = b0 : this turns out to be out of reach of Coq standard
+inversion. In [LM21], this issue is circumvented by replacing the former definition of foldl_ref
+by an enriched program which returns an inhabitant of {b : B | Gf oldl l b} instead of just B,
+where Gf oldl is a suitable characteristic relation. With our small inversion described below, we
+can directly reason on foldl_ref as defined above. More details and additional examples are
+available at https://www-verimag.imag.fr/~monin/Proof/Small_inversions/2022 .
+    For a more general situation, consider an inductive relation R : T0 → T1 . . . → Tn → Sort,
+where Sort is a sort (e.g., Prop or Type). Whatever the technology to be used, the key point
+is that inversion makes sense when:
+    • at least one type among T0 , T1 . . . Tn , say T0 , is itself an inductive type; without loss of
+      generality we consider here that there is exactly one such type; below we write T for
+      T1 . . . Tn ;
+    • in the hypothesis H to be inverted, the corresponding actual parameter a0 : T0 has a
+      specialized shape σ, corresponding to a pattern C args starting with a constructor C of
+      T0 (in many cases, args are just variables).
+In general, only a subset of the constructors of R are compatible with the shape of a0 . Inversion
+then proceeds by simultaneous pattern-matching on H and a0 , in order to select the relevant
+cases of R.
+    We proceed as follows. For each shape of interest σ we derive from the definition of T0
+an inductive specialized version T0σ of T0 . T0σ is a copy-paste of the relevant (compatible
+with σ) constructors of T0 , with appropriate modifications: the variables x1 . . . xσ of σ become
+parameters of T0σ ; the type of T0σ x1 . . . xσ is ∀ a : T, R σ a → Sort (it is empty for absurd
+cases). We then define, by dependent pattern matching on r, the function Rinv y0 y of type
+∀ r : R y0 y, (match y0 with . . . | σi ⇒ T0σi x1 . . . xσi | . . . end) r.
+The main argument of Rinv is r (its other arguments y0 y will be left implicit). An obvious
+requirement on the shapes σi occuring in the above pattern matching is that they cover T0 .
+Inverting H is then just a pattern matching on Rinv H, whose type reduces to the relevant T0σi .
+Possible occurrences of H in the goal are correctly dealt with for free thanks to the additional
+argument r of T0σ .
+    In this version, the components of H are not considered as subterms of H because they
+are repackaged in a constructor of T0σ . In the Braga method, where the subterm property is
+needed, an argument of type R y0 y can be added to T0σ and its final argument uses of πR σ
+instead of σ. Even if the sort of T0 is Prop, we can then obtain a fully general recursion principle
+T0 _rect – an improvement on [LM21] which is limited to proof irrelevant statements.
+
+References
+[LM21]  Dominique Larchey-Wendling and Jean-François Monin. The Braga Method: Extracting
+        Certified Algorithms from Complex Recursive Schemes in Coq, chapter 8, pages 305–386.
+        World Scientific, September 2021.
+[LWM18] Dominique Larchey-Wendling and Jean-François Monin. Simulating Induction-Recursion
+        for Partial Algorithms. In 24th International Conference on Types for Proofs and Pro-
+        grams,TYPES 2018, Braga, Portugal, June 2018.
+[MS13]  Jean-François Monin and Xiaomu Shi. Handcrafted Inversions Made Operational on Oper-
+        ational Semantics. In S. Blazy, C. Paulin-Mohring, and D. Pichardie, editors, Interactive
+        Theorem Proving, pages 338–353. Springer, 2013.
+
+
+2
+

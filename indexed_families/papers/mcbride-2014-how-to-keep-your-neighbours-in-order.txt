@@ -1,0 +1,1026 @@
+                                   How to Keep Your Neighbours in Order
+
+                                                                                  Conor McBride
+                                                                            University of Strathclyde
+                                                                          Conor.McBride@strath.ac.uk
+
+
+
+
+Abstract                                                                                       • a precise implementation of insertion and deletion for 2-3 trees
+I present a datatype-generic treatment of recursive container types                           I take the time to explore the design space, reporting a selection of
+whose elements are guaranteed to be stored in increasing order,                               the wrong turnings and false dawns I encountered on my journey to
+with the ordering invariant rolled out systematically. Intervals, lists                       these results. I try to extrapolate transferable design principles, so
+and binary search trees are instances of the generic treatment. On                            that others in future may suffer less than I.
+the journey to this treatment, I report a variety of failed experiments
+and the transferable learning experiences they triggered. I demon-                            2. How to Hide the Truth
+strate that a total element ordering is enough to deliver insertion and
+flattening algorithms, and show that (with care about the formula-                            If we intend to enforce invariants, we shall need to mix a little
+tion of the types) the implementations remain as usual. Agda’s in-                            bit of logic in with our types and a little bit of proof in with our
+stance arguments and pattern synonyms maximize the proof search                               programming. It is worth taking some trouble to set up our logical
+done by the typechecker and minimize the appearance of proofs                                 apparatus to maximize the effort we can get from the computer
+in program text, often eradicating them entirely. Generalizing to                             and to minimize the textual cost of proofs. We should prefer to
+indexed recursive container types, invariants such as size and bal-                           encounter logic only when it is dangerously absent!
+ance can be expressed in addition to ordering. By way of example, I                               Our basic tools are the types representing falsity and truth by
+implement insertion and deletion for 2-3 trees, ensuring both order                           virtue of their number of inhabitants:
+and balance by the discipline of type checking.                                                  data 0 : Set where                           -- no constructors!
+Categories and Subject Descriptors D.1.1 [Programming Tech-                                      record 1 : Set where constructor hi          -- no fields!
+niques]: Applicative (Functional) Programming; D.3.3 [Language                                   Dependent types allow us to compute sets from data. E.g., we
+Constructs and Features]: Data types and structures                                           can represent evidence for the truth of some Boolean expression
+Keywords        dependent types; Agda; ordering; balancing; sorting                           which we might have tested.
+                                                                                                 data 2 : Set where tt ff : 2
+1. Introduction                                                                                  So : 2 → Set
+It has taken years to see what was under my nose. I have been                                    So tt = 1
+experimenting with ordered container structures for a long time                                  So ff = 0
+[12]: how to keep lists ordered, how to keep binary search trees
+                                                                                                 A set P which evaluates to 0 or to 1 might be considered
+ordered, how to flatten the latter to the former. Recently, the pattern
+                                                                                              ‘propositional’ in that we are unlikely to want to distinguish its
+common to the structures and methods I had often found effective                              inhabitants. We might even prefer not even to see its inhabitants.
+became clear to me. Let me tell you about it. Patterns are, of course,                        I define a wrapper type for propositions whose purpose is to hide
+underarticulated abstractions. Correspondingly, let us construct a                            proofs.
+universe of container-like datatypes ensuring that elements are in
+increasing order, good for intervals, ordered lists, binary search                               record p q (P : Set) : Set where
+trees, and more besides.                                                                           constructor !
+    This paper is a literate Agda development, available online                                    field {{prf }} : P
+at https://github.com/pigworker/Pivotal. As well as con-
+                                                                                                  Agda uses braces to indicate that an argument or field is to be
+tributing
+                                                                                              suppressed by default in program texts and inferred somehow by
+  • a datatype-generic treatment of ordering invariants and opera-                            the typechecker. Single-braced variables are solved by unification,
+    tions which respect them                                                                  in the tradition of Milner [16]. Doubled braces indicate instance
+  • a technique for hiding proofs from program texts                                          arguments, inferred by contextual search: if just one hypothesis
+                                                                                              can take the place of an instance argument, it is silently filled in,
+                                                                                              allowing us a tiny bit of proof automation [6]. If an inhabitant of
+                                                                                              pSo b q is required, we may write ! to indicate that we expect the
+Permission to make digital or hard copies of all or part of this work for personal or
+classroom use is granted without fee provided that copies are not made or distributed         truth of b to be known.
+for profit or commercial advantage and that copies bear this notice and the full citation         Careful positioning of instance arguments seeds the context
+on the first page. Copyrights for components of this work owned by others than ACM            with useful information. We may hypothesize over them quietly,
+must be honored. Abstracting with credit is permitted. To copy otherwise, or republish,
+to post on servers or to redistribute to lists, requires prior specific permission and/or a        ⇒ : Set → Set → Set
+fee. Request permissions from permissions@acm.org.                                               P ⇒ T = {{p : P }} → T
+ICFP ’14, September 1–6, 2014, Gothenburg, Sweden.                                               infixr 3 ⇒
+Copyright c 2014 ACM 978-1-4503-2873-9/14/09. . . $15.00.
+http://dx.doi.org/10.1145/2628136.2628163                                                     and support forward reasoning with a ‘therefore’ operator.
+    ∴ : ∀{P T } → pPq → (P ⇒ T ) → T                                     From checking the invariant to enforcing it. Assuming we can
+   !∴t = t                                                               test the order on P with some le : P → P → 2, we could write
+                                                                         a recursive function to check whether a Tree is a valid search tree
+   This apparatus can give the traditional conditional a subtly more     and compute its range if it has one. Of course, we must account for
+informative type, thus:                                                  the possibility of invalidity, so let us admit failure in the customary
+   ¬ : 2 → 2; ¬ tt = ff; ¬ ff = tt                                       manner.
+   if then else :                                                           data Maybe (X : Set) : Set where
+      ∀{X } b → (So b ⇒ X ) → (So (¬ b) ⇒ X ) → X                              yes : X → Maybe X ;      no : Maybe X
+   if tt then t else f = t                                                    ?i : ∀{X } → 2 → Maybe X → Maybe X
+   if ff then t else f = f                                                  b ?i mx = if b then mx else no
+   infix 1 if then else                                                     infixr 4 ?i
+   If ever there is a proof of 0 in the context, we should be able to    The guarding operator ?i allows us to attach a Boolean test. We
+ask for anything we want. Let us define                                  may now validate the range of a Tree.
+   magic : {X : Set} → 0 ⇒ X                                                valid : Tree → Maybe STRange
+   magic {{()}}                                                             valid leaf = yes ∅
+                                                                            valid (node l p r ) with valid l | valid r
+using Agda’s absurd pattern to mark the impossible instance                 ... | yes ∅        | yes ∅        = yes (p − p)
+argument which shows that no value need be returned. E.g.,                  ... | yes ∅        | yes (c − d) = le p c ?i yes (p − d )
+if tt then ff else magic : 2.                                               ... | yes (a − b) | yes ∅         = le b p ?i yes (a − p)
+     Instance arguments are not a perfect fit for proof search: they
+                                                                            ... | yes (a − b) | yes (c − d)
+were intended as a cheap alternative to type classes, hence the
+                                                                                = le b p ?i le p c ?i yes (a − d)
+requirement for exactly one candidate instance. For proofs we
+might prefer to be less fussy about redundancy, but we shall manage         ... |              |              = no
+perfectly well for the purposes of this paper.                               As valid is a fold over the structure of Tree, we can follow my
+                                                                         colleagues Bob Atkey, Neil Ghani and Patricia Johann in comput-
+                                                                         ing the partial refinement [2] of Tree which valid induces. We seek
+3. Barking Up the Wrong Search Trees                                     a type BST : STRange → Set such that BST r ∼          = {t : Tree |
+David Turner [17] notes that whilst quicksort is often cited as a        valid t = yes r } and we find it by refining the type of each con-
+program which defies structural recursion, it performs the same          structor of Tree with the check performed by the corresponding
+sorting algorithm (although not with the same memory usage pat-          case of valid, assuming that the subtrees yielded valid ranges. We
+tern) as building a binary search tree and then flattening it. The       can calculate the conditions to check and the means to compute the
+irony is completed by noting that the latter sorting algorithm is the    output range if successful.
+archetype of structural recursion in Rod Burstall’s development of
+                                                                            lOK : STRange → P → 2
+the concept [4]. Binary search trees have empty leaves and nodes
+                                                                            lOK ∅       p = tt
+labelled with elements which act like pivots in quicksort: the left
+subtree stores elements which precede the pivot, the right subtree          lOK ( − u) p = le u p
+elements which follow it. Surely this invariant is crying out to be a       rOK : P → STRange → 2
+dependent type! Let us search for a type for search trees.                  rOK p ∅       = tt
+    We could, of course, define binary search trees as ordinary node-       rOK p (l − ) = le p l
+labelled trees with parameter P giving the type of pivots:                  outRan : STRange → P → STRange → STRange
+   data Tree : Set where                                                    outRan ∅      p∅       = p −p
+     leaf : Tree; node : Tree → P → Tree → Tree                             outRan ∅      p ( − u) = p − u
+                                                                            outRan (l − ) p ∅      = l −p
+We might then define the invariant as a predicate IsBST : Tree →            outRan (l − ) ( − u) = l − u
+Set, implement insertion in our usual way, and prove separately
+that our program maintains the invariant. However, the joy of de-           We thus obtain the following refinement from Tree to BST:
+pendently typed programming is that refining the types of the data          data BST : STRange → Set where
+themselves can often alleviate or obviate the burden of proof. Let            leaf : BST ∅
+us try to bake the invariant in.                                              node : ∀{l r } → BST l → (p : P) → BST r →
+                                                                                 So (lOK l p) ⇒ So (rOK p r ) ⇒ BST (outRan l p r )
+What should the type of a subtree tell us? If we want to check
+the invariant at a given node, we shall need some information about
+                                                                         Attempting to implement insertion. Now that each binary search
+the subtrees which we might expect comes from their type. We
+                                                                         tree tells us its type, can we implement insertion? Rod Burstall’s
+require that the elements left of the pivot precede it, so we could
+                                                                         implementation is as follows
+require the whole set of those elements represented somehow, but
+of course, for any order worthy of the name, it suffices to check only      insert : P → Tree → Tree
+the largest. Similarly, we shall need to know the smallest element          insert y leaf            = node leaf y leaf
+of the right subtree. It would seem that we need the type of a search       insert y (node lt p rt ) =
+tree to tell us its extreme elements (or that it is empty).                    if le y p then node (insert y lt) p rt
+                                                                                         else node lt p (insert y rt )
+   data STRange : Set where
+      ∅ : STRange;    − : P → P → STRange                                but we shall have to try a little harder to give a type to insert, as
+   infix 9 −                                                             we must somehow negotiate the ranges. If we are inserting a new
+                                                                         extremum, then the range will be wider afterwards than before.
+   insRan : STRange → P → STRange                                       sufficiently. At each node, we can require that the pivot falls in the
+   insRan ∅         y = y −y                                            interval, then use the pivot to bound the subtrees.
+   insRan (l − u) y =
+                                                                           data BST (l u : P ⊤⊥ ) : Set where
+      if le y l then y − u else if le u y then l − y else l − u
+                                                                             leaf    : BST l u
+   So, we have the right type for our data and for our program.              pnode : (p : P ) → BST l (#p) → BST (#p) u →
+Surely the implementation will go like clockwork!                               So (le⊤                 ⊤
+                                                                                      ⊥ l (#p)) ⇒ So (le⊥ (#p) u) ⇒ BST l u
+   insert : ∀{r } y → BST r → BST (insRan r y)                          In doing so, we eliminate all the ‘green slime’ from the indices of
+   insert y leaf            = node leaf y leaf                          the type. The leaf constructor now has many types, indicating all
+   insert y (node lt p rt ) =                                           its elements satisfy any requirements. We also gain BST ⊥ ⊤ as
+      if le y p then (node (insert y lt) p rt )                         the general type of binary search trees for P . Unfortunately, we
+                                                                        have been forced to make the pivot value p, the first argument to
+                else (node lt p (insert y rt ))                         pnode, as the type of the subtrees now depends on it. Luckily,
+The leaf case checks easily, but alas for node! We have lt :            Agda now supports pattern synonyms, allowing linear macros to
+BST l and rt : BST r for some ranges l and r . The then                 abbreviate both patterns on the left and pattern-like expressions on
+branch delivers a BST (outRan (insRan l y) p r ), but the               the right [1]. We may fix up the picture:
+type required is BST (insRan (outRan l p r ) y), so we need                pattern node lp p pu = pnode p lp pu
+some theorem-proving to fix the types, let alone to discharge the
+obligation So (lOK (insRan l y) p). We could plough on with                 Can we implement insert for this definition? We can certainly
+proof and, coughing, push this definition through, but tough work       give it a rather cleaner type. When we insert a new element into the
+ought to make us ponder if we might have thought askew.                 left subtree of a node, we must ensure that it precedes the pivot: that
+    We have defined a datatype which is logically correct but which     is, we expect insertion to preserve the bounds of the subtree, and
+is pragmatically disastrous. Is it thus inevitable that all datatype    we should already know that the new element falls within them.
+definitions which enforce the ordering invariant will be pragmat-          insert : ∀{l u } y → BST l u →
+ically disastrous? Or are there lessons we can learn about depen-             So (le⊤                   ⊤
+                                                                                     ⊥ l (#y)) ⇒ So (le⊥ (#y) u) ⇒ BST l u
+dently typed programming that will help us to do better?
+                                                                           insert y leaf            = node leaf y leaf
+                                                                           insert y (node lt p rt ) =
+4. Why Measure When You Can Require?                                          if le y p then node (insert y lt) p rt
+Last section, we got the wrong answer because we asked the wrong                        else node lt p ( insert y rt )
+question: “What should the type of a subtree tell us?” somewhat
+presupposes that information bubbles outward from subtrees to the       We have no need to repair type errors by theorem proving, and most
+nodes which contain them. In Milner’s tradition, we are used to         of our proof obligations follow directly from our assumptions. The
+synthesizing the type of a thing. Moreover, the very syntax of data     recursive call in the then branch requires a proof of So (le y p),
+declarations treats the index delivered from each constructor as an     but that is just the evidence delivered by our evidence-transmitting
+output. It seems natural to treat datatype indices as measures of       conditional. However, the else case snatches defeat from the jaws
+the data. That is all very well for the length of a vector, but when    of victory: the recursive call needs a proof of So (le p y), but all
+the measurement is intricate, as when computing a search tree’s         we have is a proof of So (¬ (le y p)). For any given total ordering,
+extrema, programming becomes vexed by the need for theorems             we should be able to fix this mismatch up by proving a theorem, but
+about the measuring functions. The presence of ‘green slime’—           this is still more work than I enjoy. The trouble is that we couched
+defined functions in the return types of constructors—is a danger       our definition in terms of the truth of bits computed in a particular
+sign.                                                                   way, rather than the ordering relation. Let us now tidy up this detail.
+    We can take an alternative view of types, not as synthesized
+measurements of data, bubbled outward, but as checked require-          5. One Way Or The Other
+ments of data, pushed inward. To enforce the invariant, let us rather
+ask “What should we tell the type of a subtree?”.                       We can recast our definition in terms of relations—families of sets
+    The elements of the left subtree must precede the pivot in the      Rel P indexed by pairs.
+order; those of the right must follow it. Correspondingly, our re-         Rel : Set → Set1
+quirements on a subtree amount to an interval in which its elements        Rel P = P × P → Set
+must fall. As any element can find a place somewhere in a search
+tree, we shall need to consider unbounded intervals also. We can        giving us types which directly make statements about elements of
+extend any type with top and bottom elements as follows.                P, rather than about bits.
+                                                                           I must, of course, say how such pairs are defined: the habit of
+   data ⊤
+        ⊥ (P : Set) : Set where                                         dependently typed programmers is to obtain them as the degenerate
+     ⊤ : P⊤             ⊤        ⊤
+           ⊥ ; # : P → P⊥ ; ⊥ : P⊥                                      case of dependent pairs: let us have them.
+and extend the order accordingly:                                          record Σ (S : Set) (T : S → Set) : Set where
+    ⊤
+    ⊥ : ∀{P } → (P → P           → 2) →      P⊤
+                                              ⊥   →   P⊤
+                                                       ⊥    → 2               constructor ,
+   le⊤       ⊤    = tt                                                        field
+     ⊥
+   le⊤                                                                           π1 : S
+     ⊥ (#x ) (#y) = le x y
+                                                                                 π2 : T π1
+   le⊤
+     ⊥ ⊥          = tt
+                                                                           open Σ
+   le⊤
+     ⊥            = ff                                                      × : Set → Set → Set
+  We can now index search trees by a pair of loose bounds, not             S ×T = ΣS λ → T
+measuring the range of the contents exactly, but constraining it           infixr 5 × ,
+   Now, suppose we have some ‘less or equal’ ordering L : Rel P .          (S +̇ T ) i = S i + T i
+Let us have natural numbers by way of example,                             (S ×˙ T) i = S i × T i
+   data N : Set where 0 : N; s : N → N                                     (S → ˙ T) i = S i → T i
+                                                                                                  ˙ ; infixr 2 →
+                                                                           infixr 3 +̇ ; infixr 4 ×            ˙
+   LN : Rel N
+   LN (x, y) = x ≤ y where                                                  Pointwise implication will be useful for writing index-respecting
+     ≤ : N → N → Set                                                    functions, e.g., bounds-preserving operations. It is useful to be able
+     0 ≤y = 1                                                           to state that something holds at every index (i.e., ‘always works’).
+     sx ≤0 = 0                                                             [ ] : {I : Set} → (I → Set) → Set
+     sx ≤sy = x ≤y                                                         [F ] = ∀{i } → F i
+   The information we shall need is exactly the totality of L: for      With this apparatus, we can quite often talk about indexed things
+any given x and y, L must hold One Way Or The Other, as captured        without mentioning the indices, resulting in code which almost
+by the disjoint sum type, OWOTO L (x, y), defined as follows:           looks like its simply typed counterpart. You can check that for any
+   data + (S T : Set) : Set where                                       S and T , ⊳ : [S →  ˙ S +̇ T ] and so forth.
+      ⊳ : S → S + T;    ⊲ : T → S +T
+   infixr 4 +                                                           7. Working with Bounded Sets
+   OWOTO : ∀{P } (L : Rel P) → Rel P                                    It will be useful to consider sets indexed by bounds in the same
+   OWOTO L (x, y) = pL (x, y)q + pL (y, x )q                            framework as relations on bounds: propositions-as-types means we
+   pattern le = ⊳ !                                                     have been doing this from the start! Useful combinator on such
+   pattern ge = ⊲ !                                                     sets is the pivoted pair, S ∧˙ T , indicating that some pivot value
+                                                                        p exists, with S holding before p and T afterwards. A pattern
+I have used pattern synonyms to restore the impression that we          synonym arranges the order neatly.
+are just working with a Boolean type, but the ! serves to unpack
+evidence when we test and to pack it when we inform. We shall               ∧˙ : ∀{P } → Rel P ⊤          ⊤
+                                                                                                ⊥ → Rel P ⊥ → Rel P ⊥
+                                                                                                                     ⊤
+
+usually be able to keep silent about ordering evidence, even from           ∧˙ {P } S T (l, u) = Σ P λ p → S (l, #p) × T (#p, u)
+the point of its introduction. For N, let us have                          pattern      s p t = p, s, t
+                                                                                    ‘‘
+   owoto : ∀x y → OWOTO LN (x, y)                                          infixr 5
+                                                                                    ‘‘
+   owoto 0      y     = le                                                 Immediately, we can define an interval to be the type of an
+   owoto (s x ) 0     = ge                                              element proven to lie within given bounds.
+   owoto (s x ) (s y) = owoto x y                                           •
+                                                                              : ∀{P } (L : Rel P ) → Rel P ⊤    ⊥
+Note that we speak only of the crucial bit of information. More-           L• = pLq ∧˙ pLq
+over, we especially benefit from type-level computation in the             pattern ◦ p = ! p !
+step case: OWOTO LN (s x , s y) is the very same type as                                       ‘ ‘
+OWOTO LN (x, y).                                                        With habitual tidiness, a pattern synonym conceals the evidence.
+    Any ordering relation on elements lifts readily to bounds: I have     Let us then parametrize over some
+overloaded the notation for lifting in the typesetting of this paper,                 owoto : ∀x y → OWOTO L (x, y)
+but sadly not in the Agda source code. Let us take the opportunity
+to add propositional wrapping, to help us hide ordering proofs.         and reorganise our development.
+    ⊤
+                                → Rel P ⊤                                  data BST (lu : P ⊤      ⊤
+                                                                                             ⊥ × P ⊥ ) : Set where
+    ⊥ pq : ∀{P } → Rel P                ⊥
+                                                                             leaf   : BST lu
+   L⊤⊥ (    , ⊤) = 1
+                                                                             pnode : ((pLq ×˙ BST) ∧˙ (pLq ×˙ BST) →    ˙ BST) lu
+   L⊤⊥ ( # x, #y) = L (x, y)
+                                                                           pattern node lt p rt = pnode (p, (!, lt), (!, rt))
+   L⊤⊥ (⊥   ,  ) = 1
+   L⊤                                                                       Reassuringly, the standard undergraduate error, arising from
+     ⊥ (    , ) = 0
+   pLq xy = pL ⊤                                                        thinking about doing rather than being, is now ill typed.
+                  ⊥ xyq
+
+The type pLq (x , y) thus represents ordering evidence on bounds           insert : [L• →  ˙ BST → ˙ BST]
+with matching and construction by !, unaccompanied.                        insert y ◦ leaf            = node leaf y leaf
+                                                                           insert y ◦ (node lt p rt ) with owoto y p
+6. Equipment for Relations and Other Families                              ... | le = (insert y ◦ lt)
+Before we get back to work in earnest, let us build a few tools            ... | ge = (insert y ◦ rt )
+for working with relations and other such indexed type families: a
+relation is a family which happens to be indexed by a pair. We shall       However, once we remember to restore the unchanged parts of
+have need of pointwise truth and falsity.                               the tree, we achieve victory, at last!
+
+   0̇ 1̇ : {I : Set} → I → Set                                             insert : [L• →  ˙ BST → ˙ BST]
+                                                                           insert y ◦ leaf            = node leaf y leaf
+   0̇ i = 0
+                                                                           insert y ◦ (node lt p rt ) with owoto y p
+   1̇ i = 1
+                                                                           ... | le = node (insert y◦ lt) p rt
+    We shall also need to lift disjunction, conjunction and implica-       ... | ge = node lt p (insert y ◦ rt )
+tion to to their pointwise counterparts.
+                                                                           The evidence generated by testing owoto y p is just what is
+    +̇ × ˙ →  ˙ : {I : Set} →                                           needed to access the appropriate subtree. We have found a method
+       (I → Set) → (I → Set) → I → Set                                  which seems to work! But do not write home yet.
+8. The Importance of Local Knowledge                                            We have arrived at a neat way to keep a search tree in order,
+Our current representation of an ordered tree with n elements               storing pivot elements at nodes and proofs in leaves. Phew!
+contains 2n pieces of ordering evidence, which is n − 1 too many.               But it is only the end of the beginning. To complete our sorting
+We should need only n + 1 proofs, relating the lower bound to               algorithm, we need to flatten binary search trees to ordered lists.
+the least element, then comparing neighbours all the way along to           Are we due another long story about the discovery of a good
+the greatest element (one per element, so far) which must then fall         definition of the latter? Fortunately not! The key idea is that an
+below the upper bound (so, one more). As things stand, the pivot            ordered list is just a particularly badly balanced binary search
+at the root is known to be greater than every element in the right          tree, where every left subtree is a leaf. We can nail that down in
+spine of its left subtree and less than every element in the left spine     short order, just by inlining leaf’s data in the left subtree of node,
+of its right subtree. If the tree was built by iterated insertion, these    yielding a sensible cons.
+comparisons will surely have happened, but that does not mean we               data OList (lu : P ⊤      ⊤
+                                                                                                  ⊥ × P ⊥ ) : Set where
+should retain the information.                                                   nil : (pLq →  ˙ OList) lu
+    Suppose, for example, that we want to rotate a tree, perhaps to              cons : (pLq ∧˙ OList →˙ OList) lu
+keep it balanced, then we have a little local difficulty:
+                                                                            These are exactly the ordered lists Sam Lindley and I defined in
+   rotR : [BST → ˙ BST]                                                     Haskell [11], but now we can see where the definition comes from.
+   rotR (node (node lt m mt) p rt )                                            By figuring out how to build ordered binary search trees, we
+      = node lt m (node mt p rt )                                           have actually discovered how to build quite a variety of in-order
+   rotR t = t                                                               data structures. We simply need to show how the data are built from
+                                                                            particular patterns of BST components. So, rather than flattening
+Agda rejects the outer node of the rotated tree for lack of evidence.       binary search trees, let us pursue a generic account of in-order
+I expand the pattern synonyms to show what is missing.                      datatypes, then flatten them all.
+   rotR : [BST →   ˙ BST]
+   rotR (pnode                                                              9. Jansson and Jeuring’s PolyP Universe
+      ((! {{lp }}, pnode ((! {{lm }}, lt) m (! {{mp }}, mt)))               If we want to see how to make the treatment of ordered container
+                                         ‘ ‘
+      p (! {{pu }}, rt))) = pnode ((! {{lm }}, lt) m                        structures systematic, we shall need some datatype-generic account
+     ‘ ‘                                          ‘ ‘
+      (! {{ ?0 }}, pnode ((! {{mp }}, mt) p (! {{pu }}, rt))))              of recursive types with places for elements. A compelling starting
+                                           ‘ ‘
+   rotR t = t                                                               point is the ‘PolyP’ system of Patrik Jansson and Johan Jeuring [8],
+                                                                            which we can bottle as a universe—a system of codes for types—in
+We can discard the non-local ordering evidence lp : L ⊤    ⊥ (l, # p),      Agda, as follows:
+but now we need the non-local ?0 : L ⊤    ⊥ (#m, u) that we lack. Of
+                                                                               data JJ : Set where
+course, we can prove this goal from mp and pu if L is transitive,
+                                                                                  ‘R ‘P ‘1 : JJ
+but if we want to make less work, we should rather not demand
+                                                                                   ‘+ ‘× : JJ → JJ → JJ
+non-local ordering evidence in the first place.
+    Looking back at the type of node, note that the indices at which           infixr 4 ‘+
+we demand ordering are the same as the indices at which we                     infixr 5 ‘×
+demand subtrees. If we strengthen the invariant on trees to ensure             The ‘R stands for ‘recursive substructure’ and the ‘P stands for
+that there is a sequence of ordering steps from the lower to the upper      ‘parameter’—the type of elements stored in the container. Given
+bound, we could dispense with the sometimes non-local evidence              meanings for these, we interpret a code in JJ as a set.
+stored in nodes, at the cost of a new constraint for leaf.
+                                                                               J KJJ : JJ → Set → Set → Set
+       data BST (lu : P ⊤         ⊤
+                           ⊥ × P ⊥ ) : Set where                               J ‘R KJJ     RP = R
+         pleaf : (pLq →  ˙ BST) lu                                             J ‘P KJJ     RP = P
+         pnode : (BST ∧˙ BST →     ˙ BST) lu                                   J ‘1 KJJ     RP = 1
+       pattern leaf           = pleaf !                                        J S ‘+ T KJJ R P = J S KJJ R P + J T KJJ R P
+       pattern node lt p rt = pnode (lt p rt )                                 J S ‘× T KJJ R P = J S KJJ R P × J T KJJ R P
+                                             ‘ ‘
+      Indeed, a binary tree with n nodes will have n+1 leaves. An in-       When we ‘tie the knot’ in µJJ F P, we replace F ’s ‘Ps by some
+order traversal of a binary tree is a strict alternation, leaf-node-leaf-   actual P and its ‘Rs by recursive uses of µJJ F P .
+. . . -node-leaf, making a leaf the ideal place to keep the evidence           data µJJ (F : JJ) (P : Set) : Set where
+that neighbouring nodes are in order! Insertion remains easy.                    hi : J F KJJ (µJJ F P) P → µJJ F P
+   insert : [L• → ˙ BST → ˙ BST]                                                Being finitary and first-order, all of the containers encoded by
+   insert y◦ leaf = node leaf y leaf                                        JJ are traversable in the sense defined by Ross Paterson and my-
+   insert y◦ (node lt p rt ) with owoto y p                                 self [14]. We shall need to introduce the interface for Applicative
+   ... | le = node (insert y◦ lt) p rt                                      functors
+   ... | ge = node lt p (insert y◦ rt )
+                                                                               record Applicative (H : Set → Set) : Set1 where
+   Rotation becomes very easy: the above code now typechecks,                    field
+with no leaves in sight, so no proofs to rearrange!                                 pure : ∀{X } → X → H X
+                                                                                    ap : ∀{S T } → H (S → T ) → H S → H T
+   rotR : [BST → ˙ BST]
+                                                                               open Applicative
+   rotR (node (node lt m mt) p rt )
+      = node lt m (node mt p rt )                                           and then abstract over Applicative to compute the datatype generic
+   rotR t = t                                                               treatment of traverse.
+   traverse : ∀{H F A B } → Applicative H →                             universe, SO, a subset of JJ picked out as the image of a function,
+      (A → H B ) → µJJ F A → H (µJJ F B )                               J KSO . Now, ‘P stands also for pivot!
+   traverse {H } {F } {A} {B } AH h t = go ‘R t where                       data SO : Set where
+      pu = pure AH ; ⊛ = ap AH                                                 ‘R ‘1   : SO
+      go : ∀G →                                                                 ‘+ ‘∧ : SO → SO → SO
+        J G KJJ (µJJ F A) A → H (J G KJJ (µJJ F B ) B )                     infixr 5 ‘∧
+      go ‘R         h t i = pu hi ⊛ go F t
+      go ‘P         a     = ha                                              J KSO : SO → JJ
+      go ‘1         hi    = pu hi                                           J ‘R KSO      = ‘R
+      go (S ‘+ T ) (⊳ s) = pu ⊳ ⊛ go S s                                    J ‘1 KSO      = ‘1
+      go (S ‘+ T ) (⊲ t) = pu ⊲ ⊛ go T t                                    J S ‘+ T KSO = J S KSO ‘+ J T KSO
+      go (S ‘× T ) (s, t) = (pu , ⊛ go S s) ⊛ go T t                        J S ‘∧ T KSO = J S KSO ‘× ‘P ‘× J T KSO
+                                                                            µSO : SO → Set → Set
+   We can specialise traverse to standard functorial map by choos-
+                                                                            µSO F P = µJJ J F KSO P
+ing the identity functor.
+                                                                           Let us give SO codes for structures we often order and bound:
+   idApp : Applicative (λ X → X )
+   idApp = record {pure = id; ap = id}                                      ‘List ‘Tree ‘Interval : SO
+   map : ∀{F A B } →                                                        ‘List     = ‘1 ‘+ (‘1 ‘∧ ‘R)
+     (A → B) → µJJ F A → µJJ F B                                            ‘Tree     = ‘1 ‘+ (‘R ‘∧ ‘R)
+   map = traverse idApp                                                     ‘Interval = ‘1 ‘∧ ‘1
+
+   We can equally well specialise traverse to a monoidal crush by           Every data structure described by SO is a regulated variety of
+choosing a constant functor.                                            node-labelled binary trees. Let us check that we can turn anything
+                                                                        into a tree, preserving the substructure relationship. The method1
+   record Monoid (X : Set) : Set where                                  is to introduce a helper function, go, whose type separates G,
+     field                                                              the structure of the top node, from F the structure of recursive
+        neutral : X                                                     subnodes, allowing us to take the top node apart: we kick off with
+        combine : X → X → X                                             G = F.
+     monApp : Applicative (λ → X )                                          tree : ∀{P F } → µSO F P → µSO ‘Tree P
+     monApp = record                                                        tree {P } {F } h f i = go F f where
+        {pure = λ → neutral; ap = combine}                                     go : ∀G → J J G KSO KJJ (µSO F P ) P → µSO ‘Tree P
+     crush : ∀{P F } → (P → X ) → µJJ F P → X                                  go ‘R        f         = tree f
+     crush = traverse {B = 0} monApp                                           go ‘1        hi        = h ⊳ hi i
+   open Monoid                                                                 go (S ‘+ T ) (⊳ s) = go S s
+Perversely, the fact that the constant functor discards the return             go (S ‘+ T ) (⊲ t)     = go T t
+value type, B in traverse’s type signature, results in the absence             go (S ‘∧ T ) (s, p, t) = h ⊲ (go S s, p, go T t ) i
+of constraints on B in the definition of crush, and hence the need
+                                                                            All tree does is strip out the ⊳s and ⊲s corresponding to the
+to give B explicitly. I choose 0 merely to emphasize that B -values
+                                                                        structural choices offered by the input type and instead label the
+are not involved.
+                                                                        void leaves ⊳ and the pivoted nodes ⊲. Note well that a singleton
+    Endofunctions on a given set form a monoid with respect to
+                                                                        tree has void leaves as its left and right substructures, and hence
+composition, which allows us a generic foldr-style operation.
+                                                                        that the inorder traversal is a strict alternation of leaves and pivots,
+   compMon : ∀{X } → Monoid (X → X )                                    beginning with the leaf at the end of the left spine and ending with
+   compMon = record                                                     the leaf at the end of the right spine. As our tree function preserves
+      {neutral = id; combine = λ f g → f ◦ g }                          the leaf/pivot structure of its input, we learn that every datatype we
+                                                                        can define in SO stores such an alternation of leaves and pivots.
+   foldr : ∀{F A B } →
+      (A → B → B ) → B → µJJ F A → B
+   foldr f b t = crush compMon f t b                                                           ?>=<
+                                                                                               89:;❨❨❨❨❨
+                                                                                        ❥ ❥❥❥❥❥ 4       ❨❨❨❨❨❨
+                                                                                                                 ❨❨❨❨❨❨❨
+We can use foldr to build up B s from any structure containing As,                ?>=<
+                                                                                  89:;❥❥                                   ?>=<
+                                                                                                                           89:;
+                                                                                    2 ❍                                  ❥❥ 8 ❍❍❍
+given a way to ‘insert’ an A into a B, and an ‘empty’ B to start               ✈✈✈     ❍❍
+                                                                                                                  ❥❥❥❥❥
+with. Let us check that our generic machinery is fit for purpose.          89:;
+                                                                           ?>=<
+                                                                             1✻          ?>=<
+                                                                                         89:;
+                                                                                           3✻               89:;
+                                                                                                            ?>=<❥                ?>=<
+                                                                                                                                 89:;
+                                                                           ✟   ✻         ✟   ✻            ✈✈ 6 ❍❍❍                 9
+                                                                                                                                 ✟ ✻✻
+                                                                          ✟             ✟            89:;
+                                                                                                     ?>=<✈          89:;
+                                                                                                                    ?>=<        ✟
+                                                                                                               5              7
+10. The Simple Orderable Subuniverse of JJ
+The quicksort algorithm divides a sorting problem in two by parti-
+tioning about a selected pivot element the remaining data. Rendered
+as the process of building then flattening a binary search tree [4],                                                          
+the pivot element clearly marks the upper bound of the lower sub-          89:;
+                                                                            ?>=<  ?>=<
+                                                                                   89:;  ?>=<
+                                                                                          89:;  ?>=<
+                                                                                                 89:;  89:;
+                                                                                                        ?>=<  89:;
+                                                                                                               ?>=<  89:;
+                                                                                                                      ?>=<  ?>=<
+                                                                                                                             89:;  ?>=<
+                                                                                                                                    89:; 
+                                                                             1       2        3       4        5      6       7       8        9
+tree and the lower bound of the upper subtree, giving exactly the
+information required to guide insertion.                                    We are now in a position to roll out the “loose bounds” method
+    We can require the presence of pivots between substructures by      to the whole of the SO universe. We need to ensure that each pivot
+combining the parameter ‘P and pairing ‘× constructs of the PolyP
+universe into a single pivoting construct, ‘∧, with two substructures   1 If you try constructing the division operator as a primitive recursive func-
+and a pivot in between. We thus acquire the simple orderable            tion, this method will teach itself to you.
+is in order with its neighbours and with the outer bounds, and the        11. Digression: Merging Monoidally
+alternating leaf/pivot structure gives us just what we need: let us       Let us name our family of ordered lists L + , as the leaves form a
+store the ordering evidence at the leaves!                                nonempty chain of pLq ordering evidence.
+      ≤
+   J KSO  : SO → ∀{P } → Rel P ⊤                   ⊤
+                                 ⊥ → Rel P → Rel P ⊥                          +
+                                                                                 : ∀{P } → Rel P → Rel P ⊤
+         ≤                                                                                                  ⊥
+   J ‘R KSO      RL = R                                                      L = µ≤
+                                                                               +
+         ≤                                                                            SO ‘List L
+   J ‘1 KSO      R L = pLq
+                                                                             pattern []          = h⊳ !i
+   J S ‘+ T K≤              ≤              ≤
+              SO R L = J S KSO R L +̇ J T KSO R L                            pattern :: x xs = h ⊲ (x, !, xs) i
+              ≤             ≤              ≤
+   J S ‘∧ T KSO R L = J S KSO R L ∧˙ J T KSO R L                             infixr 6 ::
+          ≤
+   data µSO  (F : SO) {P : Set} (L : Rel P )                                  The next section addresses the issue of how to flatten ordered
+             (lu : P ⊤     ⊤
+                     ⊥ × P ⊥ ) : Set where                                structures to ordered lists, but let us first consider how to merge
+     hi : J F KSO (µSO F L) L lu → µ≤
+                ≤   ≤
+                                       SO F L lu
+                                                                          them. Merging sorts differ from flattening sorts in that order is
+                                                                          introduced when ‘conquering’ rather than ‘dividing’.
+We have shifted from sets to relations, in that our types are indexed         We can be sure that whenever two ordered lists share lower
+by lower and upper bounds. The leaves demand evidence that the            and upper bounds, they can be merged within the same bounds.
+bounds are in order, whilst the nodes require the pivot first, then use   Again, let us assume a type P of pivots, with owoto witnessing
+it to bound the substructures appropriately.                              the totality of order L. The familiar definition of merge typechecks
+     Meanwhile, the need in nodes to bound the left substructure’s        but falls just outside the class of lexicographic recursions accepted
+type with the pivot value disrupts the left-to-right spatial ordering     by Agda’s termination checker. I have locally expanded pattern
+of the data, but we can apply a little cosmetic treatment, thanks to      synonyms to dig out the concealed evidence which causes the
+the availability of pattern synonyms.                                     trouble.
+     With these two devices available, let us check that we can still
+turn any ordered data into an ordered tree, writing L ∆ (l , u) for           merge : [L+ →  ˙ L+ →   ˙ L+ ]
+  ≤
+µSO   ‘Tree L (l, u), and redefining intervals accordingly.                   merge []                         ys         = ys
+    ∆ •
+                                                                              merge xs                         []         = xs
+          : ∀{P } → Rel P → Rel P ⊤
+                                  ⊥
+                                                                              merge h ⊲ (! {{ }}) x xs i (y :: ys) with owoto x y
+   L = µ≤
+     ∆                                                                                                 ‘ ‘
+           SO ‘Tree     L                                                     ... | le = x :: merge xs (y //ys )
+   pattern leaf           = h⊳ !i
+   pattern node lp p pu = h ⊲ (lp p pu) i                                     ... | ge = y :: merge h ⊲ ( (! {{ }}) x xs) i ys
+                                  ‘ ‘                                                                                     ‘ ‘
+   L• = µ≤                                                                In one step case, the first list gets smaller, but in the other, where
+           SO ‘Interval L
+   pattern ◦ p = h (p, !, !) i                                            we decrease the second list, the first does not remain the same: it
+                                                                          contains fresh evidence that x is above the tighter lower bound, y.
+    tree : ∀{P F } {L : Rel P } → [µ≤       SO F L →  ˙ L∆ ]              Separating the recursion on the second list is sufficient to show that
+    tree {P } {F } {L} h f i = go F f where                               both recursions are structural.
+       go : ∀G → [J G K≤         ≤
+                            SO (µSO F L) L →   ˙ L∆ ]
+                                                                             merge : [L+ →   ˙ L+ →˙ L+ ]
+       go ‘R         f        = tree f
+                                                                             merge         []         = id
+       go ‘1         !        = leaf
+                                                                             merge {l, u } (x :: xs) = go where
+       go (S ‘+ T ) (⊳ s)     = go S s
+                                                                              go : ∀{l } {{ : L ⊤                     +
+                                                                                                     ⊥ (l, #x )}} → (L →˙ L+ ) (l, u)
+       go (S ‘+ T ) (⊲ t)     = go T t
+                                                                              go []           = x :: xs
+       go (S ‘∧ T ) (s p t) = node (go S s) p (go T t)
+                       ‘ ‘                                                    go (y :: ys) with owoto x y
+    We have acquired a collection of orderable datatypes which                ... | le = x :: merge xs (y :: ys)
+all amount to specific patterns of node-labelled binary trees: an             ... | ge = y :: go ys
+interval is a singleton node; a list is a right spine. All share the
+treelike structure which ensures that pivots alternate with leaves        The helper function go inserts x at its rightful place in the second
+bearing the evidence the pivots are correctly placed with respect to      list, then resumes merging with xs.
+their immediate neighbours.                                                   Merging equips ordered lists with monoidal structure.
+    Let us check that we are where we were, so to speak. Hence we            olMon : ∀{lu } → L ⊤                +
+                                                                                                ⊥ lu ⇒ Monoid (L lu)
+can rebuild our binary search tree insertion for an element in the           olMon = record {neutral = []; combine = merge}
+corresponding interval:
+                                                                             An immediate consequence is that we gain a family of sorting
+   insert : [L• → ˙ L∆ →˙ L∆ ]                                            algorithms which amount to depth-first merging of a given interme-
+   insert y◦ leaf            = node leaf y leaf                           diate data structure, making a singleton from each pivot.
+   insert y◦ (node lt p rt ) with owoto y p
+   ... | le = node (insert y◦ lt) p rt                                       mergeJJ : ∀{F } → µJJ F P → L+ (⊥, ⊤)
+                                                                             mergeJJ = crush olMon λ p → p :: []
+   ... | ge = node lt p (insert y◦ rt )
+The constraints on the inserted element are readily expressed via            The instance of mergeJJ for lists is exactly insertion sort: at each
+our ‘Interval type, but at no point need we ever name the ordering        cons, the singleton list of the head is merged with the sorted tail. To
+evidence involved. The owoto test brings just enough new evidence         obtain an efficient mergeSort, we should arrange the inputs as a
+into scope that all proof obligations on the right-hand side can be       leaf-labelled binary tree.
+discharged by search of assumptions. We can now make a search                ‘qLTree : JJ
+tree from any input container.                                               ‘qLTree = (‘1 ‘+ ‘P) ‘+ ‘R ‘× ‘R
+   makeTree : ∀{F } → µJJ F P → L∆ (⊥, ⊤)                                 As ever, pattern synonyms prove invaluable for restoring readabil-
+   makeTree = foldr (λ p → insert p◦ ) leaf                               ity.
+   pattern none     = h ⊳ (⊳ hi) i                                           flatten≤                                ≤
+                                                                                                                            ˙ L+ ]
+                                                                                    SO : ∀{P } {L : Rel P } {F } → [µSO F L →
+   pattern one p = h ⊳ (⊲ p) i                                                      ≤
+                                                                             flattenSO = flatten ◦ tree
+   pattern fork l r = h ⊲ (l, r ) i
+                                                                              For a little extra speed we might fuse that composition, but
+    We can add each successive elements to the tree with a twisting       it seems frivolous to do so as the benefit is outweighed by the
+insertion, placing the new element at the bottom of the left spine,       quadratic penalty of left-nested concatenation. The standard rem-
+but swapping the subtrees at each layer along the way to ensure fair      edy applies: we can introduce an accumulator [18], but our experi-
+distribution.                                                             ence with ++ should alert us to the possibility that it may require
+   twistIn : P → µJJ ‘qLTree P → µJJ ‘qLTree P                            some thought.
+   twistIn p none        = one p
+   twistIn p (one q) = fork (one p) (one q)                               13. Faster Flattening, Generically
+   twistIn p (fork l r ) = fork (twistIn p r ) l                          We may define flatten generically, and introduce an accumulator
+    If we notice that twistIn maps elements to endofunctions on           yielding a combined flatten-and-append which works right-to-left,
+trees, we can build up trees by a monoidal crush, obtaining an            growing the result with successive conses. But what should be the
+efficient generic sort for any container in the JJ universe.              bounds of the accumulator? If we have not learned our lesson, we
+                                                                          might be tempted by
+   mergeSort : ∀{F } → µJJ F P → L+ (⊥, ⊤)
+   mergeSort = mergeJJ ◦ foldr twistIn none                                  flapp : ∀{F P } {L : Rel P } {l p u } →
+                                                                                µ≤                +             +
+                                                                                 SO F L (l, p) → L (p, u) → L (l, u)
+
+12. Flattening With Concatenation                                         but again we face the question of what to do when we reach a
+                                                                          leaf. We should not need transitivity to rearrange a tree of ordered
+Several sorting algorithms amount to building an ordered interme-         neighbours into a sequence. We can adopt the previous remedy
+diate structure, then flattening it to an ordered list. As all of our     of inserting the element p in the middle, but we shall then need
+orderable structures amount to trees, it suffices to flatten trees to     to think about where p will come from in the first instance, for
+lists. Let us take the usual naı̈ve approach as our starting point. In    example when flattening an empty structure.
+Haskell, we might write
+                                                                              flapp : ∀{F P } {L : Rel P } G →
+flatten Leaf         = []                                                              ≤
+                                                                                          (µ≤             ˙ + ˙ L+ ]
+                                                                                 [J G KSO    SO F L) L ∧ L →
+flatten (Node l p r) = flatten l ++ p : flatten r                             flapp {F } ‘R (h t i          p ys) = flapp F (t p ys)
+                                                                                                          ‘ ‘                   ‘ ‘
+so let us try to do the same in Agda with ordered lists. We shall             flapp ‘1         (!           p ys) = p :: ys
+                                                                                                          ‘ ‘
+need concatenation, so let us try to join lists with a shared bound p         flapp (S ‘+ T ) (⊳ s          p ys) = flapp S (s p ys)
+                                                                                                          ‘ ‘                   ‘ ‘
+in the middle.                                                                flapp (S ‘+ T ) (⊲ t          p ys) = flapp T (t p ys)
+                                                                                                       ′  ‘  ‘                  ‘ ‘
+   infixr 8 ++                                                                flapp (S ‘∧ T ) ((s p t) p ys)
+                                                                                                   ‘′ ‘ ‘ ‘
+    ++ : ∀{P } {L : Rel P } {l p u } →                                            = flapp S (s p flapp T (t p ys))
+                                                                                                ‘ ‘             ‘ ‘
+      L+ (l, p) → L+ (p, u) → L+ (l, u)                                   To finish the job, we need to work our way down the right spine of
+   []        ++ ys = ys                                                   the input in search of its rightmost element, which initialises p.
+   (x :: xs) ++ ys = x :: xs ++ ys                                             flatten : ∀{F P } {L : Rel P } → [µ≤                ˙ L+ ]
+                                                                                                                         SO F L →
+   The ‘cons’ case goes without a hitch, but there is trouble at ‘nil’.        flatten {F } {P } {L} {l, u } h t i = go F t where
+We have ys : µ≤                                     ⊤
+                 SO ‘List L (p, u) and we know L ⊥ (l, p), but we                 go : ∀{l } G → J G K≤          ≤                       +
+                                                                                                            SO (µSO F L) L (l, u) → L (l, u)
+                  ≤
+need to return a µSO ‘List L (l, u).                                              go ‘R         t          = flatten t
+                                                                                  go ‘1         !          = []
+                                                                                  go (S ‘+ T ) (⊳ s)       = go S s
+            ++     ?>=<
+                   89:;
+                     4  89:;
+                        ?>=<
+                          5  89:;
+                             ?>=<
+                               6  ?>=<
+                                  89:;
+                                    7  89:;
+                                       ?>=<
+                                         8  ?>=<
+                                            89:;
+                                              9                                   go (S ‘+ T ) (⊲ t)       = go T t
+                                                                                  go (S ‘∧ T ) (s p t) = flapp S (s p go T t)
+    “The trouble is easy to fix,” one might confidently assert, whilst                            ‘ ‘                  ‘ ‘
+secretly thinking, “What a nuisance!”. We can readily write a helper          This is effective, but it is more complicated than I should like.
+function which unpacks ys, and whether it is nil or cons, extends its     It is basically the same function twice, in two different modes, de-
+leftmost order evidence by transitivity. And this really is a nuisance,   pending on what is to be affixed after the rightmost order evidence
+because, thus far, we have not required transitivity to keep our          in the structure being flattened: either a pivot-and-tail in the case
+code well typed: all order evidence has stood between neighbouring        of flapp, or nothing in the case of flatten. The problem is one of
+elements. Here, we have two pieces of ordering evidence which we          parity: the thing we must affix to one odd-length leaf-node-leaf
+must join, because we have nothing to put in between them. Then,          alternation to get another is an even-length node-leaf alternation.
+the penny drops. Looking back at the code for flatten, observe that       Correspondingly, it is hard to express the type of the accumulator
+p is the pivot and the whole plan is to put it between the lists. You     cleanly. Once again, I begin to suspect that this is a difficult thing
+can’t always get what you want, but you can get what you need.            to do because it is the wrong thing to do. How can we reframe the
+                                                                          problem, so that we work only with odd-length leaf-delimited data?
+   sandwich : ∀{P } {L : Rel P } → [(L+ ∧˙ L+ ) →        ˙ L+ ]
+   sandwich ([]      p ys) = p :: ys
+                    ‘ ‘                                                   14. A Replacement for Concatenation
+   sandwich (x :: xs p ys) = x :: sandwich (xs p ys)
+                    ‘ ‘                             ‘ ‘
+   We are now ready to flatten trees, thence any ordered structure:       My mathematical mentor, Tom Körner, is fond of remarking “A
+                                                                          mathematician is someone who knows that 0 is 0 + 0”. It is often
+   flatten : ∀{P } {L : Rel P } → [L∆ →    ˙ L+ ]                         difficult to recognize the structure you need when the problem in
+   flatten leaf          = []                                             front of you is a degenerate case of it. If we think again about
+   flatten (node l p r ) = sandwich (flatten l p flatten r )              concatenation, we might realise that it does not amount to affixing
+                                              ‘ ‘
+one list to another, but rather replacing the ‘nil’ of the first list with      J K≤
+                                                                                   IO :    ∀{I P } → IO I →
+the whole of the second. We might then notice that the monoidal                            (I → Rel P ⊤
+                                                                                                      ⊥ ) → Rel P → Rel P ⊥
+                                                                                                                              ⊤
+structure of lists is in fact degenerate monadic structure.                              ≤
+                                                                                J ‘R i KIO     RL = Ri
+    Any syntax has a monadic structure, where ‘return’ embeds
+variables as terms and ‘bind’ is substitution. Quite apart from their           J ‘0 K≤
+                                                                                      IO       RL = λ → 0
+‘prioritised choice’ monadic structure, lists are the terms of a de-            J ‘1 K≤
+                                                                                      IO       R L = pLq
+generate syntax with one variable (called ‘nil’) and only unary op-             J S ‘+ T K≤               ≤              ≤
+                                                                                            IO R L = J S KIO R L +̇ J T KIO R L
+erators (‘cons’ with a choice of element). Correspondingly, they                            ≤             ≤              ≤
+                                                                                J S ‘∧ T KIO R L = J S KIO R L ∧˙ J T KIO R L
+have this substitution structure: substituting nil gives concatena-
+tion, and the monad laws are the monoid laws.                                   data µ≤IO {I P : Set} (F : I → IO I ) (L : Rel P )
+    Given this clue, let us consider concatenation and flattening in                      (i : I ) (lu : P ⊤     ⊤
+                                                                                                           ⊥ × P ⊥ ) : Set where
+terms of replacing the rightmost leaf by a list, rather than affixing             hi : J F i KIO (µIO F L) L lu → µ≤
+                                                                                               ≤     ≤
+                                                                                                                       IO F L i lu
+more data to it. We replace the list to append with a function which
+                                                                                We recover all our existing data structures by trivial indexing.
+maps the contents of the rightmost leaf—some order evidence—
+to its replacement. The type looks more like that of ‘bind’ than                ‘List ‘Tree ‘Interval : 1 → IO 1
+‘append’, because in some sense it is!                                          ‘List        = ‘1 ‘+ (‘1 ‘∧ ‘R hi)
+    infixr 8 ++                                                                 ‘Tree        = ‘1 ‘+ (‘R hi ‘∧ ‘R hi)
+                                                                                ‘Interval = ‘1 ‘∧ ‘1
+    RepL : ∀{P } → Rel P → Rel P ⊤    ⊥
+    RepL L (n, u) = ∀{m } → L ⊤               +
+                                  ⊥ (m, n) ⇒ L (m, u)
+                                                                             We also lift our existing type-forming abbreviations:
+                                                                                 + ∆ •
+     ++ : ∀{P } {L : Rel P } {l n u } →                                               : ∀{P } → Rel P → Rel P ⊤
+                                                                                                              ⊥
+       L+ (l, n) → RepL L (n, u) → L+ (l, u)                                    L = µ≤
+                                                                                  +
+                                                                                       IO ‘List     L hi
+    []        ++ ys = ys                                                        L∆ = µ≤             L hi
+                                                                                       IO ‘Tree
+    (x :: xs) ++ ys = x :: xs ++ ys                                             L• = µ≤IO ‘Interval L hi
+    Careful use of instance arguments leaves all the manipulation               However, we may also make profitable use of indexing: here are
+of evidence to the machine. In the [] case, ys is silently instantiated      ordered vectors.
+with exactly the evidence exposed in the [] pattern on the left.
+    Let us now deploy the same technique for flatten.                           ‘Vec : N → IO N
+                                                                                ‘Vec 0     = ‘1
+    flapp : ∀{P } {L : Rel P } {F } {l n u } →                                  ‘Vec (s n) = ‘1 ‘∧ ‘R n
+         ≤
+       µSO  F L (l, n) → RepL L (n, u) → L+ (l, u)
+    flapp {P } {L} {F } {u = u } t ys = go ‘R t ys where                     Note that we need no choice of constructor or storage of length
+                                                                             information: the index determines the shape. If we want, say, even-
+       go : ∀{l n } G → J G K≤      ≤
+                               SO (µSO F L) L (l, n) →                       length tuples, we can use ‘0 to rule out the odd cases.
+               RepL L (n, u) → L+ (l, u)
+       go ‘R         ht i   ys = go F t ys                                      ‘Even : N → IO N
+       go ‘1         !      ys = ys                                             ‘Even 0         = ‘1
+       go (S ‘+ T ) (⊳ s) ys = go S s ys                                        ‘Even (s 0)     = ‘0
+       go (S ‘+ T ) (⊲ t) ys = go T t ys                                        ‘Even (s (s n)) = ‘1 ‘∧ ‘1 ‘∧ ‘R n
+       go (S ‘∧ T ) (s p t) ys = go S s (p :: go T t ys)                     We could achieve a still more flexible notion of data structure
+                       ‘ ‘
+    flatten : ∀{P } {L : Rel P } {F } → [µ≤          ˙ L+ ]                  by allowing a general Σ-type rather than our binary ‘+, but we
+                                             SO F L →
+    flatten t = flapp t []                                                   have what we need for finitary data structures with computable
+                                                                             conditions on indices.
+                                                                                The tree operation carries over unproblematically, with more
+15. An Indexed Universe of Orderable Data                                    indexed input but plain output.
+Ordering is not the only invariant we might want to enforce on or-              tree : ∀{I P F } {L : Rel P } {i : I } →
+derable data structures. We might have other properties in mind,                   [µ≤        ˙ L∆ ]
+                                                                                     IO F L i →
+such as size, or balancing invariants. It is straightforward to extend          Similarly, flatten works (efficiently) just as before.
+our simple universe to allow general indexing as well as orderabil-
+ity. We can extend our simple orderable universe SO to an indexed               flatten : ∀{I P F } {L : Rel P } {i : I } →
+orderable universe IO, just by marking each recursive position with                [µ≤        ˙ L+ ]
+                                                                                     IO F L i →
+an index, then computing the code for each node as a function of
+its index. We may add a ‘0 code to rule out some cases as illegal.              We now have a universe of indexed orderable data structures
+                                                                             with efficient flattening. Let us put it to work.
+    data IO (I : Set) : Set where
+      ‘R      : I → IO I                                                     16. Balanced 2-3 Trees
+      ‘0 ‘1   : IO I
+       ‘+ ‘∧ : IO I → IO I → IO I                                            To ensure a logarithmic access time for search trees, we can keep
+                                                                             them balanced. Maintaining balance as close to perfect as possible
+    When interpreting such a code, we now require the family of              is rather fiddly, but we can gain enough balance by allowing a little
+relations which sit in recursive positions, one for each element             redundancy. A standard way to achieve this is to insist on uniform
+of the index set, I . However, the interpretation function is not            height, but allow internal nodes to have either one pivot and two
+concerned with indexing the overall node. The function mapping               subtrees, or two pivots and three subtrees. We may readily encode
+each index to the code for the appropriate node structure appears            these 2-3 trees and give pattern synonyms for the three kinds of
+only when we tie the recursive knot.                                         structure. This approach is much like that of red-black (effectively,
+2-3-4) trees, for which typesafe balancing has a tradition going          For the ?1 problems, the top 2-node can always accept the result
+back to Hongwei Xi and Stefan Kahrs [9, 19].                              of the recursive call somehow, and the choice offered by the return
+   As with ‘Vec, case analysis on the index, now representing             type conveniently matches the node-arity choice, right of the pivot.
+height, tells us whether we are at a leaf or an internal node.            For completeness, I give the middle ( ?2 ) and right ( ?3 ) cases
+   ‘Tree23 : N → IO N                                                     for 3-nodes, but it works just as on the left.
+   ‘Tree23 0     = ‘1                                                         ins23 (s h) y◦ (no3 lt p mt q rt ) | ge | le
+   ‘Tree23 (s h) = ‘R h ‘∧ (‘R h ‘+ (‘R h ‘∧ ‘R h))                              with ins23 h y ◦ mt
+    23
+                                                                              ins23 (s h) y◦ (no3 lt p mt q rt ) | ge | le
+      : ∀{P } (L : Rel P) → N → Rel P ⊤       ⊥                                  | ⊳ mt ′            = ⊳ (no3 lt p mt ′ q rt )
+   L = µ≤
+     23
+           IO ‘Tree23 L
+                                                                                            ◦
+                                                                              ins23 (s h) y (no3 lt p mt q rt ) | ge | le
+   pattern no0              = h!i                                                | ⊲ (mlt r mrt ) = ⊲ (no2 lt p mlt r no2 mrt q rt)
+                                                                                           ‘ ‘                          ‘ ‘
+   pattern no2 lt p rt      = h p, lt, ⊳ rt i                                 ins23 (s h) y◦ (no3 lt p mt q rt ) | ge | ge
+   pattern no3 lt p mt q rt = h p, lt, ⊲ (q, mt, rt ) i                                         ◦
+                                                                                 with ins23 h y rt
+    When we map a 2-3 tree of height n back to binary trees, we               ins23 (s h) y◦ (no3 lt p mt q rt ) | ge | ge
+get a tree whose left spine has length n and whose right spine has               | ⊳ rt ′            = ⊳ (no3 lt p mt q rt ′ )
+a length between n and 2n.                                                    ins23 (s h) y◦ (no3 lt p mt q rt ) | ge | ge
+    Insertion is quite similar to binary search tree insertion, except           | ⊲ (rlt r rrt ) = ⊲ (no2 lt p mt q no2 rlt r rrt )
+                                                                                          ‘ ‘                          ‘ ‘
+that it can have the impact of increasing height. The worst that can
+                                                                             Pleasingly, the task of constructing suitable return values in
+happen is that the resulting tree is too tall but has just one pivot at
+                                                                          each of these cases is facilitated by Agda’s type directed search
+the root. Indeed, we need this extra wiggle room immediately for
+                                                                          gadget, Agsy [10]. There are but two valid outputs constructible
+the base case!
+                                                                          from the pieces available: the original tree reconstituted, and the
+    ins23 : ∀h {lu } → L• lu → L23 h lu →                                 correct output.
+             L23 h lu +                                                      To complete the efficient sorting algorithm based on 2-3 trees,
+             Σ P λ p → L23 h (π1 lu, #p) × L23 h (#p, π2 lu)              we can use a Σ-type to hide the height data, giving us a type which
+    ins23 0 y◦ no0 = ⊲ (h ! i y h ! i)                                    admits iterative construction.
+                               ‘ ‘
+In the step case, we must find our way to the appropriate subtree by         Tree23 = Σ N λ h → L23 h (⊥, ⊤)
+suitable use of comparison.                                                  insert : P → Tree23 → Tree23
+   ins23 (s h) y◦ h lt p rest i      with owoto y p                          insert p (h, t) with ins23 h p◦ t
+                      ‘ ‘                                                    ... | ⊳ t ′        = h , t′
+   ins23 (s h) y◦ h lt p rest i      | le = ?0
+                      ‘ ‘                                                    ... | ⊲ (lt r rt ) = s h, no2 lt r rt
+   ins23 (s h) y◦ (no2 lt p rt )     | ge = ?1                                           ‘ ‘
+                                                                             sort : ∀{F } → µJJ F P → L+ (⊥, ⊤)
+   ins23 (s h) y◦ (no3 lt p mt q rt) | ge with owoto y q                     sort = flatten ◦ π2 ◦ foldr insert (0, no0 )
+   ins23 (s h) y◦ (no3 lt p mt q rt) | ge | le = ?2
+   ins23 (s h) y◦ (no3 lt p mt q rt) | ge | ge = ?3
+                                                                          17. Deletion from 2-3 Trees
+Our ?0 covers the case where the new element belongs in the left          Might is right: the omission of deletion from treatments of balanced
+subtree of either a 2- or 3-node; ?1 handles the right subtree of a       search trees is always a little unfortunate [15]. Deletion is a signif-
+                                                                          icant additional challenge because we can lose a key from the mid-
+2-node; ?2 and ?3 handle middle and right subtrees of a 3-node
+                                                                          dle of the tree, not just from the fringe of nodes whose children are
+after a further comparison. Note that we inspect rest only after we       leaves. Insertion acts always to extend the fringe, so the problem
+have checked the result of the first comparison, making real use of       is only to bubble an anomaly up from the fringe to the root. Fortu-
+the way the with construct brings more data to the case analysis          nately, just as nodes and leaves alternate in the traversal of a tree,
+but keeps the existing patterns open to further refinement, a need        so do middle nodes and fringe nodes: whenever we need to delete a
+foreseen by the construct’s designers [13].                               middle node, it always has a neighbour at the fringe which we can
+    Once we have identified the appropriate subtree, we can make          move into the gap, leaving us once more with the task of bubbling
+the recursive call. If we are lucky, the result will plug straight back   a problem up from the fringe.
+into the same hole. Here is the case for the left subtree.                    Our situation is further complicated by the need to restore the
+    ins23 (s h) y◦ h lt p rest i | le                                     neighbourhood ordering invariant when one key is removed. At
+                       ‘ ‘
+       with ins23 h y◦ lt                                                 last, we shall need our ordering to be transitive. We shall also need
+    ins23 (s h) y◦ h lt p rest i | le                                     a decidable equality on keys.
+                       ‘ ‘
+        | ⊳ lt ′ = ⊳ h lt ′ p rest i                                         data ≡ {X : Set} (x : X ) : X → Set where
+                           ‘ ‘
+However, if we are unlucky, the result of the recursive call is too             hi : x ≡ x
+big. If the top node was a 2-node, we can accommodate the extra              infix 6 ≡
+data by returning a 3-node. Otherwise, we must rebalance and pass
+the ‘too big’ problem upward. Again, we gain from delaying the               trans : ∀{x } y {z } → L (x, y) ⇒ L (y, z ) ⇒ pL (x, z )q
+inspection of rest until we are sure reconfiguration will be needed.
+   ins23 (s h) y◦ (no2 lt p rt )     | le                                    eq? : (x y : P ) → x ≡ y + (x ≡ y → 0)
+      | ⊲ (llt r lrt) = ⊳ (no3 llt r lrt p rt )                              Correspondingly, a small amount of theorem proving is indi-
+              ‘ ‘◦
+   ins23 (s h) y (no3 lt p mt q rt) | le                                  cated, ironically, to show that it is sound to throw information about
+      | ⊲ (llt r lrt) = ⊲ (no2 llt r lrt p no2 mt q rt )                  local ordering away.
+              ‘ ‘                       ‘ ‘
+Transitivity for bounds. Transitivity we may readily lift to            but the extra detail allows us to use 2-node reconstructors in the
+bounds with a key in the middle:                                        course of 3-node reconstruction. To reconstruct a 3-node with one
+                                                                        possibly-short subtree, rebuild a 2-node containing the suspect, and
+   pattern via p = p, !, !
+                                                                        then restore the extra subtree. We thus need to implement the latter.
+   trans⊤
+        ⊥ : [(pLq ∧  ˙ pLq) →˙ pLq]                                        r3t : ∀{h } → [(Re2 h ∧˙ L23 h) →
+                                                                                                           ˙ Del23 (s h)]
+   trans⊤
+        ⊥ {    , ⊤}            = !                                         r3t (⊲ (lm m mp) p pu) = ⊲ (no3 lm m mp p pu)
+                                                                                      ‘ ‘     ‘ ‘
+   trans⊤                                                                  r3t (⊳ lp p pu)          = ⊲ (no2 lp p pu)
+        ⊥ {⊥ , ⊥}              = !                                                  ‘ ‘
+                                                                                               23
+   trans⊤
+        ⊥ {⊥ , #u }            = !                                                                ˙
+                                                                           t3r : ∀{h } → [(L h ∧ Re2 h) →  ˙ Del23 (s h)]
+   trans⊤
+        ⊥ {⊤ , } (via ) = magic
+                                                                           t3r (lp p ⊲ (pq q qu))
+                                                                                  ‘ ‘     ‘ ‘
+                                                                                                    = ⊲ (no3 lp p pq q qu)
+   trans⊤
+        ⊥ { # l, #u } (via p) = trans p ∴ !
+                                                                           t3r (lp p ⊳ pu)          = ⊲ (no2 lp p pu)
+                                                                                  ‘ ‘
+   trans⊤
+        ⊥ { # l, ⊥} (via ) = magic
+                                                                        Cutting out the extreme right. We may now implement extr,
+What is the type of deletion? When we remove an element from            grabbing the rightmost key from a tree. I use
+a 2-3 tree of height n, the tree will often stay the same height, but                 a
+                                                                           pattern 6 lr r = r, lr, !
+there will be situations in which it must get shorter, becoming a
+3-node or a leaf, as appropriate.                                       to keep the extracted element on the right and hide the ordering
+                                                                        proofs.
+   Del23 Short23 : N → Rel P ⊤ ⊥
+   Del23 h lu       = Short23 h lu + L23 h lu                               extr : ∀{h } → [L23 (s h) →      ˙ (Del23 (sah) ∧˙ pLq)]
+   Short23 0 lu     = 0                                                     extr {0} (no2 lr r no0 )           = ⊳ lr 6 r          a
+                                                                            extr {0} (no3 lp p pr r no0 ) = ⊲ (no2 lp p pr ) 6 r
+   Short23 (s h) lu = L23 h lu
+                                                                            extr {s ha} (no2 lp p pu)          with extr
+                                                                                                                    a pu
+   The task of deletion has three phases: finding the key to delete;        ... | pr 6 r = rd (t2d (lp p pr )) 6 r
+moving the problem to the fringe; plugging a short tree into a tall                                        ‘ ‘
+                                                                            extr {s ha} (no3 lp p pq q qu) with extr qua
+hole. The first of these will be done by our main function,                 ... | qr 6 r = t3r (lp p t2d (pq q qr )) 6 r
+                                                                                                      ‘ ‘         ‘ ‘
+           del23 : ∀{h } → [L• →
+                               ˙ L23 h →
+                                       ˙ Del23 h ]                          To delete the pivot key from between two trees, we extract the
+and the second by extracting the extreme right key from a nonempty      rightmost key from the left tree, then weaken the bound on the right
+left subtree,                                                           tree (traversing its left spine only). Again, we are sure that if the
+                                                                        height remains the same, we shall deliver a 2-node.
+      extr : ∀{h } → [L23 (s h) →
+                                ˙ (Del23 (s h) ∧˙ L ⊤
+                                                    ⊥ )]
+                                                                           delp : ∀{h } → [(L23 h ∧˙ L23 h) →  ˙ Re2 h ]
+recovering the (possily short) remainder of the tree and the evi-          delp {0} {lu } (no0 p no0 ) = trans⊤ ⊥ {lu } (via p) ∴ ⊳ no0
+dence that the key is below the upper bound (which will be the                                 ‘ ‘
+                                                                           delp {s ha}     (lp p pu) with extr lp
+deleted key). Both of these operations will need to reconstruct trees                         ‘ ‘
+                                                                           ... | lr 6 r = d2t (lr r weak pu) where
+with one short subtree, so let us build ‘smart constructors’ for just                              ‘ ‘
+that purpose, then return to the main problem.                                weak : ∀{h u } → L23 h (#p, u) → L23 h (#r, u)
+                                                                              weak {0} {u } no0 = trans⊤  ⊥ { #r, u } (via p) ∴ no0
+Rebalancing reconstructors. If we try to reconstruct a 2-node                 weak {s h } h pq q qu i = h weak pq q qu i
+with a possibly-short subtree, we might be lucky enough to deliver                            ‘ ‘                  ‘ ‘
+a 2-node, or we might come up short. We certainly will not deliver      A remark on weakenings. It may seem regrettable that we have
+a 3-node of full height and it helps to reflect that in the type.       to write weak, which is manifestly an obfuscated identity function,
+Shortness can be balanced out if we are adjacent to a 3-node, but if    and programmers who do not wish the ordering guarantees are
+we have only a 2-node, we must give a short answer.                     entitled not to pay and not to receive. If we took an extrinsic
+    Re2 : N → Rel P ⊤    ⊥
+                                                                        approach to managing these invariants, weak would still be present,
+    Re2 h = Short23 (s h) +̇ (L23 h ∧˙ L23 h)                           but it would just be the proof of the proposition that you can lower
+                                                                        a lower bound that you know for a tree. Consequently, the truly
+    d2t : ∀{h } → [(Del23 h ∧˙ L23 h) →     ˙ Re2 h ]                   regrettable thing about weak is not that it is written but that it is
+    d2t {h } (⊲ lp p pu)               = ⊲ (lp p pu)                    executed. The ‘colored’ analysis of Bernardy and Moulin offers a
+                    ‘ ‘                        ‘ ‘
+    d2t {0} (⊳ () p pu)                                                 suitable method to ensure that the weakening operation belongs
+                    ‘ ‘
+    d2t {s h } (⊳ lp p no2 pq q qu) = ⊳ (no3 lp p pq q qu)              to code which is erased at run time [3]. An alternative might
+                    ‘ ‘
+    d2t {s h } (⊳ lp p no3 pq q qr r ru)                                be a notion of ‘propositional subtyping’, allowing us to establish
+                    ‘ ‘
+       = ⊲ (no2 lp p pq q no2 qr r ru)                                  coercions between types which are guaranteed erasable at runtime
+                          ‘ ‘
+    t2d : ∀{h } → [(L23 h ∧˙ Del23 h) →     ˙ Re2 h ]                   because all they do is fix up indexing and the associated content-
+    t2d {h } (lp p ⊲ pu)                = ⊲ (lp p pu)                   free proof objects.
+                  ‘ ‘                           ‘ ‘
+    t2d {0} (lp p ⊳ ())                                                 The completion of deletion. Now that we can remove a key,
+                  ‘ ‘
+    t2d {s h } (no2 ln n np p ⊳ pu) = ⊳ (no3 ln n np p pu)              we need only find the key to remove. I have chosen to delete
+                              ‘ ‘
+    t2d {s h } (no3 lm m mn n np p ⊳ pu)                                the topmost occurrence of the given key, and to return the tree
+                                     ‘ ‘
+       = ⊲ (no2 lm m mn n no2 np p pu)                                  unscathed if the key does not occur at all.
+                             ‘ ‘
+    rd : ∀{h } → [Re2 h →      ˙ Del23 (s h)]                               As with insertion, the discipline of indexing by bounds and
+                                                                        height is quite sufficient to ensure in silence that rebalancing works
+    rd (⊳ s)           = (⊳ s)
+                                                                        as required. Indeed, no further explicit proof effort is needed: once
+    rd (⊲ (lp p pu)) = ⊲ (no2 lp p pu)
+             ‘ ‘                                                        delp reestablishes the local ordering invariant around the deleted
+The adaptor rd allows us to throw away the knowledge that the           element, the rest of the ordering evidence stays intact from input to
+full height reconstruction must be a 2-node if we do not need it,       output.
+    del23 : ∀{h } → [L• →    ˙ L23 h →˙ Del23 h ]                          of the encoding, but pattern synonyms do a remarkably good job
+    del23 {0 }       no0                 = ⊲ no0                           of recovering the appearance of bespoke constructors whenever we
+    del23 {s h } y◦ h lp p pu i         with eq? y p                       work specifically to one encoded datatype.
+                         ‘ ‘                                                   Indeed, there is clearly room for even more datatype-generic
+    del23 {s h } .p◦ (no2 lp p pu)       | ⊳ hi
+        = rd (delp (lp p pu))                                              technology in the developments given here. On the one hand,
+                       ‘ ‘                                                 the business of finding the substructure in which a key belongs,
+    del23 {s h } .p◦ (no3 lp p pq q qu) | ⊳ hi                             whether for insertion or deletion, is crying out for a generic con-
+        = r3t (delp (lp p pq) q qu)                                        struction of Gérard Huet’s ‘zippers’ [7]. Moreover, the treatment of
+                        ‘ ‘ ‘ ‘
+    del23 {s h } y◦ h lp p pu i          | ⊲ with owoto y p                ordered structures as variations on the theme of the binary search
+                         ‘ ‘
+    del23 {s h } y◦ (no2 lp p pu)        | ⊲ | le                          tree demands consideration in the framework of ‘ornaments’, as
+        = rd (d2t (del23 y◦ lp p pu))                                      studied by Pierre-Évariste Dagand and others [5]. Intuitively, it
+                               ‘ ‘
+    del23 {s h } y◦ (no2 lp p pu)        | ⊲ | ge                          seems likely that the IO universe corresponds closely to the orna-
+                             23 ◦
+        = rd (t2d (lp p del y pu))                                         ments on node-labelled binary trees which add only finitely many
+                      ‘ ‘                                                  bits (because IO has ‘+ rather than a general Σ). Of course, one
+    del23 {s h } y◦ (no3 lp p pq q qu) | ⊲ | le
+        = r3t (d2t (del23 y◦ lp p pq) q qu)                                node of a µ≤ IO type corresponds to a region of nodes in a tree: per-
+                                ‘ ‘ ‘ ‘                                    haps ornaments, too, should be extended to allow the unrolling of
+    del23 {s h } y◦ (no3 lp p pq q qu) | ⊲ | ge with eq? y q
+        23         ◦                                                       recursive structure.
+    del {s h } .q (no3 lp p pq q qu) | ⊲ | ge | ⊳ hi                           Having developed a story about ordering invariants to the ex-
+        = t3r (lp p delp (pq q qu))                                        tent that our favourite sorting algorithms silently establish them, we
+                  ‘ ‘         ‘ ‘
+    ... | ⊲ with owoto y q                                                 still do not have total correctness intrinsically. What about permu-
+    ... | le = r3t (t2d (lp p del23 y◦ pq) q qu)                           tation? It has always maddened me that the insertion and flattening
+                             ‘ ‘           ‘ ‘
+    ... | ge = t3r (lp p t2d (pq q del23 y◦ qu))                           operations manifestly construct their output by rearranging their in-
+                         ‘ ‘       ‘ ‘
+                                                                           put: the proof that sorting permutes should thus be by inspection.
+    At no point did we need to construct trees with the invariant
+                                                                           Experiments suggest that many sorting algorithms can be expressed
+broken. Rather, we chose types which expressed with precision
+                                                                           in a domain specific language whose type system is linear for keys.
+the range of possible imbalances arising locally from a deletion.
+                                                                           We should be able to establish a general purpose permutation in-
+It is exactly this precision which allowed us to build and justify
+                                                                           variant for this language, once and for all, by a logical relations
+the rebalancing reconstruction operators we reused so effectively
+                                                                           argument. We are used to making sense of programs, but it is we
+to avoid an explosion of cases.
+                                                                           who make the sense, not the programs. It is time we made programs
+                                                                           make their own sense.
+18. Discussion
+                                                                           Acknowledgements. I should like to thank my father for filling
+We have seen intrinsic dependently typed programming at work.              my childhood with the joy of precision in programming. His sad
+Internalizing ordering and balancing invariants to our datatypes,          and sudden death somewhat disrupted my writing schedule, so
+we discovered not an explosion of proof obligations, but rather            I am grateful to Manuel Chakravarty and Lisa Tolles for their
+that unremarkable programs check at richer types because they              forbearance and support. Thanks are due also to Amanda Clare and
+accountably do the testing which justifies their choices.                  colleagues for arranging emergency electricity by the sea.
+    Of course, to make the programs fit neatly into the types, we
+must take care of how we craft the latter. I will not pretend for one
+moment that the good definition is the first to occur to me, and it is
+                                                                           References
+certainly the case that one is not automatically talented at designing      [1] William Aitken and John Reppy. Abstract value constructors. Techni-
+dependent types, even when one is an experienced programmer                     cal Report TR 92-1290, Cornell University, 1992.
+in Haskell or ML. There is a new skill to learn. Hopefully, by              [2] Robert Atkey, Patricia Johann, and Neil Ghani. Refining inductive
+taking the time to explore the design space for ordering invariants,            types. Logical Methods in Computer Science, 8(2), 2012.
+I have exposed some transferable lessons. In particular, we must            [3] Jean-Philippe Bernardy and Guilhem Moulin. Type-theory in color. In
+overcome our type inference training and learn to see types as                  Greg Morrisett and Tarmo Uustalu, editors, ICFP, pages 61–72. ACM,
+pushing requirements inwards, as well as pulling guarantees out.                2013. ISBN 978-1-4503-2326-0.
+    It is positive progress that work is shifting from the program          [4] Rod Burstall. Proving properties of programs by structural induction.
+definitions to the type definitions, cashing out in our tools as con-           Computer Journal, 12(1):41–48, 1969.
+siderable mechanical assistance in program construction. A precise          [5] Pierre-Évariste Dagand and Conor McBride. Transporting functions
+type structures its space of possible programs so tightly that an in-           across ornaments. In Peter Thiemann and Robby Bruce Findler,
+eractive editor can often offer us a small choice of plausible al-              editors, ICFP, pages 103–114. ACM, 2012. ISBN 978-1-4503-1054-
+ternatives, usually including the thing we want. It is exhilarating             3.
+being drawn to one’s code by the strong currents of a good design.          [6] Dominique Devriese and Frank Piessens. On the bright side of type
+But that happens only in the last iteration: we are just as efficiently         classes: instance arguments in Agda. In Manuel M. T. Chakravarty,
+dashed against the rocks by a bad design, and the best tool to sup-             Zhenjiang Hu, and Olivier Danvy, editors, ICFP, pages 143–155.
+port recovery remains, literally, the drawing board. We should give             ACM, 2011. ISBN 978-1-4503-0865-6.
+more thought to machine-assisted exploration.                               [7] Gérard P. Huet. The zipper. J. Funct. Program., 7(5):549–554, 1997.
+    A real pleasure to me in doing this work was the realisation that       [8] Patrik Jansson and Johan Jeuring. PolyP - a polytypic programming
+I not only had ‘a good idea for ordered lists’ and ‘a good idea for             language. In Peter Lee, Fritz Henglein, and Neil D. Jones, editors,
+ordered trees’, but that they were the same idea, and moreover that             POPL, pages 470–482. ACM Press, 1997. ISBN 0-89791-853-3.
+I could implement the idea in a datatype-generic manner. The key            [9] Stefan Kahrs. Red-black trees with types. J. Funct. Program., 11(4):
+underpinning technology is first-class datatype description. By the             425–432, 2001.
+end of the paper, we had just one main datatype µ≤  IO , whose sole role   [10] Fredrik Lindblad and Marcin Benke. A Tool for Automated Theo-
+was to ‘tie the knot’ in a recursive node structure determined by a             rem Proving in Agda. In Jean-Christophe Filliâtre, Christine Paulin-
+computable code. The resulting raw data are strewn with artefacts               Mohring, and Benjamin Werner, editors, TYPES, volume 3839 of Lec-
+    ture Notes in Computer Science, pages 154–169. Springer, 2004. ISBN   [15] Matthew    Might.             The missing   method:   Deleting
+    3-540-31428-8.                                                             from Okasaki’s red-black trees.            Blog post, 2010.
+[11] Sam Lindley and Conor McBride. Hasochism: the pleasure and pain           http://matt.might.net/articles/red-black-delete/.
+     of dependently typed haskell programming. In Chung-chieh Shan,       [16] Robin Milner. A theory of type polymorphism in programming. J.
+     editor, Haskell, pages 81–92. ACM, 2013. ISBN 978-1-4503-2383-3.          Comput. Syst. Sci., 17(3):348–375, 1978.
+[12] Conor McBride.        A Case For Dependent                  Fami-    [17] David Turner. Elementary strong functional programming. 1987. URL
+     lies.   LFCS Theory Seminar, Edinburgh, 2000.                URL          http://sblp2004.ic.uff.br/papers/turner.pdf .
+     http://strictlypositive.org/a-case/.                                 [18] Philip Wadler. The concatenate vanishes. Technical report, 1987.
+[13] Conor McBride and James McKinna. The view from the left. J. Funct.   [19] Hongwei Xi. Dependently Typed Data Structures. In Proceedings
+     Program., 14(1):69–111, 2004.                                             of Workshop of Algorithmic Aspects of Advanced Programming Lan-
+[14] Conor McBride and Ross Paterson. Applicative programming with             guages (WAAAPL ’99), pages 17–32, Paris, September 1999.
+     effects. J. Funct. Program., 18(1):1–13, 2008.
+

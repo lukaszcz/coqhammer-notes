@@ -1,0 +1,363 @@
+                                                                                                Outline
+
+
+   Handcrafted Small Inversions Made Operational on
+                Operational Semantics                                                           1    Motivation
+
+                                                                                                2    Absurd Cases
+                          Jean-François Monin & Xiaomu Shi
+                               LIAMA Beijing, VERIMAG Grenoble                                  3    Relevant Cases
+
+                                                                                                4    Application
+
+
+
+
+JF. Monin, X. Shi (LIAMA, VERIMAG)    Handcrafted Small Inversions   July 26th, 2013   1 / 35   JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   2 / 35
+
+
+
+
+Inversion                                                                                       Simple example
+
+
+                                                                                                Inductive te : Type :=
+Forward reasoning step of choice                                                                  | te_const : nat -> te
+                                                                                                  | te_plus : te -> te -> te
+Given a goal containing an hypothesis H : P                                                       | te_div0 : te -> te.
+such that P is (co)inductively defined
+extract all useful information from H in the environment                                        Inductive val : Type :=
+                                                                                                  | nval : nat -> val
+                                                                                                  | bval : bool -> val.
+
+                                                                                                Inductive eval : te -> val -> Prop :=
+Special case of Case Analysis                                                                     | E_Const : forall n,
+                                                                                                      eval (te_const n) (nval n)
+But a subtle one : naïve use of case or destruct fails
+                                                                                                  | E_Plus : forall t1 t2 n1 n2,
+                                                                                                      eval t1 (nval n1) ->
+                                                                                                      eval t2 (nval n2) ->
+                                                                                                      eval (te_plus t1 t2) (nval (plus n1 n2)).
+
+JF. Monin, X. Shi (LIAMA, VERIMAG)    Handcrafted Small Inversions   July 26th, 2013   4 / 35   JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   5 / 35
+Coq built-in inversion (Cornes & Terrasse, 1995)                                               Coq built-in inversion (Cornes & Terrasse, 1995)
+
+Inductive eval : te -> val -> Prop :=                                                          Inductive eval : te -> val -> Prop :=
+  | E_Const : forall n,                                                                          | E_Const : forall n,
+      eval (te_const n) (nval n)                                                                     eval (te_const n) (nval n)
+  | E_Plus : forall t1 t2 n1 n2,                                                                 | E_Plus : forall t1 t2 n1 n2,
+      eval t1 (nval n1) ->                                                                           eval t1 (nval n1) ->
+      eval t2 (nval n2) ->                                                                           eval t2 (nval n2) ->
+      eval (te_plus t1 t2) (nval (plus n1 n2)).                                                      eval (te_plus t1 t2) (nval (plus n1 n2)).
+
+Consider the goal:                                                                             Consider the goal:
+
+e : eval (te_div0 (te_const 1)) v                                                              e : eval (te_plus (te_const 1) (te_const 2)) v
+============================                                                                   ============================
+3 = 5                                                                                          v = nval 3
+
+Using Coq built-in inversion:
+
+inversion e.
+
+JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   6 / 35   JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   7 / 35
+
+
+
+
+Coq built-in inversion (Cornes & Terrasse, 1995)
+
+
+
+e : eval (te_plus (te_const 1) (te_const 2)) v
+============================
+v = nval 3
+
+Using Coq built-in inversion:
+
+inversion e; subst.
+...
+H1 : eval (te_const 1) (nval n1)
+H3 : eval (te_const 2) (nval n2)
+============================
+nval (n1 + n2) = nval 3
+
+
+
+
+JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   8 / 35   JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   9 / 35
+Issue when using CompCert C semantics                                                           Summary on built-in inversion
+H:eval_expr (Genv.globalenv prog_adc) e m RV
+   (Ecall (Evalof (Evar copy_StatusRegister T14) T14)                                           Nice features
+      (Econs
+         (Eaddrof
+                                                                                                       Automatic
+            (Efield (Ederef (Evalof (Evar proc T3) T3) T6)                                             Works in most practical cases
+              adc_compcert.cpsr T7) T8)
+         (Econs                                                                                 Drawbacks
+            (Ecall (Evalof (Evar spsr T15) T15)
+                (Econs (Evalof (Evar proc T3) T3) Enil) T8)                                            Basic version: no control on generated names,
+                 Enil))                                                                                scripts are unmanageable during maintenance.
+      T12) t m’ a’                                                                                     Controlled version inversion...as... :
+============================                                                                           have to manually give a lot of names.
+   proc_state_related m’ e st’
+                                                                                                       The underlying proof term is complicated
+                                                                                                       → time consuming when designing the script.
+    inv H. inv H4. inv H9. inv H5. inv H4. inv H5.
+    inv H15. inv H4. inv H5. inv H14. inv H4. inv H3.                                                  Especially harmful with large inductive types, e.g. from Compcert
+    inv H15. inv H5. inv H4. inv H5. inv H21. inv H13.
+    ...
+JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   10 / 35   JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions    July 26th, 2013   11 / 35
+
+
+
+
+Absurd Cases (Small Inversions, 2010)                                                           Small Inversions, 2010
+
+
+e : eval (te_div0 (te_const 1)) v
+                                                                                                       Depends on
+============================
+                                                                                                              the hypothesis to be inverted (OK)
+3 = 5
+                                                                                                              the conclusion (questionable)
+                                                                                                              unconvenient for massive usage
+
+    pose (diag t :=
+                                                                                                       Issues when considering relevant cases
+    match t with
+                                                                                                              additional interactions
+      | te_div0 (te_const 1) => 3 = 5
+                                                                                                              not satisfactory for inversions leading to further interactions
+      | _ => True
+    end).
+    change (diag (te_div0 (te_const 1))).                                                              But the approach is very flexible
+    destruct e; simpl; exact I.
+
+
+
+JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   13 / 35   JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions    July 26th, 2013   14 / 35
+A more modular variant                                                                          The diagonalization function
+Definition inv_eval_1_div0 t v (e: eval t v) :=
+  let diag t :=                                                                                        yields the premises of focused constructor
+  match t with                                                                                         independent from specific conclusion
+    | te_div0 n => ∀ X: Prop, X                                                                        takes bindings into account
+    | _ => True
+  end                                                                                           For constructor E_Plus:
+  in match e in eval t v return diag t with
+                                                                                                diag t v := match t with
+       | E_Const n => I
+                                                                                                  | te_plus tc1 tc2 =>
+       | E_Plus _ _ n1 n2 H1 H2 => I
+                                                                                                      ∀ X: te -> Prop,
+  end.
+                                                                                                        (∀ n1 n2, eval tc1 (nval n1) ->
+                                                                                                                  eval tc2 (nval n2) ->
+e : eval (te_div0 (te_const 1)) v
+                                                                                                                  X (nval (plus n1 n2))) -> X v
+============================
+                                                                                                  | _ => True
+3 = 5
+                                                                                                end
+    apply (inv_eval_1_div0 e).
+JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   15 / 35   JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   17 / 35
+
+
+
+
+Inversion function for E_plus                                                                   More on inversion functions
+
+Definition inv_plus_1 {t} {v} (e: eval t v) :=
+  match e in (eval t v) return diag t v with
+    | E_Plus _ _ n1 n2 e1 e2 => (fun X k => k n1 n2 e1 e2)
+    | _ => I                                                                                    Variant are possible, e.g.
+  end.                                                                                          merging inversion functions dedicated to all constructors
+
+Usage:
+e : eval (te_plus (te_const 1) (te_const 2)) v                                                  Different variants are needed in different situations
+============================
+v = nval 3
+
+apply (inv_plus_1 e); intros n1 n2 e1 e2.
+                                                                                                See demo
+e1 : eval (te_const 1) (nval n1)
+e2 : eval (te_const 2) (nval n2)
+============================
+nval (n1 + n2) = nval 3
+JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   18 / 35   JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   19 / 35
+Handcrafted inversion may beat standard inversion                                                         SimSoC: a simulator of systems-on-chip
+                                                                                                                ARMv6
+                                                                                                               Reference                           pdftotext
+                                                                                                                Manual
+                                                                                                                                                  arm_v6.txt
+
+
+                                                                                                                                                patch & extract
+Inductive t : nat -> Set :=                                                                                                                                                                          massive tests
+                                                                                                                                                                                                        generator
+    | F1 : ∀ {n}, t (S n)                                                                                                           encoding     ASM syntax       pseudo−code                        for the decoder
+
+    | FS : ∀ {n}, t n -> t (S n).
+                                                                                                                                                merge & preprocess
+
+Inductive odd : ∀ n : nat, t n -> Prop :=                                                                       Coq Library             internal OCaml representation:                   C Library
+                                                                                                                                         ASTs + binary coding tables
+   | odd_1 : ∀ n, odd (S n) F1
+   | odd_SS : ∀ n i, odd n i -> odd _ (FS (FS i)).                                                                                                                 optimizations
+                                                                                                                                    Coq code
+                                                                                                                                    generator
+                                                                                                                                                                   code generator                         SimSoC
+                                                                                                                                                                                                            other
+                                                                                                                                                                                                         components
+                                                                                                                                specification    CORRECTNESS         simlight
+                                                                                                                                   (Coq)            PROOF           (Compcert−C)                          ISS ARM
+                                                                                                                                                                                                         MMU v6
+                                                                                                                                                                                integrated in          (C++/SystemC)
+
+JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions             July 26th, 2013   20 / 35   JF. Monin, X. Shi (LIAMA, VERIMAG)          Handcrafted Small Inversions                       July 26th, 2013   23 / 35
+
+
+
+
+Projection of ARMv6 processor state (excerpt)                                                             Main theorem for ADC (add with carry)
+
+                                         Slv6_MMU
+Slv6_Processor
+                                              begin
+     MMU_ptr                                  size                                                                 CompCert−C                   projection
+                          SPSR fiq
+       CPSR                                   end                   Armv6_state                                      concrete                                            Abstract state
+                          SPSR irq            mem
+      SPSRs               SPSR svc                                   Proc_state
+                                                                                                                       state
+                                                                                    SCC
+                                         Slv6_StatusRegister
+       CP15               SPSR abt                                    CPSR           reg
+                         SPSR und
+                                               N_flag
+                                                                                    mem                           ADC execution                                        ADC semantics
+     user_reg                                  Z_flag                  SPSR
+
+       fiq_reg                                 C_flag
+                                                                        reg                                        in Simlight                                    in the Coq model of ARM
+                            reg 1                                      exns
+                                                 ...
+       irq_reg              reg 2                                      mode
+                              ...               mode                                                               CompCert−C
+      svc_reg                                                                                                                                   projection
+                            reg 15           background                                                              concrete                                             Abstract state’
+      abt_reg
+                                                                                                                      state’
+      und_reg                          Slv6_SystemCoproc
+         PC                                ee_bit
+                                            u_bit
+        jump
+                                            v_bit
+JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions             July 26th, 2013   25 / 35   JF. Monin, X. Shi (LIAMA, VERIMAG)          Handcrafted Small Inversions                       July 26th, 2013   26 / 35
+Evaluation rule of a field in CompCert C semantics                                              Inversion function for eval_field
+
+                                                                                                Definition inv_field g e m ex t m’ ex’
+                                                                                                  (ee:eval_expr g e m LV ex t m’ ex’) :=
+                                                                                                  let diag e ex ex’ m m’ :=
+                                                                                                    match ex with
+                                                                                                      | Efield a b c =>
+Inductive eval_expr :
+                                                                                                         ∀ (X:expr->Prop),
+ env-> mem-> kind-> expr-> trace-> mem-> expr-> Prop:=
+                                                                                                         (∀ t a’, eval_expr g e m RV a t m’ a’ ->
+ ...
+                                                                                                                            X (Efield a’ b c)) -> X ex’
+ | eval_field : ∀ e m a t m’ a’ f ty,
+                                                                                                      | _ => True
+    eval_expr e m RV a t m’ a’ ->
+                                                                                                    end in
+    eval_expr e m LV (Efield a f ty) t m’ (Efield a’ f ty)
+                                                                                                    match ee in (eval_expr _ e m _ ex _ m’ ex’)
+                                                                                                              return diag e ex ex’ m m’ with
+                                                                                                      | eval_field _ _ _ t _ a’ _ _ H1 =>
+                                                                                                           fun X k => k t a’ H1
+                                                                                                      | _ => I
+                                                                                                    end.
+
+
+JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   27 / 35   JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   28 / 35
+
+
+
+
+High-level tactic for inductive type eval_expr                                                  High-level tactic for inductive type eval_expr
+
+
+                                                                                                Ltac inv_eval_expr m m’ :=
+inv_eval_expr: repeat the following steps                                                         ...
+       find the hypothesis we want to invert                                                      let t1_:=fresh "t" in
+                                                                                                  let v1_:=fresh "v" in
+       (by matching the targetted memory states);
+                                                                                                  let ev_ex1 := fresh "ev_ex" in
+       revert related hypotheses;                                                                 ...
+       call the right diagonal function;                                                          match goal with
+                                                                                                  ...
+       give meaningful names to derived variables and hypotheses                                  |[ee: eval_expr ?ge ?e m LV (Efield ?a ?f ?ty) ?t m’ ?a’
+       (predictable from inv_field, etc.);                                                            |- ?cl] =>
+       update all other related hypotheses;                                                           apply (inv_field ee);
+                                                                                                      clear ee; intros t1_ a1_ ev_ex1;
+       clean up useless variables and hypotheses;
+                                                                                                      intros;
+                                                                                                      inv_eval_expr m m’
+
+
+
+JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   29 / 35   JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   30 / 35
+Built-in inversion                                                                                            Handcrafted small inversion
+H:eval_expr (Genv.globalenv prog_adc) e m RV                                                                  H:eval_expr (Genv.globalenv prog_adc) e m RV
+   (Ecall (Evalof (Evar copy_StatusRegister T14) T14)                                                            (Ecall (Evalof (Evar copy_StatusRegister T14) T14)
+      (Econs                                                                                                        (Econs
+         (Eaddrof                                                                                                      (Eaddrof
+            (Efield (Ederef (Evalof (Evar proc T3) T3) T6)                                                                (Efield (Ederef (Evalof (Evar proc T3) T3) T6)
+              adc_compcert.cpsr T7) T8)                                                                                     adc_compcert.cpsr T7) T8)
+         (Econs                                                                                                        (Econs
+            (Ecall (Evalof (Evar spsr T15) T15)                                                                           (Ecall (Evalof (Evar spsr T15) T15)
+                (Econs (Evalof (Evar proc T3) T3) Enil) T8)                                                                   (Econs (Evalof (Evar proc T3) T3) Enil) T8)
+                 Enil))                                                                                                        Enil))
+      T12) t m’ a’                                                                                                  T12) t m’ a’
+============================                                                                                  ============================
+   proc_state_related m’ e st’                                                                                   proc_state_related m’ e st’
+
+    inv H. inv H4. inv H9. inv H5. inv H4. inv H5.                                                                inv_eval_expr m m’.
+    inv H15. inv H4. inv H5. inv H14. inv H4. inv H3.                                                             ...
+    inv H15. inv H5. inv H4. inv H5. inv H21. inv H13.
+    ...
+JF. Monin, X. Shi (LIAMA, VERIMAG)         Handcrafted Small Inversions           July 26th, 2013   31 / 35   JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   32 / 35
+
+
+
+
+Performance                                                                                                   Conclusion
+
+                                     Table: Time costs (in seconds)
+
+
+                  inversion             D. Inversion                 BasicElim   hc_inversion
+  Full ex.          1.628                   0.976                      1.428         0.312
+  Ecall             0.132                   0.076                      0.112         0.028                                                         Yes you can
+  Evalof            0.132                   0.072                      0.092         0.020
+  Evar              0.128                   0.064                      0.084         0.024
+  Eaddrof           0.140                   0.076                      0.104         0.020                                                   do inversions by yourself
+
+
+                        Table: Size of compilation results (in KBytes)
+
+
+                 inversion              D. Inversion               BasicElim     hc_inversion
+  Full ex.          191                      460                      171             37
+
+D. Inversion = Derived Inversion
+JF. Monin, X. Shi (LIAMA, VERIMAG)         Handcrafted Small Inversions           July 26th, 2013   33 / 35   JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   34 / 35
+                            Thanks!
+
+
+                        Questions?
+
+
+JF. Monin, X. Shi (LIAMA, VERIMAG)   Handcrafted Small Inversions   July 26th, 2013   35 / 35
+

@@ -1,0 +1,1070 @@
+                                                  Refinement Types For Haskell ∗
+
+            Niki Vazou                Eric L. Seidel                Ranjit Jhala                   Dimitrios Vytiniotis         Simon Peyton-Jones
+                                        UC San Diego                                                               Microsoft Research
+
+
+
+
+Abstract                                                                                      and SMT based validity checking, refinement types have auto-
+SMT-based checking of refinement types for call-by-value lan-                                 mated the verification of programs with recursive datatypes, higher-
+guages is a well-studied subject. Unfortunately, the classical trans-                         order functions, and polymorphism. Several groups have used re-
+lation of refinement types to verification conditions is unsound un-                          finements to statically verify properties ranging from simple array
+der lazy evaluation. When checking an expression, such systems                                safety [32, 43] to functional correctness of data structures [24], se-
+implicitly assume that all the free variables in the expression are                           curity protocols [5], and compiler correctness [37].
+bound to values. This property is trivially guaranteed by eager, but                              Given the remarkable effectiveness of the technique, we em-
+does not hold under lazy, evaluation. Thus, to be sound and precise,                          barked on the project of developing a refinement type based veri-
+a refinement type system for Haskell and the corresponding verifi-                            fier for Haskell. The previous systems were all developed for eager,
+cation conditions must take into account which subset of binders                              call-by-value languages, but we presumed that the order of evalua-
+actually reduces to values. We present a stratified type system that                          tion would surely prove irrelevant, and that the soundness guaran-
+labels binders as potentially diverging or not, and that (circularly)                         tees would translate to Haskell’s lazy, call-by-need regime.
+uses refinement types to verify the labeling. We have implemented                                 We were wrong. Our first contribution is to show that standard
+our system in L IQUID H ASKELL and present an experimental eval-                              refinement systems crucially rely on a property of eager languages:
+uation of our approach on more than 10,000 lines of widely used                               when analyzing any term, one can assume that all the free vari-
+Haskell libraries. We show that L IQUID H ASKELL is able to prove                             ables appearing in the term are bound to values. This property lets
+96% of all recursive functions terminating, while requiring a mod-                            us check each term in an environment where the free variables are
+est 1.7 lines of termination-annotations per 100 lines of code.                               logically constrained according to their refinements. Unfortunately,
+                                                                                              this property does not hold for lazy evaluation, where free variables
+                                                                                              can be lazily substituted with arbitrary (potentially diverging) ex-
+1.     Introduction                                                                           pressions, which breaks soundness (§2).
+Refinement types encode invariants by composing types with SMT-                                   The two natural paths towards soundness are blocked by chal-
+decidable refinement predicates [33, 43], generalizing Floyd-Hoare                            lenging problems. The first path is to conservatively ignore free
+Logic (e.g. EscJava [17]) for functional languages. For example                               variables except those that are guaranteed to be values e.g. by pat-
+                                                                                              tern matching, seq or strictness annotations. While sound, this
+     type Pos = {v:Int | v > 0}                                                               leads to a drastic loss of precision. The second path is to explicitly
+     type Nat = {v:Int | v >= 0}                                                              reason about divergence within the refinement logic. This would be
+                                                                                              sound and precise – however it is far from obvious to us how to
+are the basic type Int refined with logical predicates that state                             re-use and extend existing SMT machinery for this purpose. (§8)
+that “the values” v described by the type are respectively strictly                               Our second contribution is a novel approach that enables sound
+positive and non-negative. We encode pre- and post-conditions                                 and precise checking with existing SMT solvers, using a stratified
+(contracts) using refined function types like                                                 type system that labels binders as potentially diverging or not (§4).
+     div :: n:Nat -> d:Pos -> {v:Nat | v <= n}                                                While previous stratified systems [12] would suffice for soundness,
+                                                                                              we show how to recover precision by using refinement types to
+which states that the function div requires inputs that are respec-                           develop a notion of terminating fixpoint combinators that allows the
+tively non-negative and positive, and ensures that the output is less                         type system to automatically verify that a wide variety of recursive
+than the first input n. If a program containing div statically type-                          functions actually terminate (§5).
+checks, we can rest assured that executing the program will not                                   Our third contribution is an extensive empirical evaluation of
+lead to any unpleasant divide-by-zero errors. By combining types                              our approach on more than 10, 000 lines of widely used complex
+                                                                                              Haskell libraries. We have implemented our approach in L IQUID -
+∗ This work was supported by NSF grants CNS-0964702, CNS-1223850,                             H ASKELL, an SMT based verifier for Haskell. L IQUID H ASKELL is
+CCF-1218344, CCF-1018672, and a generous gift from Microsoft Re-                              able to prove 96% of all recursive functions terminating, requiring
+search.                                                                                       a modest 1.7 lines of termination annotations per 100 lines of code,
+                                                                                              thereby enabling the sound, precise, and automated verification of
+                                                                                              functional correctness properties of real-world Haskell code (§6).
+Permission to make digital or hard copies of all or part of this work for personal or
+classroom use is granted without fee provided that copies are not made or distributed
+for profit or commercial advantage and that copies bear this notice and the full citation     2.     Overview
+on the first page. Copyrights for components of this work owned by others than ACM
+must be honored. Abstracting with credit is permitted. To copy otherwise, or republish,
+                                                                                              We start with an overview of our contributions. After recapitulat-
+to post on servers or to redistribute to lists, requires prior specific permission and/or a   ing the basics of refinement types we illustrate why the classical
+fee. Request permissions from Permissions@acm.org.                                            approach based on verification conditions (VCs) is unsound due to
+                                                                                              lazy evaluation. Next, we step back to understand precisely how
+Copyright c ACM [to be supplied]. . . $15.00                                                  the VCs arise from refinement subtyping, and how subtyping is
+different under eager and lazy evaluation. In particular, we demon-
+strate that under lazy, but not eager, evaluation, the refinement type           Refinements                 r    ::=   . . . varies . . .
+system, and hence the VCs, must account for divergence. Conse-                   Basic Types                 b    ::=   {v:Int | r } | . . .
+quently, we develop a type system that accounts for divergence in
+a modular and syntactic fashion, and illustrate its use via several                      Types              τ     ::=   b | x :τ → τ
+small examples. Finally, we show how a refinement-based termi-                  Environment                 Γ     ::=   ∅ | x:τ, Γ
+nation analysis can be used to improve precision, yielding a highly
+effective SMT-based verifier for Haskell.                                       Subtyping                               Γ ` τ1  τ2
+
+2.1     Standard Refinement Types: From Subtyping to VC                         Abbreviations
+                                                                                                                  .
+First, let us see how standard refinement type systems [25, 32] will                                  x:{r }      =     x:{x:Int | r }
+                                                                                                                  .
+use the refinement type aliases Pos and Nat and the specification                                  {x | r }       =     {x:Int | r }
+for div from §1 to accept good and reject bad. We use the syntax                                                  .
+                                                                                                         {r }     =     {v:Int | r }
+of Figure 1, where r is a refinement expression, or just refinement                                               .
+for short. We will vary the expressiveness of the language of refine-           {x :{y:Int | ry } | rx }          =     {x :Int | rx ∧ ry [x /y]}
+ments in different parts of the paper.                                          Translation
+                                                                                                                  .
+       good     :: Nat -> Nat -> Int                                                    (|Γ ` b1  b2 |)          =     (|Γ|) ⇒ (|b1 |) ⇒ (|b2 |)
+       good x y = let z = y + 1 in x ‘div‘ z                                                                      .
+                                                                                         (|{x :Int | r }|)        =     r
+                                                                                                                  .
+       bad        :: Nat -> Nat -> Int                                                (|x :{v :Int | r }|)        =     “x is a value” ⇒ r [x /v ]
+       bad x y    = x ‘div‘ y                                                                                     .
+                                                                                      (|x :(y:τy → τ )|)          =     true
+                                                                                                                  .
+Refinement Subtyping To analyze the body of bad, the refinement                    (|x1 :τ1 , . . . , xn :τn |)   =     (|x1 :τ1 |) ∧ . . . ∧ (|xn :τn |)
+type system will check that the second parameter y has type Pos at
+the call to div; formally, that the actual parameter y is a subtype of                Figure 1. Notation: Types, Subtyping & VCs
+the type of div’s second input, via a subtyping query:
+      x:{x:Int | x ≥ 0},                                                  which reduces to the valid VC
+                         ` {y:Int | y ≥ 0}  {v:Int | v > 0}
+      y:{y:Int | y ≥ 0}
+                                                                                  (x ≥ 0) ∧ (y ≥ 0)∧
+We use the Abbreviations of Figure 1 to simplify the syntax of the                                      ⇒ (v = y + 1) ⇒ (v > 0)
+                                                                                  (z = y + 1)
+queries. So the above query simplifies to:
+           x:{x ≥ 0}, y:{y ≥ 0} ` {v ≥ 0}  {v > 0}                       2.2    Lazy Evaluation Makes VCs Unsound
+                                                                          To generate the classical VC, we ignored the “x is a value” guard
+Verification Conditions To discharge the above subtyping query,
+                                                                          that appears in the embedding of a binding (|x :τ |) (Figure 1).
+a refinement type system generates a verification condition (VC),
+                                                                          Under lazy evaluation, ignoring this “is a value” guard can lead
+a logical formula that stipulates that under the assumptions cor-
+                                                                          to unsoundness. Consider
+responding to the environment bindings, the refinement in the sub-
+type implies the refinement in the super-type. We use the translation           diverge   :: Int -> {v:Int | false}
+(| · |) shown in Figure 1 to reduce a subtyping query to a verification         diverge n = diverge n
+condition. The translation of a basic type into logic is the refine-
+ment of the type. The translation of an environment is the conjunc-       The output type captures the post-condition that the function re-
+tion of its bindings. Finally, the translation of a binding x :τ is the   turns an Int satisfying false. This counter-intuitive specifica-
+embedding of τ guarded by a predicate denoting that “x is a value”.       tion states, in essence, that the function does not terminate, i.e.
+For now, let us ignore this guard and see how the subtyping query         does not return any value. Any standard refinement type checker
+for bad reduces to the classical VC:                                      (or Floyd-Hoare verifier like Dafny1 ) will verify the given signa-
+                                                                          ture for diverge via the classical method of inductively assuming
+             (x ≥ 0) ∧ (y ≥ 0) ⇒ (v ≥ 0) ⇒ (v > 0)                        the signature holds for diverge and then guaranteeing the signa-
+                                                                          ture [19, 28]. Next, consider the call to div in explode:
+Refinement type systems are carefully engineered (§4) so that (un-
+like with full dependent types) the logic of refinements precludes              explode   :: Int -> Int
+arbitrary functions and only includes formulas from efficiently de-             explode x = let {n = diverge 1; y = 0}
+cidable logics, e.g. the quantifier-free logic of linear arithmetic and                     in x ‘div‘ y
+uninterpreted functions (QF-EUFLIA). Thus, VCs like the above
+                                                                          To analyze explode, the refinement type system will check that y
+can be efficiently validated by SMT solvers [13]. In this case, the
+                                                                          has type Pos at the call to div, i.e. will check that
+solver will reject the above VC as invalid meaning the implication,
+and hence, the relevant subtyping requirement does not hold. So the                  n:{false}, y:{y = 0} ` {v = 0}  {v > 0}                               (1)
+refinement type system will reject bad.                                   In the subtyping environment n is bound to the type corresponding
+    On the other hand, a refinement system accepts good. Here, +’s        to the output type of diverge, and y is bound to the singleton
+type exactly captures its behaviour into the logic:                       type stating y equals 0. In this environment, we must prove that
+(+) :: x:Int -> y:Int -> {v:Int | v = x + y}                              actual parameter’s type – i.e. that of y – is a subtype of Pos. The
+                                                                          subtyping, using the embedding of Figure 1 and ignoring the “is a
+Thus, we can conclude that the divisor z is a positive number. The        value” guard, reduces to the VC:
+subtyping query for the argument to div is
+                                                                                               false ∧ y = 0 ⇒ (v = 0) ⇒ (v > 0)                            (2)
+          x:{x ≥ 0}, y:{y ≥ 0},
+                                ` {v = y + 1}  {v > 0}
+          z:{z = y + 1}                                                   1 http://rise4fun.com/Dafny/wVGc
+The SMT solver proves this VC valid by using the contradiction in          Declarative Subtyping Equipped with interpretations for types and
+the antecedent, thereby unsoundly proving the call to div safe!            environments, we define the declarative subtyping -BASE (over
+Eager vs. Lazy Verification Conditions At this point, we pause             basic types b, shown in Figure 1) to be containment between the
+to emphasize that the problem lies in the fact that the classical          types’ denotations:
+technique for encoding subtyping (or generally, Hoare’s “rule of               ∀θ ∈ [[Γ]]. [[θ({v :B | r1 })]] ⊆ [[θ({v :B | r2 })]]
+consequence” [19]) with VCs is unsound under lazy evaluation.                                                                           -BASE
+                                                                                       Γ ` {v :B | r1 }  {v :B | r2 }
+To see this, observe that the VC (2) is perfectly sound under eager
+(strict, call-by-value) evaluation. In the eager setting, the program is   Let us revisit the explode example from §2.2; recall that the func-
+safe in that div is never called with the divisor 0, as it is not called   tion is safe under eager evaluation but unsafe under lazy evaluation.
+at all! The inconsistent antecedent in the VC logically encodes the        Let us see how the declarative subtyping allows us to reject in the
+fact that, under eager evaluation, the call to div is dead code. Of        one case and accept in the other.
+course, this conclusion is spurious under Haskell’s lazy semantics.        Declarative Subtyping with Lazy Evaluation Let us revisit the
+As n is not required, the program will dive headlong into evaluating       query (1) to see whether it holds under the declarative subtyping
+the div and hence crash, rendering the VC meaningless.                     rule -BASE. The denotation containment
+The Problem is Laziness Readers familar with fully dependently               ∀θ ∈[[n:{false}, y:{y = 0}]].[[θ {v = 0}]] ⊆ [[θ {v > 0}]] (3)
+typed languages like Cayenne [2], Agda [29], Coq [6], or Idris [8],
+may be tempted to attribute the unsoundness to the presence of ar-         does not hold. To see why, consider a θ that maps n to any diverging
+bitrary recursion and hence non-termination (e.g. diverge). While          expression of type Int and y to the value 0. Then, 0 ∈ [[θ {v = 0}]]
+it is possible to define a sound semantics for dependent types that        but 0 6∈ [[θ {v > 0}]], thereby showing that the denotation contain-
+mention potentially non-terminating expressions [25], it is not clear      ment does not hold.
+how to reconcile such semantics with decidable type checking.              Declarative Subtyping with Eager Evaluation Since denotational
+     Refinement type systems avoid this situation by carefully re-         containment (3) does not hold, λH cannot verify explode under
+stricting types so that they do not contain arbitrary terms (even          eager evaluation. However, Belo et al. [4] note that under eager
+through substitution), but rather only terms from restricted logics        (call-by-value) evaluation, each binder in the environment is only
+that preclude arbitrary user-defined functions [15, 37, 43]. Very          added after the previous binders have been reduced to values.
+much like previous work, we enforce the same restriction with a            Hence, under eager evaluation we can restrict the range of the
+well-formedness condition on refinements (WF-BASE -D in Fig. 6).           closing substitutions to values (as opposed to expressions). Let us
+     However, we show that this restriction is plainly not sufficient      reconsider (3) in this new light: there is no value that we can map
+for soundness when laziness is combined with non-termination, as           n to, so the set of denotations of the environment is empty. Hence,
+binders can be bound to diverging expressions. Unsurprisingly, in a        the containment (3) vacuously holds under eager evaluation, which
+strongly normalizing language the question of lazy or strict seman-        proves the program safe. Belo’s observation is implicitly used by
+tics is irrelevant for soundness, and hence an “easy” way to solve         refinement types for eager languages to prove that the standard (i.e.
+the problem would be to completely eliminate non-termination and           under call-by-value) reduction from subtyping to VC is sound.
+rely on the soundness of previous refinement or dependent type sys-        Algorithmic Subtyping via Verification Conditions The above
+tems! Instead, we show here how to recover soundness for a lazy            subtyping (-BASE) rule allows us to prove preservation and
+language without imposing such a drastic requirement.                      progress [25] but quantifies over evaluation of arbitrary expres-
+                                                                           sions, and so is undecidable. To make checking algorithmic we
+2.3   Semantics, Subtyping & Verification Conditions                       approximate the denotational containment using verification con-
+To understand the problem, let us take a step back to get a clear          ditions (VCs), formulas drawn from a decidable logic, that are valid
+view of the relationship between the operational semantics, sub-           only if the undecidable containment holds. As we have seen, the
+typing, and verification conditions. We use the formulation of             classical VC is sound only under eager evaluation. Next, let us use
+evaluation-order independent refinement subtyping developed for            the distinctions between lazy and eager declarative subtyping, to
+λH [25] in which refinements r are arbitrary expressions e from            obtain both sound and decidable VCs for the lazy setting.
+the source language. We define a denotation for types and use it to        Step 1: Restricting Refinements To Decidable Logics Given that in
+define subtyping declaratively.                                            λH refinements can be arbitrary expressions, the first step towards
+Denotations of Types and Environments Recall the type Pos de-              obtaining a VC, regardless of evaluation order, is to restrict the
+fined as {v:Int | 0 < v}. Intuitively, Pos denotes the set of Int          refinements to a decidable logic. We choose the quantifier free
+expressions which evaluate to values greater than 0. We formalize          logic of equality, uninterpreted functions and linear arithmetic (QF-
+this intuition by defining the denotation of a type as:                    EUFLIA). We design our typing rules to ensure that for any valid
+                .                                                          derivation, all the refinements belong in this restricted language.
+[[{x :τ | r }]] = {e | ∅ ` e : τ, if e ,→∗ w then r [w /x ] ,→∗ true}      Step 2: Translating Containment into VCs Our goal is to encode
+That is, the type denotes the set of expressions e that have the           the denotation containment antecedent of -BASE
+corresponding base type τ which diverge or reduce to values that                     ∀θ ∈ [[Γ]]. [[θ({v :B | r1 })]] ⊆ [[θ({v :B | r2 })]]    (4)
+make the refinement reduce to true. The guard e ,→∗ w is
+crucially required to prove soundness in the presence of recursion.        as a logical formula, that is valid only when the above holds. Intu-
+Thus, quoting [25], “refinement types specify partial and not total        itively, we can think of the closing substitutions θ as corresponding
+correctness”.                                                              to assignments or interpretations (|θ|) of variables X of the VC.
+   An environment Γ is a sequence of type bindings, and a closing          We use the variable x to approximate denotational containment by
+substitution θ is a sequence of expression bindings:                       stating that if x belongs to the type {v :B | r1 } then x belongs to
+          .                         .                                      the type {v :B | r2 }:
+     Γ = x1 :τ1 , . . . xn :τn   θ = x1 7→ e1 , . . . , xn 7→ en
+                                                                             ∀X ∈ dom(Γ), x .(|Γ|) ⇒ (|x :{v :B | r1 }|) ⇒ (|x :{v :B | r2 }|)
+Thus, we define the denotation of Γ as the set of substitutions:
+                                                                           where (|Γ|) and (|x :τ |) are respectively the translation of the envi-
+                   .
+             [[Γ]] = {θ | ∀x :τ ∈ Γ.θ(x ) ∈ [[θ(τ )]]}                     ronment and bindings into logical formulas that are only satisfied
+by assignments (|θ|) as shown in Figure 1. Using the translation of         That is, if the binder may diverge, we simply omit any constraints
+bindings, and by renaming x to v , we rewrite the the condition as          for it in the VC, and otherwise the translation directly states (i.e.
+                                                                            without the value guard) that the refinement holds. Returning to
+        ∀X ∈ dom(Γ), v .(|Γ|)        ⇒ (“v is a value” ⇒ r1 )
+                                                                            explode, the subtyping query (1) yields the invalid VC
+                                     ⇒ (“v is a value” ⇒ r2 )
+                                                                                                 true ⇒ v = 0 ⇒ v > 0
+Type refinements are carefully chosen to belong to the decidable
+logical sublanguage QF-EUFLIA, thus we directly translate type              and so explode is soundly rejected under lazy evaluation.
+refinements into the logic. Thus, what is left is to translate into             As binders appear in refinements, and binders may refer to
+logic the environment and the “is a value” guards. We postpone              potentially infinite computations (e.g. [0..]), we must ensure that
+translation of the guards as we approximate the above formula by a          refinements are well defined (i.e. do not diverge). We achieve this
+stronger, i.e. sound with respect to 4, VC that just omits the guards:      via stratification itself, i.e. by ensuring that all refinements have
+                                                                            type Bool⇓ . By Corollary 1, this suffices to ensure that all the
+                 ∀X ∈ dom(Γ), v .(|Γ|) ⇒ r1 ⇒ r2                            refinements are indeed well-defined and converge.
+To translate environments, we conjoin their bindings’ translations:
+                                      .                                     2.5   Verification With Stratified Types
+         (|x1 :τ1 , . . . , xn :τn |) = (|x1 :τ1 |) ∧ . . . ∧ (|xn :τn |)
+                                                                            While it is reassuring that the lazy VC soundly rejects unsafe
+However, since types denote partial correctness, the translations           programs like explode, we now demonstrate by example that
+must also explicitly account for possible divergence:                       it usefully accepts safe programs. First, we show how the basic
+                                .                                           system – all terms have Div types – allows us to prove “partial
+           (|x :{v :Int | r }|) = “x is a value” ⇒ r [x /v ]
+                                                                            correctness” properties without requiring termination. Second, we
+That is, we cannot assume that each x satisfies its refinement r ; we       show how to extend the basic system by using Haskell’s pattern
+must guard that assumption with a predicate stating that x is bound         matching semantics to assign the pattern match scrutinees Wnf
+to a value (not a diverging term.)                                          types, thereby increasing the expressiveness of the verifier. Third,
+    The crucial question is: how can one discharge these guards to          we show how to further improve the precision and usability of the
+conclude that x indeed satisfies r ? One natural route is to enrich the     system by using a termination checker to assign various terms Fin
+refinement logic with a predicate that states that “x is a value”, and      types. Fourth, we close the loop, by illustrating how the termination
+then use the SMT solver to explicitly reason about this predicate           checker can itself be realized using refinement types. Finally, we
+and hence, divergence. Unfortunately, we show in §8, that such              use the termination checker to ensure that all refinements are well-
+predicates lead to three-valued logics, which fall outside the scope        defined (i.e. do converge.)
+of the efficiently decidable theories supported by current solvers.         Example: VCs and Partial Correctness The first example illus-
+Hence, this route is problematic if we want to use existing SMT             trates how, unlike Curry-Howard based systems, refinement types
+machinery to build automated verifiers for Haskell.                         do not require termination. That is, we retain the Floyd-Hoare
+                                                                            notion of “partial correctness”, and can verify programs where
+2.4   Our Answer: Implicit Reasoning About Divergence                       all terms have Div-types. Consider ex1 which uses the result of
+One way forward is to implicitly reason about divergence by elimi-          collatz as a divisor.
+nating the “x is a value” guards (i.e. value guards) from the VCs.            ex1   :: Int -> Int
+Implicit Reasoning: Eager Evaluation Under eager evaluation                   ex1 n = let x = collatz n in 10 ‘div‘ x
+the domain of the closing substitutions can be restricted to val-
+ues [4]. Thus, we can trivially eliminate the value guards, as they           collatz :: Int -> {v:Int | v = 1}
+                                                                              collatz n
+are guaranteed to hold by virtue of the evaluation order. Returning
+                                                                                | n == 1    = 1
+to explode, we see that after eliminating the value guards, we get              | even n    = collatz (n / 2)
+the VC (2) which is, therefore, sound under eager evaluation.                   | otherwise = collatz (3*n + 1)
+Implicit Reasoning: Lazy Evaluation However, with lazy evalua-
+                                                                            The jury is still out on whether the collatz function termi-
+tion, we cannot just eliminate the value guards, as the closing sub-
+                                                                            nates [1], but it is easy to verify that its output is a Div Int equal
+stitutions are not restricted to just values. Our solution is to take
+                                                                            to 1. At the call to div the parameter x has the output type of
+this reasoning out of the hands of the SMT logic and place it in
+                                                                            collatz, yielding the subtyping query:
+the hands of a stratified type system. We use a non-deterministic
+β-reduction (formally defined in §3) to label each type as: A Div-                      x:{v:Int | v = 1} ` {v = 1}  {v > 0}
+type, written τ , which are the default types given to binders that
+                                                                            where the sub-type is just the type of x. As Int is a Div type, the
+may diverge, or, a Wnf-type, written τ ↓ , which are given to binders       above reduces to the VC (true ⇒ v = 1 ⇒ v > 0) which the
+that are guaranteed to reduce, in a finite number of steps, to Haskell      SMT solver proves valid, thereby verifying ex1.
+values in Weak Head Normal Form (WHNF). Up to now we only
+discussed Int basic types, but our theory supports user-defined al-         Example: Improving Precision By Forcing Evaluation If all
+gebraic data types. An expression like 0 : repeat 0 is an infinite          binders in the environment have Div-types then, effectively, the
+Haskell value. As we shall discuss, such infinite values cannot be          verifier can make no assumptions about the context in which a term
+represented in the logic. To distinguish infinite from finite values,       evaluates, which leads to a drastic loss of precision. Consider:
+we use a Fin-type, written τ ⇓ , to label binders of expressions that         ex2 = let {x = 1; y = inc x} in 10 ‘div‘ y
+are guaranteed to reduce to finite values with no redexes. This strat-
+ification lets us generate VCs that are sound for lazy evaluation. Let        inc :: z:Int -> {v:Int | v > z }
+B be a basic labelled type. The key piece is the translation of envi-         inc = \z -> z + 1
+ronment bindings:
+                              (                                             The call to div in ex2 is obviously safe, but the system would
+                            .   true,       if B is a Div type              reject it, as the call yields the subtyping query:
+         (|x :{v :B | r }|) =
+                                r [x /v ] , otherwise                        x:{x:Int | x = 1}, y:{y:Int | y > x} ` {v > x}  {v > 0}
+Which, as x is a Div type, reduces to the invalid VC
+                                                                               Definition
+                     true ⇒ v > x ⇒ v > 0                                                      def    ::=    measure f :: τ
+We could solve the problem by forcing evaluation of x. In Haskell                                              eq1 . . . eqn
+the seq operator or a bang-pattern can be used to force evaluation.            Equation
+In our system the same effect is achieved by the case-of primitive:                              eq   ::=    f (D x) = r
+inside each case the matched binder is guaranteed to be a Haskell
+value in WHNF. This intuition is formalized by the typing rule (T-             Equation to Type
+C ASE -D), which checks each case after assuming the scrutinee and                                     .
+the match binder have Wnf types.                                                 (|f (D x) = r|)       =     D :: x:τ → {v:τ | f v = r}
+    If we force x’s evaluation, using the case primitive, the call to
+div yields the subtyping query:                                                               Figure 2. Syntax of Measures
+           x:{x:Int↓ | x = 1}
+                              ` {v > x}  {v > 0}                 (5)
+           y:{y:Int | y > x}                                             Example: Diverging Refinements In this final example we discuss
+As x is Wnf, we accept ex2 by proving the validity of the VC             why refinements should always converge and how we statically
+                                                                         ensure convergence. Consider the invalid specification
+                       x=1⇒v>x⇒v>0                                (6)
+                                                                           diverge 0 :: {v:Int | v = 12}
+Example: Improving Precision By Termination While forcing
+evaluation allows us to ensure that certain environment binders          that states that the value of a diverging integer is 12. The above
+have non-Div types, it requires program rewriting using case-            specification should be rejected, as the refinement v = 12 does not
+splitting or the seq operator which leads to non-idiomatic code.         evaluate to true (diverge 0 = 12 6,→∗ true), instead it diverges.
+    Instead, our next key optimization is based on the observation          We want to check the validity of the formula v = 12 under a
+that in practice, most terms don’t diverge. Thus, we can use a           model that maps v to the diverging integer diverge 0. Any system
+termination analysis to aggressively assign terminating expressions      that decides this formula to be true will be unsound, i.e. the VCs
+Fin types, which lets us strengthen the environment assumptions          will not soundly approximate subtyping. For similar reasons, the
+needed to prove the VCs. For example, in the ex2 example the             system should not decide that this formula is false. To reason about
+term 1 obviously terminates. Hence, we type x as Int⇓ , yielding         diverging refinements one needs three valued logic, where logical
+the subtyping query for div application:                                 formulas can be solved to true, false, or diverging. Since we want to
+                                                                         discharge VC using SMT solvers that currently do not support three
+           x:{x:Int⇓ | x = 1}                                            valued reasoning, we exclude diverging refinements from types. To
+                              ` {v > x}  {v > 0}                 (7)
+           y:{y:Int | y > x}                                             do so, we restrict = to finite integers
+As x is Fin, we accept ex2 by proving the validity of the VC                                  = :: Int⇓ → Int⇓ → Bool⇓
+                       x=1⇒v>x⇒v>0                                (8)
+                                                                         and we say that {v :B | r } is well-formed iff r has a Bool⇓ type
+Example: Verifying Termination With Refinements While it is              (Corollary 1). Thus the initial invalid specification will be rejected
+straightforward to conclude that the term 1 does not diverge, how        as non well-formed.
+do we do so in general? For example:
+                                                                         2.6   Measures: From Integers to Data Types
+  ex4 = let {x = f 9; y = inc x} in 10 ‘div‘ y
+                                                                         So far, all our examples have used only integer and boolean expres-
+  f   :: Nat -> {v:Int | v = 1}                                          sions in refinements. To describe properties of algebraic data types,
+  f n = if n == 0 then 1 else f (n-1)                                    we use measures, introduced in prior work on Liquid Types [24].
+                                                                         Measures are inductively defined functions that can be used in re-
+We check the call to div via subtyping query (7) and VC (8), which
+                                                                         finements, and provide an efficient way to axiomatize properties of
+requires us to prove that f terminates on all Nat⇓ inputs.
+                                                                         data types. For example, emp determines whether a list is empty:
+    We solve this problem by showing how refinement types may
+themselves be used to prove termination, by following the classical        measure emp :: [Int] -> Bool
+recipe of proving termination via decreasing metrics [38] as em-             emp []     = true
+bodied in sized types [20, 42]. The key idea is to show that each            emp (x:xs) = false
+recursive call is made with arguments of a strictly smaller size,        The syntax for measures deliberately looks like Haskell, but it is
+where the size is itself a well founded metric, e.g. a natural number.   far more restricted, and should really be considered as a separate
+    We formalize this intuition by type checking recursive proce-        language. A measure has exactly one argument, and is defined by
+dures in a termination-weakened environment where the procedure          a list of equations, each of which has a simple pattern on the left
+itself may only be called with arguments that are strictly smaller       hand side (see Figure 2). The right-hand side of the equation is a
+than the current parameter (using terminating fixpoints of §4.2.)        refinement expression r. Measure definitions are typechecked in
+For example, to prove f terminates, we check its body in an envi-        the usual way; we omit the typing rules which are standard. (Our
+ronment                                                                  metatheory does not support type polymorphism, so in this paper
+         n : Nat⇓      f : {n0 :Nat⇓ | n0 < n} → {v = 1}                 we simply reason about lists of integers; however, our implementa-
+                                                                         tion supports polymorphism.)
+where we have weakened the type of f to stipulate that it only be
+(recursively) called with Nat values n0 that are strictly less than      Denotational semantics The denotational semantics of types in
+the (current) parameter n. The argument of f exactly captures these      λH in §2.3 is readily extended to support measures. In λH a re-
+constraints, as using the Abbreviations of Figure 1 the argument of      finement r is an arbitrary expression, and calls to a measure are
+f is expanded to {n0 :Int⇓ | n0 < n ∧ n0 >= 0}. The body type-           evaluated in the usual way by pattern matching. For example, with
+checks as the recursive call generates the valid VC                      the above definition of emp it is straightforward to show that
+        0 ≤ n ∧ ¬(0 = n) ⇒ v = n − 1 ⇒ (0 ≤ v < n)                                          [1, 2, 3] :: {v:[Int] | not (emp v)}           (9)
+as the refinement not (emp ([1, 2, 3])) evaluates to true.
+Measures as Axioms How can we reason about invocations of                      Constants         c   ::=   0, 1, −1, . . . | true, false
+measures in the decidable logic of VCs? A natural approach is                                          |   +, −, . . . | =, <, . . . | crash
+to treat a measure like emp as an uninterpreted function, and add                    Values     w    ::=   c | λx.e | D e
+logical axioms that capture its behaviour. This looks easy: each             Expressions         e   ::=   w | x | e e | let x = e in e
+equation of the measure definition corresponds to an axiom, thus:                                      |   case x = e of {D x → e}
+                                 emp [] = true                               Refinements         r   ::=   e
+                   ∀x, xs. emp (x : xs) = false                               Basic Types       B    ::=   Int | Bool | T
+Under these axioms the judgement 9 is indeed valid.                                   Types      τ   ::=   {v:B | r} | x:τ → τ
+Measures as Refinements in Types of Data Constructors Axiom-
+atizing measures is precise; that is, the axioms exactly capture the
+meaning of measures. Alas, axioms render SMT solvers inefficient,               Contexts        C    ::=   • | Ce | cC | DeCe
+and render the VC mechanism unpredictable, as one must rely on                                         |   case x = C of {D y → e}
+various brittle syntactic matching and instantiation heuristics [14].   Reduction                                                      e ,→ e
+    Instead, we use a different approach that is both precise and
+efficient. The key idea is this: instead of translating each measure
+equation into an axiom, we translate each equation into a refined                                  C[e]           ,→    C[e0 ]    if e ,→ e0
+type for the corresponding data constructor [24]. This translation                                  cv            ,→    δ(c, v)
+is given in Figure 2. For example, the definition of the measure emp                          (λx.e) ex           ,→    e [ex /x]
+yields the following refined types for the list data constructors:                      let x = ex in e           ,→    e [ex /x]
+                                                                          case x = Dj e of {Di yi → ei }          ,→    ej [Dj e/x] [e/yj ]
+   []    ::   {v:[Int] | emp v = true}
+   :     ::   x:Int → xs:[Int] → {v:[Int] | emp v = false}
+                                                                                     Figure 3. λU : Syntax and Operational Semantics
+These types ensure that: (1) each time a list value is constructed,
+its type carries the appropriate emptiness information. Thus our
+system is able to statically decide that (9) is valid, and, (2) each         measure len :: [Int] -> Int
+time a list value is matched, the appropriate emptiness information            len ([])   = 0
+is used to improve precision of pattern matching, as we see next.              len (x:xs) = 1 + len xs
+Using Measures As an example, we use the measure emp to pro-            Using the translation of Figure 2, we extract the following types for
+vide an appropriate type for the head function:                         list’s data constructors.
+  head    :: {v:[Int] | not (emp v)} -> Int                               [] :: {v:[Int] | len v = 0}
+  head xs = case xs of                                                    : :: x:Int → xs:[Int] → {v:[Int] | len v = 1 + (len xs)}
+              (x:_) -> x
+              []    -> error "yikes"
+                                                                         The final types for list data constructors will be the conjunction of
+                                                                         the refinements from len and emp:
+  error       :: {v:String | false} -> a                                 []     ::    {v:[Int] | emp v = true ∧ len v = 0}
+  error       = undefined                                                :      ::    x:Int → xs:[Int] →
+head is safe as its input type stipulates that it will only be called                 {v:[Int] | emp v = false ∧ len v = 1 + (len xs)}
+with lists that are not [], and so error "..." is dead code. The
+call to error generates the subtyping query                             3.     Declarative Typing: λU
+     xs:{xs:[Int]↓ | ¬(emp xs)}                                         Next, we formalize our stratified refinement type system, in two
+                                    ` {true}  {false}                  steps. First, in this section, we present a core calculus λU , with a
+     b:{b:[Int]↓ | (emp xs) = true}
+                                                                        general β-reduction semantics. We describe the syntax, operational
+The match-binder b holds the result of the match [36]. In the           semantics, and sound but undecidable declarative typing rules for
+[] case, we assign it the refinement of the type of [] which            λU . Second, in §4, we describe QF-EUFLIA, a subset of λU that
+is (emp xs) = true. Since the call is done inside a case-of             forms a decidable logic of refinements, and use it to obtain λD with
+ expressions both xs and b are guaranteed to be in WHNF, thus           decidable SMT-based algorithmic typing.
+they have Wnf types.
+    The verifier accepts the program as the above subtyping reduces     3.1     Syntax
+to the valid VC
+                                                                        Figure 3 summarizes the syntax of λU , which is essentially the cal-
+        ¬(emp xs) ∧ ((emp xs) = true) ⇒ true ⇒ false                    culus λH [25] without the dynamic checking features (like casts),
+Consequently, our system can naturally support idiomatic Haskell,       but with the addition of data constructors. In λU , as in λH , refine-
+e.g. taking the head of an infinite list:                               ment expressions r are not drawn from a decidable logical sublan-
+                                                                        guage, but can be arbitrary expressions e (hence r ::= e in Fig-
+  ex x         = head (repeat x)                                        ure 3). This choice allows us to prove preservation and progress,
+                                                                        but renders typechecking undecidable.
+  repeat   :: Int -> {v:[Int] | not (emp v)}
+  repeat y = y : repeat y                                               Constants The primitive constants of λU include true, false, 0,
+                                                                        1, −1, etc., and arithmetic and logical operators like +, −, ≤,/, ∧,
+Multiple Measures If a type has multiple measures, we simply            ¬. In addition, we include a special untypable constant crash that
+refine each data constructor’s type with the conjunction of the         models “going wrong”. Primitive operations return a crash when
+refinements from each measure. For example, consider a measure          invoked with inputs outside their domain, e.g. when / is invoked
+that computes the length of a list:                                     with 0 as the divisor, or when assert is applied to false.
+Data Constructors We encode data constructors as special con-
+stants. Each data type has an arity Arity(T ) that represents the ex-            Well-Formedness                                                 Γ `U τ
+act number of data constructors that return a value of type T . For                                 Γ, v:B `U r : Bool
+example the data type [Int], which represents lists of integers, has                                                         WF-BASE
+                                                                                                     Γ `U {v:B | r}
+two data constructors: [] and :, i.e. has arity 2.
+Values & Expressions The values of λU include constants, λ-                                       Γ `U τ x  Γ, x:τx `U τ
+                                                                                                                                 WF-F UN
+abstractions λx.e, and fully applied data constructors D that wrap                                    Γ `U x:τx → τ
+expressions. The expressions of λU include values, as well as
+                                                                                 Subtyping                                              Γ `U τ 1  τ 2
+variables x, applications e e, and the case and let expressions.
+
+3.2   Operational Semantics                                                            ∀θ ∈ [[Γ]].[[θ({v:B | r1 })]] ⊆ [[θ({v:B | r2 })]]
+                                                                                                                                              -BASE
+Figure 3 summarizes the small step contextual β-reduction seman-                              Γ `U {v:B | r1 }  {v:B | r2 }
+tics for λU . Note that we allow for reductions under data construc-
+tors, and thus, values may be further reduced. We write e ,→j e0 if                          Γ `U τx0  τx  Γ, x:τx0 `U τ  τ 0
+                                                                                                                                        -F UN
+there exist e1 , . . . , ej such that e is e1 , e0 is ej and ∀i, j, 1 ≤ i < j,                  Γ `U x:τx → τ  x:τx0 → τ 0
+we have ei ,→ ei+1 . We write e ,→∗ e0 if there exists some (finite)
+                                                                                 Typing                                                       Γ `U e : τ
+j such that e ,→j e0 .
+Constants Application of a constant requires the argument be re-                          (x, τ ) ∈ Γ
+                                                                                                         T-VAR                                T-C ON
+duced to a value; in a single step the expression is reduced to the                       Γ `U x : τ                   Γ `U c : Ty(c)
+output of the primitive constant operation. For example, consider
+                                                                            .
+=, the primitive equality operator on integers. We have δ(=, n) =                         Γ `U e : τ 0   Γ `U τ 0  τ       Γ `U τ
+                                                                                                                                              T-S UB
+=n where δ(=n , m) equals true iff m is the same as n.                                                    Γ `U e : τ
+3.3   Types                                                                                      Γ, x:τx `U e : τ   Γ `U τ x
+                                                                                                                                     T-F UN
+λU types include basic types, which are refined with predicates,                                   Γ `U λx.e : (x:τx → τ )
+and dependent function types. Basic types B comprise integers,                              Γ `U e1 : (x:τx → τ )   Γ `U e 2 : τ x
+booleans, and a family of data-types T (representing lists, trees                                                                           T-A PP
+                                                                                                   Γ `U e1 e2 : τ [e2 /x]
+etc..) For example the data type [Int] represents lists of integers.
+We refine basic types with predicates (boolean valued expressions                       Γ `U ex : τx  Γ, x:τx `U e : τ   Γ `U τ
+e) to obtain basic refinement types {v:B | e}. Finally, we have                                                                                T-L ET
+                                                                                                Γ `U let x = ex in e : τ
+dependent function types x:τx → τ where the input x has the type
+τx and the output τ may refer to the input binder x.                                          Γ `U e : {v:T | r}          Γ `U τ
+Notation We write B to abbreviate {v:B | true}, and τx → τ to                                ∀i.Ty(Di ) = yj :τj → {v:T | ri }
+abbreviate x:τx → τ if x does not appear in τ . We use for unused                           Γ, yj :τj , x:{v:T | r ∧ ri } `U ei : τ
+                                                                                                                                            T-C ASE
+binders. We write {v:natl | r} to abbreviate {v:Intl | 0 ≤ v ∧ r}.                         Γ `U case x = e of {Di yj → ei } : τ
+Denotations Each type τ denotes a set of expressions [[τ ]], that are
+defined via the dynamic semantics [25]. Let bτ c be the type we                                    Figure 4. Type-checking for λU
+get if we erase all refinements from τ and e:bτ c be the standard
+typing relation for the typed lambda calculus. Then, we define the
+denotation of types as:                                                          By construction it is easy to prove that Lemma 1 holds for data
+               .                                                                 constructors. For example, emp [] goes to true.
+[[{x:B | r}]] = {e | e:B, if e ,→∗ w then r [w/x] ,→∗ true}
+               .                                                                 3.4   Type Checking
+ [[x:τx → τ ]] = {e | e:bτx → τ c, ∀ex ∈ [[τx ]]. e ex ∈ [[τ [ex /x]]]}
+                                                                                 Next, we present the type-checking judgments and rules of λU .
+Constants For each constant c we define its type Ty(c) such that
+                                                                                 Environments and Closing Substitutions A type environment Γ
+c ∈ [[Ty(c)]]. For example,
+                                                                                 is a sequence of type bindings x1 :τ1 , . . . , xn :τn . An environment
+                    .
+  Ty(3)             = {v:Int | v = 3}                                            denotes a set of closing substitutions θ which are sequences of
+                    .                                                            expression bindings: x1 7→ e1 , . . . , xn 7→ en such that:
+  Ty(+)             = x:Int → y:Int → {v:Int | v = x + y}
+                    .                                                                               .
+  Ty(/)             = Int → {v:Int | v > 0} → Int                                             [[Γ]] = {θ | ∀x:τ ∈ Γ.θ(x) ∈ [[θ(τ )]]}
+                    .
+  Ty(errorτ ) = {v:Int | false} → τ
+So, by definition we get the constant typing lemma                               Judgments We use environments to define three kinds of rules:
+                                                                                 Well-formedness, Subtyping, and Typing [5, 25]. A judgment Γ `U
+Lemma 1. [Constant Typing] Every constant c ∈ [[Ty(c)]].                         τ states that the refinement type τ is well-formed in the environ-
+                     .                                                           ment Γ. Intuitively, the type τ is well-formed if all the refinements
+    Thus, if Ty(c) = x:τx → τ , then for every value w ∈ [[τx ]],
+we require that δ(c, w) ∈ [[τ [w/x]]]. For every value w 6∈ [[τx ]], it          in τ are Bool-typed in Γ. A judgment Γ `U τ1  τ2 states that the
+suffices to define δ(c, w) as crash, a special untyped value.                    type τ1 is a subtype of τ2 in the environment Γ. Informally, τ1 is
+                                                                                 a subtype of τ2 if, when the free variables of τ1 and τ2 are bound
+Data Constructors The types of data constructor constants are                    to expressions described by Γ, the denotation of τ1 is contained in
+refined with predicates that track the semantics of the measures                 the denotation of τ2 . Subtyping of basic types reduces to denota-
+associated with the data type. For example, as discussed in §2.6 we              tional containment checking. That is, for any closing substitution θ
+use emp to refine the list data constructors’ types:                             in the denotation of Γ, for every expression e, if e ∈ [[θ(τ1 )]] then
+                  .                                                              e ∈ [[θ(τ2 )]]. A judgment Γ `U e : τ states that the expression e
+       Ty([]) = {v:[Int] | emp v}
+                  .                                                              has the type τ in the environment Γ. That is, when the free vari-
+       Ty(:)     = Int → [Int] → {v:[Int] | ¬(emp v)}
+                                                                        All rules as in Figure 4 except as follows:
+ Expressions, Values, Constants, Basic types: see Figure 3
+          Types         τ   ::=   {v:B | r } | {v:B l | r }             Well-Formedness                                              Γ `D τ
+                              |   x:τ → τ
+                                                                                         Γ, v:B `D p : Bool⇓
+         Labels         l   ::=   ↓|⇓                                                                                WF-BASE -D
+                                                                                            Γ `D {v:B | p}
+  Refinements           r   ::=   p
+      Predicates        p   ::=   p = p | p < p | p ∧ p | ¬p            Subtyping                                              Γ `D τ1  τ2
+                              |   n | x | f p | p⊕p
+                              |   true | false                                    (|Γ, v : B|) ⇒ (|p1 |) ⇒ (|p2 |) is valid
+                                                                                                                              -BASE -D
+      Measures      f, g, h                                                         Γ `D {v:B | p1 }  {v:B | p2 }
+      Operators       ⊕     ::=   + | − | ...                           Typing                                                    Γ `D e : τ
+        Integers        n   ::=   0 | 1 | −1 | . . .                              Γ `D e1 : (x:τx → τ )   Γ `D y : τx
+                                                                                                                               T-A PP-D
+        Domain          d   ::=   n | cw | D d | true | false                             Γ `D e1 y : τ [y/x]
+         Model          σ   ::=   x1 7→ d1 , . . . , xn 7→ dn
+                        ⊥
+                                                                                           l 6∈ {⇓, ↓} ⇒ τ is Div
+ Lifted Values      w       ::=   c | λx.e | D w⊥ | ⊥                              Γ `D e : {v:T l | r}           Γ `D τ
+                                                                                    ∀i.Ty(Di ) = yj τj → {v:T | ri }
+                     Figure 5. Syntax of λD                                       Γ, yj :τj , x:{v:T ↓ | r ∧ ri } `D ei : τ
+                                                                                                                               T-C ASE -D
+                                                                                 Γ `D case x = e of {Di yj → ei } : τ
+ables in e are bound to expressions described by Γ, the expression
+e will evaluate to a value described by τ .                                                Figure 6. Typechecking for λD
+Soundness Following λH [25], we use the (undecidable) -BASE
+to show that each step of evaluation preserves typing, and that if an   where function symbols correspond to measures (as described in
+expression is not a value, then it can be further evaluated:            §2.6), and boolean combinations of sub-predicates.
+ • Preservation: If ∅ `U e : τ and e ,→ e0 , then ∅ `U e0 : τ .         Well-Formedness For a predicate to be well-formed it should be
+ • Progress: If ∅ `U e : τ and e 6= w, then e ,→ e0 .                   boolean and arithmetic operators should be applied to integer terms,
+                                                                        measures should be applied to appropriate arguments (i.e. emp is
+We combine the above to prove that evaluation preserves typing,         applied to [Int]), and equality or inequality to basic (integer or
+and that a well typed term will not crash.                              boolean) terms. Furthermore, we require that refinements, and thus
+Theorem 1. [Soundness of λU ]                                           measures, always evaluate to a value. We capture these require-
+                                                                        ments by assigning appropriate types to operators and measure
+ • Type-Preservation: If ∅ `U e : τ , e ,→∗ w then ∅ `U w : τ .         functions, after which we require that each refinement r has type
+ • Crash-Freedom: If ∅ `U e : τ then e 6,→∗ crash.                      Bool⇓ (rule WF-BASE -D in Figure 6).
+    We prove the above following the overall recipe of [25]. Crash-     Assignments Figure 5 defines the elements d of the domain D of
+freedom follows from type-preservation and as crash has no type.        integers, booleans, and data constructors that wrap elements from
+The Substitution Lemma, in particular, follows from a connection        D. The domain D also contains a constant cw for each value w
+between the typing relation and type denotations:                       of λU that does not otherwise belong in D (e.g. functions or other
+                                                                        primitives). An assignment σ is a map from variables to D.
+Lemma 2. [Denotation Typing] If ∅ `U e : τ then e ∈ [[τ ]].
+                                                                        Satisfiability & Validity We interpret boolean predicates in the logic
+                                                                        over the domain D. We write σ |= p if σ is a model of p. We omit
+4.     Algorithmic Typing: λD                                           the formal definition for space. A predicate p is satisfiable if there
+While λU is sound, it cannot be implemented thanks to the undecid-      exists σ |= p. A predicate p is valid if for all assignments σ |= p.
+able denotational containment rule -BASE (Figure 4). Next, we          Connecting Evaluation and Logic To prove soundness, we need to
+go from λU to λD , a core calculus with sound, SMT-based algo-          formally connect the notion of logical models with the evaluation
+rithmic type-checking in four steps. First, we show how to restrict     of a refinement to true. We do this in several steps, briefly outlined
+the language of refinements to an SMT-decidable sub-language QF-        for brevity. First, we introduce a primitive bottom expression ⊥
+EUFLIA (§4.1). Second, we stratify the types to specify whether         that can have any Div type, but does not evaluate. Second, we
+their inhabitants may diverge, must reduce to values, or must re-       define lifted values w⊥ (Figure 5), which are values that contain ⊥.
+duce to finite values (§4.2). Third, we show how to enforce the         Third, we define lifted substitutions θ⊥ , which are mappings from
+stratification by encoding recursion using special fixpoint combi-      variables to lifted values. Finally, we show how to embed a lifted
+nator constants (§4.2). Finally, we show how to use QF-EUFLIA           substitution θ⊥ into a set of assignments (|θ⊥ |) where, intuitively
+and the stratification to approximate the undecidable -BASE with       speaking, each ⊥ is replaced by some arbitrarily chosen element of
+a decidable verification condition -BASE -D, thereby obtaining         D. Now, we can connect evaluation and logical satisfaction:
+the algorithmic system λD (§4.3).
+                                                                        Theorem 2. If ∅ `D θ⊥ (p) : Bool⇓ , then
+4.1    Refinement Logic: QF-EUFLIA
+                                                                                       θ⊥ (p) ,→∗ true iff ∀σ ∈ (|θ⊥ |).σ |= p
+Figure 5 summarizes the syntax of λD . Refinements r are now
+predicates p, drawn from QF-EUFLIA, the decidable logic of              Restricting Refinements to Predicates Our goal is to restrict
+equality, uninterpreted functions and linear arithmetic [27]. Pred-     -BASE so that only predicates from the decidable logic QF-
+icates p include linear arithmetic constraints, function application    EUFLIA (not arbitrary expressions) appear in implications (|Γ|) ⇒
+{v :b | p1 } ⇒ {v :b | p2 }. Towards this goal, as shown in Figures 5     type for +, addition of potentially diverging expressions is rejected.
+and 6, we restrict the syntax and well-formedness of types to con-        Thus, we could define an unrefined signature
+tain only predicates, and we convert the program to ANF after                                       .
+                                                                                          Ty(+) = x:Int → y:Int → Int
+which we can restrict the application rule T-A PP -D to applications
+to variables, which ensures that refinements remain within the logic      and allow the two types of + to co-exist (as an intersection type),
+after substitution [32]. Recall, that this is not enough to ensure that   where the type checker would choose the precise refined type if and
+refinements do converge, as under lazy evaluation, even binders           only if both of +’s arguments are finite.
+can refer to potentially divergent values.                                Diverging Fixpoints (fixτ ) Next, note that the only place where
+                                                                          divergence enters the picture is through the fixpoint combinators
+4.2   Stratified Types                                                                                                               .
+                                                                          used to encode recursion. For any function or basic type τ = τ1 →
+The typing rules for λD are given in Figure 6. Instead of explicitly      . . . → τn , we define the result to be the type τn .
+reasoning about divergence or strictness in the refinement logic,              For each τ whose result is a Div type, there is a diverging
+which leads to significant theoretical and practical problems, as         fixpoint combinator fixτ , such that
+discussed in §8, we choose to reason implicitly about divergence                                             .
+                                                                                              δ(fixτ , f ) = f (fixτ f )
+within the type system. Thus, the second critical step in our path to                                        .
+λD is the stratification of types into those inhabited by potentially                          Ty(fixτ ) = (τ → τ ) → τ
+diverging terms, terms that only reduce to values, and terms which        i.e., fixτ yields recursive functions of type τ . Of course, fixτ
+reduce to finite values. Furthermore, the stratification crucially        belongs in the denotation of its type [31] only if the result type is a
+allows us to prove Theorem 2, which requires that refinements             Div type (and not when the result is a Wnf or Fin type). Thus, we
+do not diverge (e.g. by computing the length of an infinite list)         restrict diverging fixpoints to functions with Div result types.
+by ensuring that inductively defined measures are only applied
+to finite values. Next, we describe how we stratify types with            Indexed Fixpoints (tfixn   τ ) For each type τ whose result is a Fin
+labels, and then type the various constants, in particular the fixpoint   type, we have a family of indexed fixpoints combinators tfixn    τ:
+combinators, to enforce stratification.                                                       n      .                 m
+                                                                                      δ(tfixτ , f ) = λm.f m (tfixτ f )
+Labels We specify stratification using two labels for types. The                                     .         ⇓
+                                                                                       Ty(tfixn  τ ) = (n:nat → τn → τ ) → τn
+label ↓ (resp. ⇓) is assigned to types given to expressions that                                     .
+reduce (using β-reduction as defined in Figure 3) to a value w (resp.                    where, τn = {v:nat⇓ | v < n} → τ
+finite value, i.e. an element of the inductively defined D). Formally,    τn is a weakened version of τ that can only be invoked on inputs
+                                 .
+  Wnf types [[{v :B ↓ | r}]] = [[{v :B | r}]] ∩ {e | e ,→∗ w} (10)        smaller than n. Thus, we enforce termination by requiring that
+                                 .                                        tfixn τ is only called with m that are strictly smaller than n. As
+   Fin types [[{v :B ⇓ | r}]] = [[{v :B | r}]] ∩ {e | e ,→∗ d} (11)       the indices are well-founded nats, evaluation will terminate.
+Unlabelled types are assigned to expressions that may diverge. Note       Terminating Fixpoints (tfixτ ) Finally, we use the indexed com-
+that for any B and refinement r we have                                   binators to define the terminating fixpoint combinator tfixτ as:
+                                                                                                 .
+          [[{v :B ⇓ | r}]] ⊆ [[{v :B ↓ | r}]] ⊆ [[{v :B | r}]]                    δ(tfixτ , f ) = λn.f n (tfixn  τ f)
+                                                                                                 .
+The first two sets are equal for Int and Bool, and unequal for                     Ty(tfixτ ) = (n:nat → τn → τ ) → nat⇓ → τ
+                                                                                                          ⇓
+
+(lazily) constructed data types T . We need not stratify function
+types (i.e. they are Div types) as binders with function types do         Thus, the top-level call to the recursive function requires a nat⇓
+not appear inside the VC, and are not applied to measures.                parameter n that acts as a starting index, after which, all “recursive”
+                                                                          calls are to combinators with smaller indices, ensuring termination.
+Enforcing Stratification We enforce stratification in two steps.
+First, the T-C ASE -D rule uses the operational semantics of case-        Example: Factorial Consider the factorial function:
+of to type-check each case in an environment where the scrutinee x
+                                                                                                                                             
+                                                                                  .                                     true → 1
+is assumed to have a Wnf type. All the other rules, not mentioned          fac = λn.λf.case = (n = 0) of
+                                                                                                                          → n × f (n − 1)
+in Figure 6, remain the same as in Figure 4. Second, we create                    .      ⇓
+stratified variants for the primitive constants and separate fixpoint     Let τ = nat . We prove termination by typing
+combinator constants for (arbitary, potentially non-terminating) re-
+                                                                             ∅ `D tfixτ fac : nat⇓ → τ
+cursion (fix) and bounded recursion (tfix).
+Stratified Primitives First, we restrict the primitive operators whose    To understand why, note that tfixn
+                                                                                                           τ is only called with arguments
+
+output types are refined with logical operators, so they are only         strictly smaller than n
+invoked on finite arguments (so that the corresponding refinements           tfixτ fac n ,→∗ fac n (tfixn
+                                                                                                        τ fac)
+are guaranteed to not diverge).
+                                                                                            ,→∗ n × (tfixn
+                                                                                                         τ fac (n − 1))
+             .
+    Ty(n) = {v :Int⇓ | v = n}                                                               ,→∗ n × (fac (n − 1) (tfixn−1 fac))
+                                                                                                                      τ
+             .
+   Ty(=) = x:B ⇓ → y:B ⇓ → {v :Bool⇓ | v ⇔ x = y}                                           ,→∗ n × n − 1 × (tfixn−1 fac (n − 2))
+                                                                                                                 τ
+             .
+   Ty(+) = x:Int⇓ → y:Int⇓ → {v :Int⇓ | v = x + y}                                          ,→∗ n × n − 1 × . . . × (tfix1τ fac 0)
+             .
+    Ty(∧) = x:Bool⇓ → y:Bool⇓ → {v :Bool⇓ | v ⇔ x ∧ y}                                      ,→∗ n × n − 1 × . . . × (fac 0 (tfix0τ fac))
+It is easy to prove that the above primitives respect their stratifica-                     ,→∗ n × n − 1 × . . . × 1
+tion labels, i.e. belong in the denotations of their types.
+    Note that the above types are restricted in that they can only be     Soundness of Stratification To formally prove that stratification is
+applied to finite arguments. In future work, we could address this        soundly enforced, it suffices to prove that the Denotation Lemma 2
+issue with unrefined versions of primitive types that soundly allow       holds for λD . This, in turn, boils down to proving that each (strati-
+operation on arbitrary arguments. For example, with the current           fied) constant belongs in its type’s denotation, i.e. each c ∈ [[Ty(c)]]
+or that the Lemma 1 holds for λD . The crucial part of the above           containment ∀θ ∈ [[Γ]].[[θ({v :B | p1 })]] ⊆ [[θ({v :B | p2 })]]. The
+is proving that the indexed and terminating fixpoints inhabit their        soundness of algorithmic typing follows from Theorems 4 and 1:
+types’ denotations.
+                                                                           Theorem 5. [Soundness of λD ]
+Theorem 3. [Fixpoint Typing]                                                • Approximation: If ∅ `D e : τ then ∅ `U e : τ .
+ • fixτ ∈ [[Ty(fixτ )]],                                                    • Crash-Freedom: If ∅ `D e : τ then e 6,→∗ crash.
+ • ∀n.tfixn               n
+           τ ∈ [[Ty(tfixτ )]],
+                                                                               To prove approximation we need to prove that Lemma 1 holds
+ • tfixτ ∈ [[Ty(tfixτ )]].
+                                                                           for each constant, and thus it holds for data constructors. In the
+    With the above we can prove soundness of Stratification as a           metatheory we assume a stronger notion of validity that respects the
+corollary Denotation Lemma 2, given the interpretations of the             measure axioms. However, since our implementation does not use
+stratified types.                                                          axioms and instead, without loss of soundness or precision, treats
+                                                                           measures as uninterpreted during SMT validity checking, we omit
+Corollary 1. [Soundness of Stratification]                                 further discussion of axioms for clarity.
+1. If ∅ `D e : τ ⇓ , then evaluation of e is finite.
+2. If ∅ `D e : τ ↓ , then e reduces to WHNF.                               5.     Implementation: L IQUID H ASKELL
+3. If ∅ `D e : {v :τ | p}, then p cannot diverge.                          We have implemented λD in L IQUID H ASKELL (§2). Next, we
+  Finally, as a direct implication the well-formedness rule WF-            describe the key steps in the transition from λD to Haskell.
+BASE -D we conclude 3, i.e. that refinements cannot diverge.
+                                                                           5.1     Termination
+4.3   Verification With Stratified Types                                   Haskell’s recursive functions of type nat⇓ → τ are represented,
+We can put the pieces together to obtain an algorithmic implication        in GHC’s Core [36] as let rec f = λn.e which is operationally
+rule -BASE -D instead of the undecidable -BASE (from Fig-                equivalent to let f = tfixτ (λn.λf.e). Given the type of tfixτ ,
+ure 4). Intuitively, each closing substitution θ will correspond to        checking that f has type nat⇓ → τ reduces to checking e in a
+a set of logical assignments (|θ|). Thus, we will translate Γ into log-    termination-weakened environment where
+ical formula (|Γ|) and denotation inclusion into logical implication                             f : {v:nat⇓ | v < n} → τ
+such that:
+                                                                           Thus, L IQUID H ASKELL proves termination just as λD does: by
+ • θ ∈ [[Γ]] iff all σ ∈ (|θ|) satisfy (|Γ|), and
+                                                                           checking the body in the above environment, where the recursive
+ • θ{v :B | p1 } ⊆ θ{v :B | p2 } iff all σ ∈ (|θ|) satisfy p1 ⇒ p2 .       binder is called with nat inputs that are strictly smaller than n.
+                                                                           Default Metric For example, L IQUID H ASKELL proves that
+Translating Refinements & Environments To translate environ-
+ments into logical formulas, recall that θ ∈ [[Γ]] iff for each x:τ ∈           fac n = if n == 0 then 1 else n * fac (n-1)
+Γ, we have θ(x) ∈ [[θ(τ )]]. Thus,
+                              .                                            has type nat⇓ → nat⇓ by typechecking the body of fac in a
+ (|x1 :τ1 , . . . , xn :τn |) = (|x1 :τ1 |) ∧ . . . ∧ (|xn :τn |)          termination-weakened environment fac : {v:nat⇓ | v < n} → nat⇓
+How should we translate a single binding? Since a binding denotes          The recursive call generates the subtyping query:
+                     .
+       [[{x:B | p}]] = {e | if e ,→∗ w then p [w/x] ,→∗ true}                    n:{0 ≤ n}, ¬(n = 0) `D {v = n − 1}  {0 ≤ v ∧ v < n}
+a direct translation would require a logical value predicate Val(x),       Which reduces to the valid VC
+which we could use to obtain the logical translation                                0 ≤ n ∧ ¬(n = 0) ⇒ (v = n − 1) ⇒ (0 ≤ v ∧ v < n)
+                       .
+         (|{x:B | p}|) = ¬Val(x) ∨ p                                       proving that fac terminates, in essence because the first parameter
+This translation poses several theoretical and practical problems          forms a well-founded decreasing metric.
+that preclude the use of existing SMT solvers (as detailed in §8).         Refinements Enable Termination Consider Euclid’s GCD:
+However, our stratification guarantees (cf. (10), (11)) that labeled
+                                                                                gcd :: a:Nat -> {v:Nat | v < a} -> Nat
+types reduces to values, and so we can simply conservatively trans-
+                                                                                gcd a 0 = a
+late the Div and labeled (Wnf, Fin) bindings as:                                gcd a b = gcd b (a ‘mod‘ b)
+                         .                             .
+         (|{x:B | p}|) = true         (|{x:B l | p}|) = p                  Here, the first parameter is decreasing, but this requires the fact that
+                                                                           the second parameter is smaller than the first and that mod returns
+Soundness We prove soundness by showing that the decidable
+                                                                           results smaller than its second parameter. Both facts are easily
+implication -BASE -D approximates the undecidable -BASE.
+                                                                           expressed as refinements, but elude non-extensible checkers [18].
+Theorem 4. If (|Γ|) ⇒ p1 ⇒ p2 is valid then                                Explicit Termination Metrics The indexed-fixpoint combinator
+                  Γ `U {v :B | p1 }  {v :B | p2 }                         technique is easily extended to cases where some parameter other
+                                  .                                        than the first is the well-founded metric. For example, consider:
+    To prove the above, let VC = (|Γ|) ⇒ p1 ⇒ p2 . We prove that
+if the VC is valid then Γ `U {v :b | p1 }  {v :b | p2 }. This fact             tfac     :: Nat -> n:Nat -> Nat / [n]
+relies crucially on a notion of tracking evaluation which allows us             tfac x n | n == 0    = x
+                                                                                         | otherwise = tfac (n*x) (n-1)
+to reduce a closing substitution θ to a lifted substitution θ⊥ , written
+θ ,→∗⊥ θ⊥ , after which we prove:                                          We specify that the last parameter is decreasing by specifying an
+                                ∗                                          explicit termination metric / [n] in the type signature. L IQUID -
+Lemma 3. [Lifting] θ(e) ,→          c iff ∃θ ,→∗⊥ θ⊥ s.t. θ⊥ (e) ,→∗ c.
+                                                                           H ASKELL desugars the termination metric into a new nat-valued
+    We combine the Lifting Lemma and the equivalence Theorem 2             ghost parameter d whose value is always equal to the termination
+to prove that the validity of the VC demonstrates the denotational         metric n:
+  tfac :: d:Nat -> Nat -> {n:Nat | d = n} -> Nat                         That is, by simply using (sz xs) as the decreasing metric.
+  tfac d x n | n == 0    = x
+                                                                         Generalized Metrics Over Datatypes Finally, in many functions
+             | otherwise = tfac (n-1) (n*x) (n-1)
+                                                                         there is no single argument whose (measure) provably decreases.
+Type checking, as before, checks the body in an environment where        For example, consider:
+the first argument of tfac is weakened, i.e., requires proving d
+                                                                           merge :: xs:_ -> ys:_ -> _ / [sz xs + sz ys]
+  > n-1. So, the system needs to know that the ghost argument d            merge (C x xs) (C y ys)
+represents the decreasing metric. We capture this information in the         | x < y     = x ‘C‘ (merge xs (y ‘C‘ ys))
+type signature of tfac where the last argument exactly specifies             | otherwise = y ‘C‘ (merge (x ‘C‘ xs) ys)
+that d is the termination metric n, i.e., d = n. Note that since the
+termination metric can depend on any argument, it is important to        from the homonymous sorting routine. Here, neither parameter
+refine the last argument, so that all arguments are in scope, with the   decreases, but the sum of their sizes does. As before L IQUID -
+fact that d is the termination metric.                                   H ASKELL desugars the decreasing expression into a ghost param-
+    To generalize, desugaring of termination metrics proceeds as         eter and thereby proves termination (assuming, of course, that the
+follows. Let f be a recursive function with parameters x, and            inputs were finite lists, i.e. L⇓ a.)
+termination metric µ(x). Then L IQUID H ASKELL will                      Automation: Default Size Measures Structural recursion on the
+ • add a nat-valued ghost first parameter d in the definition of f ,     first argument is a common pattern in Haskell code. L IQUID -
+                                                                         H ASKELL automates termination proofs for this common case,
+ • weaken the last argument of f with the refinement d = µ(x),           by allowing users to specify a size measure for each data type, (e.g.
+ • at each recursive call of f e, apply µ(e) as the first argument.      sz for L a). Now, if no termination metric is given, by default
+                                                                         L IQUID H ASKELL assumes that the first argument whose type has
+Explicit Termination Expressions Let us now apply the previous           an associated size measure decreases. Thus, in the above, we need
+technique in a function where none of the parameters themselves          not specify metrics for fac or gcd or map as the size measure is au-
+decrease across recursive calls, but there is some expression that       tomatically used to prove termination. This simple heuristic allows
+forms the decreasing metric. Consider range lo hi, which re-             us to automatically prove 67% of recursive functions terminating.
+turns the list of Ints from lo to hi: We generalize the explicit
+metric specification to expressions like hi-lo. L IQUID H ASKELL         5.2   Non-termination
+desugars the expression into a new nat-valued ghost parameter            By default, L IQUID H ASKELL checks that every function is ter-
+whose value is always equal to hi-lo, that is:                           minating. We show in §6 that this is in fact the overwhelmingly
+  range :: lo:Nat -> {hi:Nat | hi >= lo} -> [Nat]                        common case in practice. However, annotating a function as lazy
+         / [hi-lo]                                                       deactivates L IQUID H ASKELL’s termination check (and marks the
+  range lo hi                                                            result as a Div type). This allows us to check functions that are non-
+    | lo < hi = lo : range (lo + 1) hi                                   terminating, and allows L IQUID H ASKELL to prove safety prop-
+    | _       = []                                                       erties of programs that manipulate infinite data, such as streams,
+Here, neither parameter is decreasing (indeed, the first one is in-      which arise idiomatically with Haskell’s lazy semantics. For exam-
+creasing) but hi-lo decreases across each call. We generalize the        ple, consider the classic repeat function:
+explicit metric specification to expressions like hi-lo. L IQUID -         repeat x = x ‘C‘ repeat x
+H ASKELL desugars the expression into a new nat-valued ghost
+parameter whose value is always equal to hi-lo, that is:                 We cannot use the tfix combinators to represent this kind of recur-
+                                                                         sion, and hence, use the non-terminating fix combinator instead.
+  range lo hi = go (hi-lo) lo hi                                            Let us see how we can use refinements to statically distinguish
+    where
+      go :: d:Nat -> lo:Nat
+                                                                         between finite and infinite streams. The direct, global route of using
+          -> {hi:Nat | d = hi - lo} -> [Nat]                             a measure
+      go d lo hi                                                           measure inf    :: L a -> Prop
+       | lo < hi = l : go (hi-(lo+1)) (lo+1) hi                              inf (C x xs) = inf xs
+       | _        = []                                                       inf N        = false
+After which, it proves go terminating, by showing that the first         to describe infinite lists is unavailable as such a measure, and hence,
+argument d is a nat that decreases across each recursive call (as        the corresponding refinement would be non-terminating. Instead,
+in fac and tfac).                                                        we describe infinite lists in local fashion, by stating that each tail is
+Recursion over Data Types The above strategy generalizes easily          non-empty.
+to functions that recurse over (finite) data structures like arrays,     Step 1: Abstract Refinements We can parametrize a datatype with
+lists, and trees. In these cases, we simply use measures to project      abstract refinements that relate sub-parts of the structure [39]. For
+the structure onto nat, thereby reducing the verification to the         example, we parameterize the list type as:
+previously seen cases. For each user defined type, e.g.
+                                                                           data L a <p :: L a -> Prop>
+  data L [sz] a = N | C a (L a)                                              = N | C a {v: L<p> a | (p v)}
+we can define a measure                                                  which parameterizes the list with a refinement p which holds for
+  measure sz :: L a -> Nat                                               each tail of the list, i.e. holds for each of the second arguments to
+    sz (C x xs) = 1 + (sz xs)                                            the C constructor in each sub-list.
+    sz N        = 0
+                                                                         Step 2: Measuring Emptiness Now, we can write a measure that
+We prove that map terminates using the type:                             states when a list is empty
+  map :: (a -> b) -> xs:L a -> L b / [sz xs]                               measure emp :: L a -> Prop
+  map f (C x xs) = C (f x) (map f xs)                                        emp N        = true
+  map f N        = N                                                         emp (C x xs) = false
+As described in §4, L IQUID H ASKELL translates the abstract refine-        Module                         LOC       Fun     Rec     Div     Hint     Time
+ments and measures into refined types for N and C.                          GHC.List                        309       66      34       5        0       14
+                                                                            Data.List                       504       97      50       2        6       11
+Step 3: Specification & Verification Finally, we can use the abstract       Data.Map.Base                  1396      180      94       0       12      175
+refinements and measures to write a type alias describing a refined         Data.Set.Splay                  149       35      17       0        7       26
+version of L a representing infinite streams:                               Bytestring                     3505      569     154       8       73      285
+                                                                            Vector-Algorithms              1218       99      31       0       31       85
+     type Stream a =                                                        Text                           3128      493     124       5       44      481
+       {xs: L <{\v -> not(emp v)}> a | not(emp xs)}                         Total                         10209     1539     504      20      173     1080
+
+We can now type repeat as:                                                Table 1. A quantitative evaluation of our experiments. LOC is the number of non-
+                                                                          comment lines of source code as reported by sloccount. Fun is the total number of
+     lazy repeat :: a -> Stream a                                         functions in the library. Rec is the number of recursive functions. Div is the number
+     repeat x    = x ‘C‘ repeat x                                         of functions marked as potentially non-terminating. Hint is the number of termination
+                                                                          hints, in the form of termination expressions, given to L IQUID H ASKELL. Time is the
+The lazy keyword deactivates termination checking, and marks              time, in seconds, required to run L IQUID H ASKELL.
+the output as a Div type. Even more interestingly, we can prove
+safety properties of infinite lists, for example:
+                                                                          do most Haskell functions terminate?), precise enough to capture
+     take            :: Nat -> Stream a -> L a                            the termination reasons (i.e. is L IQUID H ASKELL able to prove that
+     take 0 _        = N                                                  most functions terminate?), usable without placing an unreason-
+     take n (C x xs) = x ‘C‘ take (n-1) xs                                ably high burden on the user in the form of explicit termination
+     take _ N        = error "never happens"                              annotations, and effective enough to enable the verification of func-
+L IQUID H ASKELL proves, similar to the head example from §2,             tional correctness properties. For brevity, we omit a description of
+that we never match a N when the input is a Stream.                       the properties other than termination, please see [40] for details.
+Finite vs. Infinite Lists Thus, the combination of refinements            Implementation L IQUID H ASKELL takes as input: (1) A Haskell
+and labels allows our stratified type system to specify and ver-          source file, (2) Refinement type specifications, including refined
+ify whether a list is finite or infinite. Note that: L⇓ a represents      datatype definitions, measures, predicate and type aliases, and func-
+finite lists i.e. those produced using the (inductive) terminating fix-   tion signatures, and (3) Predicate fragments called qualifiers which
+point combinators, L↓ a represents (potentially) infinite lists which     are used to infer refinement types using the abstract interpretation
+are guaranteed to reduce to values, i.e. non-diverging computations       framework of Liquid Typing [32]. The verifier returns as output,
+that yield finite or infinite lists, and L a represents computations      S AFE or U NSAFE, depending on whether the code meets the spec-
+that may diverge or produce a finite or infinite list.                    ifications or not, and, importantly for debugging the code (or spec-
+                                                                          ification!) the inferred types for all sub-expressions.
+5.3    User Specifications and Type Inference                             Benchmarks As benchmarks, we used the following libraries:
+In program verification it is common that the user provides func-         GHC.List and Data.List, which together implement many
+tional specification that the code should satisfy. In L IQUID H ASKELL    standard list operations, Data.Set.Splay, which implements
+these specifications can be provided as type signatures for let-          an splay functional set, Data.Map.Base, which implements a
+bound variables. Consider the typechecking rules of Figure 4 that         functional map, Vector-Algorithms, which includes a suite
+is used by λD .                                                           of “imperative” array-based sorting algorithms, Bytestring, a
+                                                                          library for manipulating byte arrays, and Text, a library for high-
+           Γ ` ex : τx    Γ, x:τx ` e : τ     Γ`τ                         performance Unicode text processing. These benchmarks represent
+                                                        T-L ET
+                   Γ ` let x = ex in e : τ                                a wide spectrum of idiomatic Haskell codes: the first three are
+Note that T-L ET guesses an appropriate type τx for ex and binds          widely used libraries based on recursive data structures, the fourth
+this type to x to typecheck e.                                            and fifth perform subtle, low-level arithmetic manipulation of array
+    L IQUID H ASKELL allows the user to specify the type τx for           indices and pointers, and the last is a rich, high-level library with
+top level bindings. For every binding let x = ex in . . . , if the        sophisticated application-specific invariants, well outside the scope
+user provides a type specification τx , L IQUID H ASKELL checks us-       of even Haskell’s expressive type system. Thus, this suite provides a
+ing the appropriate environment (1) that the specified type is well-      diverse and challenging test-bed for evaluating L IQUID H ASKELL.
+formed, and (2) that the expression ex typechecks under the spec-         Results Table 1 summarizes our experiments, which covered 39
+ification τx . For the other top level bindings, i.e. those without       modules totaling 10,209 non-comment lines of source code. The
+user-provided specifications, as well as all local bindings, L IQUID -    results were collected on a machine with an Intel Xeon X5600 and
+H ASKELL uses the Liquid Types [32] framework to infer refine-            32GB of RAM (no benchmark required more than 1GB). Timing
+ment types, thus greatly reducing the number of annotations re-           data was for runs that performed full verification of safety and
+quired from the user.                                                     functional correctness properties in addition to termination.
+                                                                           • Suitable: Our approach of eagerly proving termination is in
+6.     Evaluation
+                                                                              fact, highly suitable: of the 504 recursive functions, only 12
+Our goal is to build a practical and effective SMT & refinement               functions were actually non-terminating (i.e. non-inductive).
+type-based verifier for Haskell. We have shown that lazy evalua-              That is, 97.6% of recursive functions are inductively defined.
+tion requires the verifier to reason about divergence; we have pro-
+                                                                           • Precise: Our approach is extremely precise, as refinements pro-
+posed an approach for implicitly reasoning about divergence by ea-
+gerly proving termination, thereby optimizing the precision of the            vide auxiliary invariants and extensibility that is crucial for
+verifier. Next, we describe an experimental evaluation of our ap-             proving termination. We successfully prove that 96.0% of re-
+proach that uses L IQUID H ASKELL to prove termination and func-              cursive functions terminate.
+tional correctness properties of a suite of widely used Haskell li-        • Usable: Our approach is highly usable and only places a modest
+braries totaling more than 10KLOC. Our evaluation seeks to de-                annotation burden on the user. The default metric, namely the
+termine whether our approach is suitable for a lazy language (i.e.            first parameter with an associated size measure, suffices to
+     automatically prove 65.7% of recursive functions terminating.      use an external analysis like AProVE, we have found that encod-
+     Thus, only 34.3% require explicit termination metric, totaling     ing the termination proof via refinements provided advantages that
+     about 1.7 witnesses (about 1 line each) per 100 lines of code.     are crucial in large, real-world code bases. Specifically, refinements
+ • Effective: Our approach is extremely effective at improving the      let us (1) prove termination over a subset (not all) of inputs; many
+     precision of the overall verifier (by allowing the VC to use       functions (e.g. fac) terminate only on Nat inputs and not all Int
+     facts about binders that provably reduce to values.) Without       s, (2) encode pre-conditions, post-conditions, and auxiliary invari-
+     the termination optimization, i.e. by only using information for   ants that are essential for proving termination, (e.g. gcd), (3) eas-
+     matched-binders (thus in WHNF), L IQUID H ASKELL reports           ily specify non-standard decreasing metrics and prove termination,
+     1,395 unique functional correctness warnings – about 1 per 7       (e.g. range). In each case, the code could be (significantly) rewrit-
+     lines. With termination information, this number goes to zero.     ten to be amenable to AProVE but this defeats the purpose of an
+                                                                        automatic checker. Finally, none of the above analyses have been
+                                                                        empirically evaluated on large and complex real-world libraries.
+7.    Related Work                                                      Static Contract Checkers like ESCJava [17] are a classical way
+Next we situate our work with closely related lines of research.        of verifying correctness through assertions and pre- and post-
+Dependent Types are the basis of many verifiers, or more generally,     conditions. Side-effects like modifications of global variables are
+proof assistants. In this setting arbitrary terms may appear inside     a well known issue for static checkers for imperative languages;
+types, so to prevent logical inconsistencies, and enable the checking   the standard approach is to use an effect analysis to determine the
+of type equivalence, all terms must terminate. “Full” dependently       “modifies clause” i.e. the set of globals modified by a procedure.
+typed systems like Coq [6], Agda [29], and Idris [8] typically          Similarly, one can view our approach as implicitly computing the
+use structural checks where recursion is allowed on sub-terms of        non-termination effects. [44] describes a static contract checker for
+ADTs to ensure that all terms terminate. We differ in that, since the   Haskell that uses symbolic execution to unroll procedures upto
+refinement logic is restricted, we do not require that all functions    some fixed depth, yielding weaker “bounded” soundness guar-
+terminate, and hence, we can prove properties of possibly diverging     antees. Similarly, Zeno [35] is an automatic Haskell prover that
+functions like collatz as well as lazy functions like repeat.           combines unrolling with heuristics for rewriting and proof-search.
+Recent languages like Aura [21] and Zombie [10] allow general           Based on rewriting, it is sound but “Zeno might loop forever” when
+recursion, but constrain the logic to a terminating sublanguage, as     faced with non-termination. Finally, the Halo [41] contract checker
+we do, to avoid reasoning about divergence in the logic. In contrast    encodes Haskell programs into first-order logic by directly mod-
+to us, the above systems crucially assume call-by-value semantics       eling the code’s denotational semantics, again, requiring heuris-
+to ensure that binders are bound to values, i.e. cannot diverge.        tics for instantiating axioms describing functions’ behavior. Halo’s
+     Haskell itself can be used to fake “lightweight” dependent         translation of Haskell programs directly encodes constructors as
+types [11, 16, 30]. In this style, the invariants are expressed in a    uninterpreted functions, axiomatized to be injective (as the denota-
+restricted [22] total index language and relationships (e.g. x < y      tional semantics requires). This heavyweight encoding is more pre-
+and y < z) are combined (e.g. x < z) by explicitly constructing a       cise than predicate abstraction but leads to model-theoretic prob-
+term denoting the consequent from terms denoting the antecedents.       lems (outlined in the Halo paper) and affects the efficiency of the
+On the plus side this “constructive” approach ensures soundness.        encoding when scaling to larger programs (see also 8, paragraph
+It is impossible to witness inconsistencies, as doing so triggers       B) in the lack of specialized decisions procedures. Unlike any of
+diverging computations. However, it is not easy to use restricted in-   the above, our type-based approach does not rely on heuristics for
+dices with explicitly constructed relations to verify complex prop-     unrolling recursive procedures, or instantiating axioms. Instead we
+erties [26].                                                            are based on decidable SMT validity checking and abstract inter-
+                                                                        pretation [32] which makes the tool predictable and the overall
+Refinement Types are a form of dependent types where invariants         workflow scale to the verification of large, real-world code bases.
+are encoded via a combination of types and predicates from a re-
+stricted SMT-decidable logic [5, 15, 33, 43]. The restriction makes
+it safe to support arbitrary recursion, which has hitherto never been   8.   Conclusions & Future Work
+a problem for refinement types. However, we show that this is be-       Our goal is to use the recent advances in SMT solving to build
+cause all the above systems implicitly assume that all free variables   automated refinement type-based verifiers for Haskell. In this pa-
+are bound to values, which is only guaranteed under CBV and, as         per, we have made the following advances towards the goal. First,
+we have seen, leads to unsoundness under lazy evaluation.               we demonstrated how the classical technique for generating VCs
+Tracking Divergent Computations The notion of type stratification       from refinement subtyping queries is unsound under lazy evalu-
+to track potentially diverging computations dates to at least [12]      ation. Second, we have presented a solution that addresses the un-
+which uses τ̄ to encode diverging terms, and types fix as (τ̄ →         soundness by stratifying types into those that are inhabited by terms
+τ̄ ) → τ̄ ). More recently, [9] tracks diverging computations within    that may diverge, those that must reduce to Haskell values, and
+a partiality monad. Unlike the above, we use refinements to obtain      those that must reduce to finite values, and have shown how refine-
+terminating fixpoints (tfix), which let us prove the vast majority      ment types may themselves be used to soundly verify the stratifica-
+(of sub-expressions) in real world libraries as non-diverging, avoid-   tion. Third, we have developed an implementation of our technique
+ing the restructuring that would be required by the partiality monad.   in L IQUID H ASKELL and have evaluated the tool on a large corpus
+Termination Analyses Various authors have proposed techniques           comprising 10KLOC of widely used Haskell libraries. Our exper-
+to verify termination of recursive functions, either using the “size-   iments empirically demonstrate the practical effectiveness of our
+change principle” [23, 34], or by annotating types with size indices    approach: using refinement types, we were able to prove 96% of
+and verifying that the arguments of recursive calls have smaller in-    recursive functions as terminating, and to crucially use this infor-
+dices [3, 20]. Our use of refinements to encode terminating fix-        mation to prove a variety of functional correctness properties.
+points is most closely related to [42], but this work also crucially    Limitations While our approach is demonstrably effective in prac-
+assumes CBV semantics for soundness.                                    tice, it relies critically on proving termination, which, while inde-
+     AProVE [18] implements a powerful, fully-automatic termina-        pendently useful, is not wholly satisfying in theory, as adding di-
+tion analysis for Haskell based on term-rewriting. While we could       vergence shouldn’t break a safety proof. Our system can prove a
+program safe, but if the program is modified by making some func-         choose b x y = if b then x+1 else y+2
+tions non-deterministically diverge, then, since we rely on termina-
+tion, we may no longer be able to prove safety. Thus, in future work,    To reason about the output of choose we must type it as:
+it would be valuable to explore other ways to reconcile laziness and      choose :: Bool -> x:Int -> y:Int
+refinement typing. We outline some routes and the challenging ob-                -> {v|(v > x && Val x)||(v > y && Val y)}
+stacles along them.
+                                                                         Thus, the value predicates will pervasively clutter all signatures
+A. Convert Lazy To Eager Evaluation One alternative might be to          with strictness information, making the system unpleasant to use.
+translate the program from lazy to eager evaluation, for example, to
+replace every (thunk) e with an abstraction λ().e, and every use of      Divergence Requires 3-Valued Logic Finally, for either “fix”, the
+a lazy value x with an application x (). After this, we could simply     value predicate poses a model-theoretic problem: what is the mean-
+assume eager evaluation, and so the usual refinement type systems        ing of Val(x)? One sensible approach is to extend the universe with
+could be used to verify Haskell. Alas, no. While sound, this transla-    a family of distinct ⊥ constants, such that Val(⊥) is false. These
+tion doesn’t solve the problem of reasoning about divergence. A de-      constants lead inevitably into a three-valued logic (in order to give
+pendent function type x:Int → {v :Int | v > x } would be trans-          meaning to formulas like ⊥ = ⊥). Thus, even if we were to find
+formed to x:(() → Int) → {v :Int | v > x ()} The transformed             a way to reason with the value predicate via axioms or types, we
+type is problematic as it uses arbitrary function applications in the    would have to ensure that we properly handled the 3-valued logic
+refinement logic! The type is only sensible if x () provably reduces     within existing 2-valued SMT solvers.
+to a value, bringing us back to square one.                              Future Work Thus, in future work it would be worthwhile to ad-
+B. Explicit Reasoning about Divergence Another alternative is to         dress the above technical and usability problems to enable explicit
+enrich the refinement logic with a value predicate Val(x) that is        reasoning with the value predicate. This explicit system would
+true when “x is a value” and use the SMT solver to explicitly rea-       be more expressive than our stratified approach, e.g. would let
+son about divergence. (Note that Val(x) is equivalent to introducing     us check let x = collatz 10 in 12 ‘div‘ x+1 by encod-
+a ⊥ constant denoting divergence, and writing (x 6= ⊥).) Unfortu-        ing strictness inside the logic. Nevertheless, we suspect such a ver-
+nately, this Val(x) predicate takes the VCs outside the scope of the     ifier would use stratification to eliminate the value predicate in the
+standard efficiently decidable logics supported by SMT solvers. To       common case. At any rate, until these hurdles are crossed, we can
+see why, recall the subtyping query from good in §2. With explicit       take comfort in stratified refinement types and can just eagerly use
+value predicates, this subtyping reduces to the VC:                      termination to prove safety for lazy languages.
+
+       (Val(x) ⇒ x ≥ 0)                                                  Acknowledgements
+                        ⇒ (v = y + 1) ⇒ (v > 0)                  (12)
+       (Val(y) ⇒ y ≥ 0)                                                  We thank Kenneth Knowles, Kenneth L. McMillan, Andrey Ry-
+To prove the above valid, we require the knowledge that (v = y+1)        balchenko, Philip Wadler, and the reviewers for their excellent sug-
+implies that y is a value, i.e. that Val(y) holds. This fact, while      gestions and feedback about earlier versions of this paper.
+obvious to a human reader, is outside the decidable theories of
+linear arithmetic of the existing SMT solvers. Thus, existing solvers    References
+would be unable to prove (12) valid, causing us to reject good.
+                                                                          [1] Collatz Conjecture. http://en.wikipedia.org/wiki/
+Possible Fix: Explicit Reasoning With Axioms? One possible fix                Collatz_conjecture.
+for the above would be to specify a collection of axioms that             [2] L. Augustsson. Cayenne - a language with dependent types. In ICFP,
+characterize how the value predicate behaves with respect to the              1998.
+other theory operators. For example, we might specify axioms like:        [3] G. Barthe, M. J. Frade, E. Giménez, L. Pinto, and T. Uustalu. Type-
+      ∀x, y, z.(x = y + z) ⇒ (Val(x) ∧ Val(y) ∧ Val(z))                       based termination of recursive definitions. Mathematical Structures in
+                                                                              Computer Science, 2004.
+             ∀x, y.(x < y) ⇒ (Val(x) ∧ Val(y))
+                                                                          [4] J. F. Belo, M. Greenberg, A. Igarashi, and B. C. Pierce. Polymorphic
+etc.. However, this is a non-solution for several reasons. First, it          contracts. In ESOP, 2011.
+is not clear what a complete set of axioms is. Second, there is the       [5] J. Bengtson, K. Bhargavan, C. Fournet, A. D. Gordon, and S. Maffeis.
+well known loss of predictable checking that arises when using ax-            Refinement types for secure implementations. ACM TOPLAS, 2011.
+ioms, as one must rely on various brittle, syntactic matching and         [6] Y. Bertot and P. Castéran. Coq’Art: The Calculus of Inductive Con-
+instantiation heuristics [14]. It is unclear how well these heuristics        structions. Springer Verlag, 2004.
+will work with the sophisticated linear programming-based algo-           [7] A. Bradley and Z. Manna. The Calculus of Computation: Decision
+rithms used to decide arithmetic theories. Thus, proper support for           Procedures With Application To Verification. Springer-Verlag, 2007.
+value predicates could require significant changes to existing deci-      [8] E. Brady. Idris: general purpose programming with dependent types.
+sion procedures, making it impossible to use existing SMT solvers.            In PLPV, 2013.
+Possible Fix: Explicit Reasoning With Types? Another possible fix         [9] V. Capretta. General recursion via coinductive types. Logical Methods
+would be to encode the behavior of the value predicates within the            in Computer Science, 2005.
+refinement types for different operators, after which the predicate      [10] C. Casinghino, V. Sjöberg, and S. Weirich. Combining proofs and
+itself could be treated as an uninterpreted function in the refinement        programs in a dependently typed language. In POPL, 2014.
+logic [7]. For instance, we could type the primitives:                   [11] M. T. Chakravarty, G. Keller, and S. L. Peyton-Jones. Associated type
+ (+) :: x:Int -> y:Int                                                        synonyms. In ICFP, 2005.
+     -> {v | v = x + y && Val x && Val y}                                [12] R. L. Constable and S. F. Smith. Partial objects in constructive type
+ (<) :: x:Int -> y:Int                                                        theory. In LICS, 1987.
+     -> {v | v <=> x < y && Val x && Val y}                              [13] L. de Moura and N. Bjørner. Z3: An efficient SMT solver. 2008.
+While this approach requires no changes to the SMT machinery, it         [14] D. Detlefs, G. Nelson, and J. B. Saxe. Simplify: a theorem prover for
+makes specifications complex and verbose. We cannot just add the              program checking. J. ACM, 52(3):365–473, 2005.
+value predicates to the primitives’ specifications. Consider             [15] J. Dunfield. Refined typechecking with Stardust. In PLPV, 2007.
+[16] R. A. Eisenberg and S. Weirich. Dependently typed programming with
+     singletons. In Haskell Symposium, 2012.
+[17] C. Flanagan, K.R.M. Leino, M. Lillibridge, G. Nelson, J. B. Saxe, and
+     R. Stata. Extended static checking for Java. In PLDI, 2002.
+[18] J. Giesl, M. Raffelsieper, P. Schneider-Kamp, S. Swiderski, and
+     R. Thiemann. Automated termination proofs for Haskell by term
+     rewriting. TPLS, 2011.
+[19] C. A. R. Hoare. Procedures and parameters: An axiomatic approach.
+     In Symposium on Semantics of Algorithmic Languages. 1971.
+[20] J. Hughes, L. Pareto, and A. Sabry. Proving the correctness of reactive
+     systems using sized types. In POPL, 1996.
+[21] L. Jia, J. A. Vaughan, K. Mazurak, J. Zhao, L. Zarko, J. Schorr, and
+     S. Zdancewic. Aura: a programming language for authorization and
+     audit. In ICFP, 2008.
+[22] L. Jia, J. Zhao, V. Sjöberg, and S. Weirich. Dependent types and
+     program equivalence. In POPL, 2010.
+[23] N. D. Jones and N. Bohr. Termination analysis of the untyped lamba-
+     calculus. In RTA, 2004.
+[24] M. Kawaguchi, P. Rondon, and R. Jhala. Type-based data structure
+     verification. In PLDI, 2009.
+[25] K.W. Knowles and C. Flanagan. Hybrid type checking. ACM
+     TOPLAS, 2010.
+[26] S. Lindley and C. McBride. Hasochism: The pleasure and pain of de-
+     pendently typed haskell programming. In Haskell Symposium, 2013.
+[27] G. Nelson. Techniques for program verification. Technical Report
+     CSL81-10, Xerox Palo Alto Research Center, 1981.
+[28] T. Nipkow. Hoare logics for recursive procedures and unbounded
+     nondeterminism. In CSL, 2002.
+[29] U. Norell. Towards a practical programming language based on
+     dependent type theory. PhD thesis, Chalmers, 2007.
+[30] S. L. Peyton-Jones, D. Vytiniotis, S. Weirich, and G. Washburn. Sim-
+     ple unification-based type inference for GADTs. In ICFP, 2006.
+[31] S. R. Della Rocca and L. Paolini. The Parametric Lambda Calculus,
+     A Metamodel for Computation. 2004.
+[32] P. Rondon, M. Kawaguchi, and R. Jhala. Liquid Types. In PLDI,
+     2008.
+[33] J. Rushby, S. Owre, and N. Shankar. Subtypes for specifications:
+     Predicate subtyping in pvs. IEEE TSE, 1998.
+[34] D. Sereni and N.D. Jones. Termination analysis of higher-order func-
+     tional programs. In APLAS, 2005.
+[35] W. Sonnex, S. Drossopoulou, and S. Eisenbach. Zeno: An automated
+     prover for properties of recursive data structures. In TACAS, 2012.
+[36] M. Sulzmann, M. M. T. Chakravarty, S. L. Peyton-Jones, and K. Don-
+     nelly. System F with type equality coercions. In TLDI, 2007.
+[37] N. Swamy, J. Chen, C. Fournet, P-Y. Strub, K. Bhargavan, and J. Yang.
+     Secure distributed programming with value-dependent types. In ICFP,
+     2011.
+[38] A. M. Turing. On computable numbers, with an application to the
+     eintscheidungsproblem. In LMS, 1936.
+[39] N. Vazou, P. Rondon, and R. Jhala. Abstract refinement types. In
+     ESOP, 2013.
+[40] N. Vazou, E. L. Seidel, and R. Jhala. Liquidhaskell: Experience with
+     refinement types in the real world. In Haskell Symposium, 2014.
+[41] D. Vytiniotis, S.L. Peyton-Jones, K. Claessen, and D. Rosén. Halo:
+     haskell to logic through denotational semantics. In POPL, 2013.
+[42] H. Xi. Dependent types for program termination verification. In LICS,
+     2001.
+[43] H. Xi and F. Pfenning. Eliminating array bound checking through
+     dependent types. In PLDI, 1998.
+[44] D. N. Xu, S. L. Peyton-Jones, and K. Claessen. Static contract check-
+     ing for haskell. In POPL, 2009.
+

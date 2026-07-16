@@ -1,0 +1,1786 @@
+Logical Methods in Computer Science
+Vol. 7 (4:05) 2011, pp. 1–25
+www.lmcs-online.org
+
+Submitted
+Published
+
+Mar. 31, 2010
+Nov. 23, 2011
+
+PROOF-IRRELEVANT MODEL OF CC WITH PREDICATIVE
+INDUCTION AND JUDGMENTAL EQUALITY
+GYESIK LEE a AND BENJAMIN WERNER b
+a
+
+Hankyong National University, Anseong-si, Kyonggi-do, Korea
+e-mail address: gslee@hknu.ac.kr
+
+b
+
+INRIA Saclay and LIX, Ecole Polytechnique, 91128 Palaiseau Cedex, France
+e-mail address: Benjamin.Werner@inria.fr
+Abstract. We present a set-theoretic, proof-irrelevant model for Calculus of Constructions (CC) with predicative induction and judgmental equality in Zermelo-Fraenkel set
+theory with an axiom for countably many inaccessible cardinals. We use Aczel’s trace
+encoding which is universally defined for any function type, regardless of being impredicative. Direct and concrete interpretations of simultaneous induction and mutually recursive
+functions are also provided by extending Dybjer’s interpretations on the basis of Aczel’s
+rule sets. Our model can be regarded as a higher-order generalization of the truth-table
+methods. We provide a relatively simple consistency proof of type theory, which can be
+used as the basis for a theorem prover.
+
+1. Introduction
+Informal motivation. The types-as-sets interpretation of type theory in a sufficiently
+strong classical axiomatic set theory, such as the Zermelo-Fraenkel (ZF) set theory, has
+been regarded as the most straightforward approach to demonstrating the consistency of
+type theory (cf. [Aczel(1998)] and [Coquand(1990)]). It can be construed as a higher-order
+generalization of the truth-table methods. Such a model captures the intuitive meaning
+of the constructs: the product, λ-abstraction, and application correspond to the ordinary
+set-theoretic product, function, and application, respectively.
+A straightforward model of type theory is very useful for establishing the consistency of
+type theory, and it can be used to determine the proof-theoretic strength of type theory (cf.
+[Aczel(1998), Dybjer(1991), Dybjer(2000), Werner(1997)]). However, a higher-order generalization of the trivial Boolean model is not so simple (cf. [Miquel and Werner(2003)]). The
+main cause of this problem, as identified by [Reynolds(1984)], is the fact that type systems
+1998 ACM Subject Classification: F.4.1, F.3.1.
+Key words and phrases: Calculus of Constructions, judgmental equality, proof-irrelevance, consistency.
+a
+Corresponding author: For Gyesik Lee, this work was partly supported by Mid-career Researcher Program
+through NRF funded by the MEST (2010-0022061).
+
+l
+
+LOGICAL METHODS
+IN COMPUTER SCIENCE
+
+c
+DOI:10.2168/LMCS-7 (4:05) 2011
+
+CC
+
+G. Lee and B. Werner
+Creative Commons
+
+2
+
+G. LEE AND B. WERNER
+
+containing Girard-Reynolds’ second-order calculus cannot have the usual set-theoretic interpretation of types. The only way to provide a set-theoretic meaning for an impredicative
+proposition type is to identify all the proof terms of that proposition type: Proposition
+types are interpreted either by the empty set or a singleton with a canonical element. Thus,
+proof-irrelevant models are necessary for interpreting reasonable higher-order type systems.
+Set-theoretic models of type theory can be understood in a straightforward manner.
+[Werner(2008)] showed that they can be used as the basis of proof assistants in programming
+with dependent types. This is because they provide a mechanism to distinguish between
+computational and logical parts. Werner’s system is a proof-irrelevant version of Luo’s
+Extended Calculus of Constructions (ECC; [Luo(1989)]), and the set-theoretic model is an
+extension of that of Calculus of Constructions (CC) defined by [Miquel and Werner(2003)].
+Luo’s ECC is a Martin-Löf-style extension of CC, with strong sum types and a fully
+cumulative type hierarchy. At the lowest level, there is an impredicative type Prop of
+propositions. This is followed by a hierarchy of predicative type universes Typei , i =
+0, 1, 2, . . . :
+• Prop is of type Type0 ;
+• Typei is of type Typei+1 ;
+• Prop ≺ Type0 ≺ Type1 ≺ · · · .
+Werner’s system, however, does not include the subtyping rule Prop ≺ Type0 , which
+could complicate the model construction, as identified by [Miquel and Werner(2003)]. Their
+model constructions cannot be extended to ECC. We will explain this in detail in Remark
+3.1.
+In this paper, we investigate the inclusion of Prop ≺ Type0 , and we show that type
+theory with judgmental equality, à la [Martin-Löf(1984)], can have a simple proof-irrelevant
+model. We expect our results to play a key role in the theoretical justification of proof
+systems based on Martin-Löf-style type theory.
+Overview of the work. Martin-Löf type theory and Logical Framework include typing
+rules for the equality of objects and types:
+Γ ⊢ M : A Γ ⊢ A = B (conv)
+Γ⊢M :B
+In particular, Barendregt’s PTS-style β-conversion side condition turns into an explicit
+judgment. Two objects are not just equal; they are equal with respect to a type (cf.
+[Nordström et al.(1990) Nordström, Petersson, and Smith, Goguen(1994), Aczel(1998)]).
+The type system considered in our study is CC with predicative induction and judgmental equality. It is a type system with the following features: dependent types, impredicative
+type (Prop) of propositions, a cumulative hierarchy of predicative universes (Typei ), predicative inductions, and judgmental equality.
+The main difficulty in the construction of a set-theoretic model of our system stems from
+the impredicativity of Prop and the subtyping property Prop ≺ Type0 . Without subtyping, one could use the solution provided by [Miquel and Werner(2003)] and [Werner(2008)],
+whereby proof-terms are syntactically distinguished from other function terms. Thus, the
+problem lies in the case distinction between the impredicative type Prop and the predicative
+types Typei , whereas the subsumption eliminates the difference. An interpretation function
+f : {0, 1} → V is required, where V is a set universe, that is different from the identity
+function. See Section 3 for further details.
+Γ⊢M =N :A
+
+and
+
+PROOF-IRRELEVANT MODEL OF CC WITH PRED. INDUCTION AND JUDG. EQUALITY
+
+3
+
+For a set-theoretic interpretation of the cumulative type universes and predicative
+inductions, it is sufficient to assume countably many (strongly) inaccessible cardinals.
+[Werner(1997)] showed that ZF with an axiom guaranteeing the existence of infinitely many
+inaccessible cardinals is a good candidate. However, it is not clear whether the inaccessible
+cardinal axiom is necessary for our construction. The required feature of an inaccessible
+cardinal κ is the closure property of the universe Vκ under the powerset operation. This is
+a necessary condition for the interpretation of inductive types. Following [Dybjer(1991)],
+we use Aczel’s rule sets to obtain a direct and concrete interpretation of induction and
+recursion rules.
+The remainder of this paper is organized as follows. In Section 2, we provide a formal
+presentation of CC with predicative induction and judgmental equality. Examples are
+presented to enable the reader to understand the syntax and typing rules. This section can
+be regarded as an introduction to the base theory of the proof assistant Coq. Indeed, the
+syntax we have provided is as close to Coq syntax as that used in practice, except for the
+judgmental equality and the restriction on predicative inductions.1
+The difficulties in providing set-theoretic interpretations of impredicative or polymorphic types, subtypes, etc., are discussed in Section 3. We use the computational information
+about the domains saved in the interpretation of a : A to avoid these difficulties. This means
+that for the construction of set-theoretic models, type systems with judgmental equality are
+more explicit than systems without it. Using some typical examples, we explain the construction of a set-theoretic interpretation of inductive types and recursive functions.
+Finally, in Section 4, we prove the soundness of our interpretation. The proof itself is
+relatively simple, and it can also be used to verify the consistency of our system. This is
+because some types such as Π(α : Prop).α will be interpreted as the empty set; hence, they
+cannot be inhabited in the type system.
+In Section 5, we summarize the main results, and we discuss related work for future
+investigation.
+2. Formal presentation of CC with judgmental equality
+First, we provide the full presentation of the system, i.e., Coquand’s CC with judgmental
+equality and predicative induction over infinitely many cumulative universes.
+2.1. Syntax. We assume an infinite set of countably many variables, and we let x, xi , X, Xi , ...
+vary over the variables. We also use special constants Prop and Typei , i ∈ N. They are
+called sorts. Sorts are usually denoted by s, si , etc.2
+1We remark that many impredicative inductive types can be coded by impredicative definitions (cf.
+
+[Girard et al.(1989)Girard, Taylor, and Lafont, Coquand(1990), Werner(1997)]).
+2In this paper, we do not consider the sort Set. Indeed, when (the impredicative or predicative sort)
+Set is placed at the lowest level in the hierarchy of sorts, as in the case of the current development of Coq,
+there is no way to provide a universal set-theoretic interpretation of both Set and Prop, as identified by
+[Reynolds(1984)]. Note, however, that Type0 in our system plays the role of the predicative Set.
+
+4
+
+G. LEE AND B. WERNER
+
+Definition 2.1 (Terms and contexts). The syntax of the objects is given as follows.
+t, t′ , ti , A, Ai ::= x | s | Πx : t.t′ | λx : t.t′ | let x := t in t′ | t t′
+(terms)
+′
+′
+| case(t, t , ~t ) | Indn {∆ := ∆ } · x
+| fix xi {x0 /k0 : A0 := t0 , . . . , xn /kn : An := tn }
+∆, ∆′ ::= [ ] | ∆, (x : t)
+
+(declarations)
+
+Γ, Γ′ ::= [ ] | Γ, (x : t) | Γ, (x := t : t′ ) | Γ, Indn {∆ := ∆′ } (contexts)
+Here, [ ] denotes the empty sequence.
+Definition 2.2 (Atomic terms). Atomic terms are either variables, sorts, or terms of the
+form Indn{∆I := ∆C } · x.
+Definition 2.3 (Domain of contexts). The domain of a context is defined as follows:
+dom([ ]) := ∅,
+dom(Γ, Indn{∆I := ∆C }) := dom(Γ),
+dom(Γ, x = t : A) := dom(Γ, x : A) := dom(Γ) ∪ {x}.
+Remark 2.4.
+(1) Vector notations are used instead of some sequences of expressions:
+• ~t := t1 , ..., tn
+
+• f ~t := f t1 · · · tn
+
+~ := Πx1 : A1 . ... Πxn : An . t
+~ := λx1 : A1 . ... λxn : An . t
+• Π~x : A.t
+• λ~x : A.t
+−−−−−−−−→
+• x/k : A := t := x0 /k0 : A0 := t0 , ..., xn /kn : An := tn
+(2) Note that we use two subscript styles. One is of the form t1 , ..., tn , and the other is of
+the form t0 , ..., tn , where n is a natural number. The latter style will be used only in
+the definition of mutually recursive functions, i.e., in combination with fix.
+(3) Given a sequence ~
+ℓ, let lh(~ℓ ) denote its length.
+(4) In the examples presented below, character strings are used instead of single character
+variables in order to emphasize the correspondence with real Coq-expressions.
+(5) Given a declaration ∆ and a variable x, let ∆(x) = A when A is the only term such
+that x : A occurs in ∆.
+(6) There are standard definitions of the sets of free variables in a context or a term, and
+of the substitution t[x\u], where t, u are terms and x a variable. Formal definitions are
+given in Appendix A.
+(7) Given a sequence δ = x1 : t1 , ..., xn : tn and a term t, let t{δ} := t[x1 \ t1 ] · · · [xn \ tn ]
+denote consecutive substitution. On the other hand, the simultaneous substitution of
+terms t1 , ..., tn for x1 , ..., xn , respectively, in t is denoted by t[δ] := t[x1 \ t1 , ..., xn \ tn ].
+To enable the reader to understand the intended meaning of terms and contexts, we explain
+some notations with examples. The examples will also be used in Section 3 to explain our
+model.
+Remark 2.5. The expression Indn{∆I := ∆C } denotes a (mutually) inductive type, and the
+subscript n denotes the number of parameters. ∆I and ∆C are two declarations containing
+inductive types and their constructors, respectively. The Parameters are binders shared by
+all the constructors of the definition, and they are used to construct polymorphic types. The
+
+PROOF-IRRELEVANT MODEL OF CC WITH PRED. INDUCTION AND JUDG. EQUALITY
+
+5
+
+parameters differ from other non-parametric binders in that the conclusion of each type of
+constructor invokes the inductive type with the same parameter values as its specification.
+We refer to Lemma 3.8 and Lemma 3.9, which show the difference between parameters and
+non-parametric binders.
+The mutual definition of trees and forests can be represented, for instance, by DT F =
+Ind1{∆I := ∆C }, where
+∆I
+∆C
+
+= tree : Type0 → Type0 , forest : Type0 → Type0 ,
+= node : Π(A : Type0 ). A → forest A → tree A,
+emptyf : Π(A : Type0 ). forest A,
+consf : Π(A : Type0 ). tree A → forest A → forest A .
+
+The subscript 1 implies that (A : Type) is a parameter.
+Remark 2.6. If D = Indn{∆I := ∆C } and x ∈ dom(∆I , ∆C ), then D · x corresponds to
+the names of defined inductive types or their constructors.
+The type for natural numbers and its two constructors can be represented by DN ·
+nat, DN · O, and DN · S, respectively, where DN = Ind0{∆I := ∆C }, ∆I = nat : Type0 ,
+and ∆C = 0 : nat, S : nat → nat .
+In the examples presented below, however, we use character strings for better readability. Thus, for example, nat, 0, and S are used instead of DN · nat, DN · O, and DN · S,
+respectively.
+Remark 2.7 (case and fix). The term case(e, Q, ~h ) corresponds to the following Coqexpression
+match e as y in I ~ ~u return Q ~u y with · · · | Ci p~ ~v => hi | . . . end
+where
+• the term e is of an inductive type I ~p ~u for some terms p~, ~u,
+• lh(~
+p) = lh(~),
+~ . λy : I p~ ~u. Q′ for some terms U
+~ , Q′ ,
+• Q = λ~u : U
+• the term y is a fresh variable bound in Q ~u y,
+~i .I p~ w
+p : P~ .Π~v : V
+~ i for some terms P~ , V~i , w
+~i , and
+• each Ci is a constructor of type Π~
+′
+′
+~
+• each hi = λ~v : Vi .hi for some term hi .
+−−−−−−−−→
+The term fix fi {f /k : A := t} denotes the (i + 1)th function defined by a mutual recursion. The number ki denotes the position of the inductive binder on which recursion
+is performed for fi . It corresponds to Coq’s struct annotation used for the “guarded”
+condition in the termination check (cf. [Giménez(1995)]).
+(1) The addition function plus can be defined as follows:
+plus = fix f {f /1 : Π(m, n : nat). nat := λ(m, n : nat). case(n, Q, h0 , h1 )} ,
+where Q = λ(ℓ : nat). nat, h0 = m, and h1 = λ(p : nat). S (f m p) .
+
+6
+
+G. LEE AND B. WERNER
+
+(2) The functions for measuring the size of trees and forests can be represented by Tsize =
+−−−−−−−−→
+fix g0 {R} and Fsize = fix g1 {R}, where R = g/k : B := t, k0 = k1 = 1, and
+B0 = Π(A : Type0 ). Π(t : tree A). nat ,
+B1 = Π(A : Type0 ). Π(f : forest A). nat ,
+t0
+t1
+Q0
+Q1
+h0
+h1
+h2
+
+=
+=
+=
+=
+=
+=
+=
+
+λ(A : Type0 ). λ(t : tree A). case(t, Q0 , h0 ) ,
+λ(A : Type0 ). λ(f : forest A). case(f, Q1 , h1 , h2 ) ,
+λ(t : tree A). nat ,
+λ(f : forest A). nat ,
+λ(a : A).λ(f : forest A). S (g1 A f ) ,
+O,
+λ(t : tree A). λ(f : forest A).plus (g0 A t) (g1 A f ).
+
+2.2. Typing rules. The typing judgment Γ ⊢ M : A or Γ ⊢ M = N : A is defined
+simultaneously with the property WF(Γ) of a well-formed valid context and the property Γ ⊢ M ≺ N of cumulativity of types in Figures 1 ∼ 4. We provide short explanations of some rules. For a more detailed explanation, refer to [Bertot and Castéran(2004)],
+[Letouzey(2004)], or [Paulin-Mohring(1996)].
+Typing rules for basic terms and valid contexts (Figure 1). Typing rules for standard constructions of λ- and Π-terms are given.
+(wf ): Well-formed contexts contain well-typed terms, and they can be extended by welltyped inductive types, as in rule (ind-wf ) of Figure 2.
+(Π) and (Π-eq): P(s1 , s2 , s3 ) implies that
+• s2 = s3 = Prop, or
+• s1 ∈ Typei , s2 = Typej and s3 = Typek where k ≥ max{i, j}.
+Typing rules for inductive types and recursive functions (Figure 2). Typing rules
+for (mutually) inductive types, case distinctions, and (mutually) recursive functions are
+given.
+(ind-wf ): The positivity condition is crucial for defining an inductive type. A term A is an
+arity ending in sort s, Arity(A, s), if it is convertible to s or a product Πx : A.B, where B
+is an arity ending in sort s. A is called an arity, Arity(A), if A is an arity ending in sort s
+for some sort s.
+~ . x ~u
+A term M satisfies the positivity condition for a variable x when M = Π~y : A
+~
+~
+for some terms A, ~u and the variable x occurs strictly positively in A. A variable x occurs
+strictly positively in M when
+• x does not occur in M , or
+~ . (x B)
+~ and x does not occur in A,
+~ B.
+~
+• M ≡ Π~y : A
+Now, In (∆I , ∆C ) represents the following conditions:
+• All the names contained in the domains of ∆I and ∆C must be mutually distinct and
+new.
+
+PROOF-IRRELEVANT MODEL OF CC WITH PRED. INDUCTION AND JUDG. EQUALITY
+
+WF(∅)
+
+Γ⊢A:s x∈
+/ dom(Γ)
+WF(Γ, (x : A))
+WF(Γ)
+Γ ⊢ Prop : Typei
+WF(Γ)
+
+Γ⊢t:A x∈
+/ dom(Γ)
+WF(Γ, (x := t : A))
+WF(Γ) i < j
+Γ ⊢ Typei : Typej
+
+7
+
+(wf )
+(ax)
+
+(x : A) ∈ Γ or (x := t : A) ∈ Γ
+Γ⊢x:A
+
+(var)
+
+Γ, (x := t : A) ⊢ u : U
+Γ ⊢ let x := t in u : U [x\t]
+
+(let)
+
+Γ ⊢ t = t′ : A Γ, (x := t : A) ⊢ u = u′ : U
+Γ ⊢ (let x := t in u) = (let x := t′ in u′ ) : U [x\t]
+
+(let-eq)
+
+Γ ⊢ A : s1
+
+Γ, x : A ⊢ B : s2 P(s1 , s2 , s3 )
+Γ ⊢ Πx : A.B : s3
+
+Γ ⊢ A = A′ : s1 Γ, x : A ⊢ B = B ′ : s2 P(s1 , s2 , s3 )
+Γ ⊢ Πx : A.B = Πx : A′ .B ′ : s3
+
+(Π)
+(Π-eq)
+
+Γ, x : A ⊢ M : B Γ ⊢ Πx : A.B : s
+Γ ⊢ λx : A.M : Πx : A.B
+
+(λ)
+
+Γ ⊢ A = A′ : s Γ, x : A ⊢ M = M ′ : B Γ ⊢ Πx : A.B : s′
+Γ ⊢ λx : A.M = λx : A′ .M ′ : Πx : A.B
+
+(λ-eq)
+
+Γ ⊢ M : Πx : A.B Γ ⊢ N : A
+Γ ⊢ M N : B[x\N ]
+
+(app)
+
+Γ ⊢ M = M ′ : Πx : A.B Γ ⊢ N = N ′ : A
+Γ ⊢ M N = M ′ N ′ : B[x\N ]
+
+(app-eq)
+
+Figure 1: Basic terms and valid contexts
+• All the types of ∆I and ∆C start with the same n products, say, ~p : P~ .
+• Any occurrence of some d ∈ dom(∆I ) in ∆C is of the form (d p~ ~u), which is not applicable
+any more.
+• For all d : A ∈ ∆I , A is an arity ending in sort sd such that sd 6= Prop. Thus, we do not
+use inductive definitions of type Prop. Some propositions defined inductively can be constructed using an impredicative coding. See [Girard et al.(1989)Girard, Taylor, and Lafont,
+Coquand(1990)], and [Werner(1997)] for further details.
+• For all c : T ∈ ∆C , T is the type of a constructor for an inductive type d ∈ dom(∆I ), i.e.,
+~ (d p~ ~u). In this case, the sort sc in the third premise of
+T is of the form Π~
+p : P~ . Π~z : Z.
+the rule must be sd .
+• T satisfies the positivity condition for all x ∈ dom(∆I ).
+Notation. We use Γ ⊢ Indn{∆I := ∆C } when all the premises of (ind-wf ) are satisfied.
+
+8
+
+G. LEE AND B. WERNER
+
+In (∆I , ∆C )
+Γ ⊢ A : sd for all (d : A) ∈ ∆I
+Γ, ∆I ⊢ T : sc for all (c : T ) ∈ ∆C
+WF(Γ, Indn{∆I := ∆C })
+
+(ind-wf )
+
+WF(Γ)
+
+D = Indn{∆I := ∆C } ∈ Γ d ∈ dom(∆I )
+Γ ⊢ D · d : ∆I (d)[.\D]
+
+(ind-type)
+
+WF(Γ)
+
+D = Indn{∆I := ∆C } ∈ Γ c ∈ dom(∆C )
+Γ ⊢ D · c : ∆C (c)[.\D]
+
+(ind-const)
+
+Indn{∆I := ∆C } ∈ Γ (di : Π~
+p : P~ . A) ∈ ∆I lh(~
+p) = n
+Γ ⊢ Q : B C(di p~ : A; B) Γ ⊢ e : di ~p ~u
+~k . Q w
+~k . di p~ w
+Γ ⊢ hk : Π~v : V
+~ k (ck p~ ~v ) for all (ck : Π~
+p : P~ . Π~v : V
+~ k ) ∈ ∆C
+Γ ⊢ case(e, Q, (hk )k ) : Q ~u e
+
+(case)
+
+Indn{∆I := ∆C } ∈ Γ (di : Π~
+p : P~ . A) ∈ ∆I lh(~
+p) = n
+′
+Γ ⊢ Q = Q : B C(di ~p : A; B) Γ ⊢ e = e′ : di p~ ~u
+~k . Q w~k (ck p~ ~v ) for all (ck : Π~
+~k . di ~p w
+p : P~ . Π~v : V
+~ k ) ∈ ∆C
+Γ ⊢ hk = h′k : Π~v : V
+(case-eq)
+′
+′
+′
+Γ ⊢ case(e, Q, (hk )k ) = case(e , Q , (hk )k ) : Q ~u e
+~ ~k, ~t) n = lh(~k) (Γ ⊢ Ai : si )∀i≤n (Γ, f~ : A
+~ ⊢ ti : Ai )∀i≤n
+F(f~, A,
+−−−−−−−−→
+Γ ⊢ fix fj {f /k : A := t} : Aj
+~ ′ , ~k, ~t′ ) n = lh(~k)
+~ ~k, ~t ) F(f~, A
+F(f~, A,
+~ ⊢ ti = t′ : Ai )∀i≤n j ≤ n
+(Γ ⊢ Ai = A′i : si )∀i≤n (Γ, f~ : A
+i
+−−−−−−−
+−−→
+−−−−−−−−→
+Γ ⊢ fix fj {f /k : A := t} = fix fj {f /k : A′ := t′ } : Aj
+
+j≤n
+
+(f ix)
+
+(f ix-eq)
+
+Figure 2: Inductive types and recursive functions
+(ind-type) and (ind-const): Given D = Indn{∆I := ∆C } and a term A, A[.\D] implies that
+every occurrence of z ∈ dom(∆I , ∆C ) in A is replaced with D · z.
+(case) and (case-eq): di and ck denote Indn{∆I := ∆C } · di and Indn{∆I := ∆C } · ck ,
+respectively. Furthermore, lh(~u) = lh(w
+~ k ).
+For an inductive type d and an arity B, the relation C(d ~q : A; B) is defined as follows:
+• C(d ~q : Prop; d ~
+q → Prop);
+• C(d ~q : Prop; d ~
+q → Typej ) iff d is an inductive type that is empty or has only one
+3
+constructor such that all the non-parametric arguments are of sort Prop;
+• C(d ~q : Typej ; d ~
+q → s) for any sort s;
+• C(d ~q : (Πu : U . A); (Πu : U . B)) iff C(d ~q u : A; B).
+3This reflects the fact that no pattern matching is allowed on proof-terms, which would otherwise result
+
+in a paradox, as shown by [Coquand(1990)].
+
+PROOF-IRRELEVANT MODEL OF CC WITH PRED. INDUCTION AND JUDG. EQUALITY
+
+Γ⊢M :A
+Γ⊢M =M :A
+
+Γ⊢M =N :A
+Γ⊢N =M :A
+
+(ref )(sym)
+
+Γ⊢M =N :A Γ⊢N =P :A
+Γ⊢M =P :A
+Γ⊢M :A Γ⊢A=B:s
+Γ⊢M :B
+
+9
+
+(trans)
+
+Γ⊢M =N :A Γ⊢A=B:s
+Γ⊢M =N :B
+
+(conv)(conv-eq)
+
+Γ, x : A ⊢ M : B Γ ⊢ Πx : A.B : s Γ ⊢ N : A
+Γ ⊢ (λx : A.M )N = M [x\N ] : B[x\N ]
+
+(β)
+
+WF(Γ) (x := t : A) ∈ Γ
+Γ⊢x=t:A
+
+(δ)
+
+Γ ⊢ t : A Γ, (x := t : A) ⊢ u : U
+Γ ⊢ (let x := t in u) = u[x\t] : U [x\t]
+
+(ζ)
+
+Indn{∆I := ∆C } ∈ Γ (di : Π~
+p : P~ . A) ∈ ∆I lh(~
+p) = n
+Γ ⊢ Q : B C(di p~ : A; B) Γ ⊢ cj p~ ~a : di ~p ~u
+~k . Q w~k (ck p~ ~v ) for all (ck : Π~
+~k . di p~ w
+Γ ⊢ hk : Π~v : V
+p : P~ . Π~v : V
+~ k ) ∈ ∆C
+Γ ⊢ case(cj p~ ~a, Q, (hk )k ) = hj ~a : Q ~u (cj p~ ~a)
+~ ⊢ ti : Ai )∀i≤n F(f~, A,
+~ ~k, ~t) j ≤ n
+(Γ ⊢ Ai : si )∀i≤n (Γ, f~ : A
+−−−−−−−−→
+~ j . A′ Γ ⊢ ~a : B
+~ j lh(B
+~ j ) = kj + 1
+R ≡ f /k : A := t Aj ≡ Π~xj : B
+j
+Γ ⊢ (fix fj {R})~a = (tj [fi \(fix fi {R})]~a) : A′j {~x : ~a}
+⊢ Prop ≺ Type0
+
+⊢ Typej ≺ Typej+1
+
+(ι)
+
+(ι)
+
+(inc)
+
+Γ⊢M ≺N Γ⊢N ≺P
+Γ⊢M ≺P
+
+(trans-inc)
+
+Γ⊢A≺B Γ⊢C :s x∈
+/ dom(Γ)
+Γ, x : C ⊢ A ≺ B
+
+(weak-inc)
+
+Γ ⊢ A1 = B1 : s Γ, x : A1 ⊢ A2 ≺ B2
+Γ ⊢ Πx : A1 .A2 ≺ Πx : B1 .B2
+Γ⊢M =N :s Γ⊢M ≺P
+Γ⊢N ≺P
+Γ⊢M :A Γ⊢A≺B
+Γ⊢M :B
+
+(Π-inc)
+
+Γ⊢M =N :s Γ⊢P ≺M
+Γ⊢P ≺N
+Γ⊢M =N :A Γ⊢A≺B
+Γ⊢M =N :B
+
+(eq-inc)
+(cum)(cum-eq)
+
+Figure 3: Judgmental equality and cumulative type universes
+
+10
+
+G. LEE AND B. WERNER
+
+This means that an object of the inductive type d can be eliminated for proving a property
+P of type B. Let C(d ~
+q ; B) denote C(d ~q : A; B), where A is the type of d ~q.
+~ ~k, ~t) represents the following conditions:
+(f ix) and (f ix-eq): F(f~, A,
+~ = lh(~k) = lh(~t),
+• lh(f~) = lh(A)
+• for each ti ∈ ~t, there is an inductive type D · d, where D = Indn{∆I := ∆C }, and a term
+Ti such that
+~ ) = ki , and
+~ . λz : (D · d) ~u. t′ , where lh(Y
+− ti = λ~y : Y
+i
+− there is a constrained derivation with respect to z and ∆I , ∆C such that
+~ )ǫ , z :=z (D · d) ~u, (f~ : A)
+~ <z ⊢ t′ :ǫ T ǫ
+Γǫ , (~y : Y
+~k
+
+i
+
+i
+
+~ <z is the context composed of
+where (f~ : A)
+~
+k
+
+~ j )ǫ .Πv :<z Xj . Pjǫ
+fj :ǫ Π(~u : B
+~ j ).Πv : Xj . Pj is from f~ : A
+~ and lh(Bj ) = kj .
+if fj : Π(~u : B
+The condition for constrained derivation ensures that the constructed terms are normalizing terms. A formal definition is given in Appendix B. Informally, it means that
+ti can only contain decreasing recursive calls: if fj appears in ti , then it must have at
+least kj + 1 arguments, and its (kj + 1)th argument must be structurally smaller than the
+initial inductive argument z (Thus, any subterm of an inductive term obtained by going
+through at least one constructor is structurally smaller than the initial term.).
+Judgmental equality and type universes (Figure 3). The rules in Figure 3 stipulate
+that the judgmental equality based on reductions is an equivalence relation. De Bruijn’s
+~ with lh(t) = n implies that
+telescope notation is very useful: Γ ⊢ ~t : A
+• Γ, x1 : A1 , ..., xj−1 : Aj−1 ⊢ Aj : sj for all j ∈ {1, ..., n}, and
+• Γ ⊢ tj : Aj [x1 \t1 ] · · · [xj−1 \tj−1 ] for all j ∈ {1, ..., n}.
+3. Set-theoretic model construction
+3.1. Background. We must resolve a dilemma related to the construction of a set-theoretic
+model of CC and its extensions. In a proof-irrelevant model, each type expression should
+have an obvious set-theoretic interpretation; however, it is well known that impredicative
+or polymorphic types, such as Prop, can only have a trivial set-theoretic interpretation, as
+shown by [Reynolds(1984)]. Hence, it is necessary to assign a singleton or the empty set to
+each term of type Prop.
+In constructing a set-theoretic model of Coquand’s CC, [Miquel and Werner(2003)]
+provided the following solution. Under the assumption of the existence of a urelement •
+that does not belong to the standard universe of set theory, the sort Prop is associated with
+
+PROOF-IRRELEVANT MODEL OF CC WITH PRED. INDUCTION AND JUDG. EQUALITY
+
+11
+
+{∅, {•}}. Furthermore, the application and λ-abstraction terms are interpreted by app and
+lam, respectively, which are defined as follows:
+(
+•
+if u = • ,
+app(u, x) :=
+u(x) otherwise.
+(
+• if f (x) = • for all x ∈ dom(f ) ,
+lam(f ) :=
+f otherwise.
+Remark 3.1. This construction does not correctly model the cumulative relation between
+Prop and Typei , as demonstrated in the following example; [Werner(2008)] showed that
+it can be easily extended to the cumulative type universes when the subtyping relation
+between Prop and Typei does not exist
+Consider I = λ(A : Type0 ). A → A. Then, its type of set-theoretic interpretation is not
+deterministic. Suppose that P is a true proposition. Then, JI P K depends on the type we
+have assigned to P , that is, Prop or Type0 . In the former case, JI P K = {•} since P → P is
+a tautology, whereas in the latter case, JI P K = JIK(JP K) = {f | f : {•} → {•}} =
+6 {•} since
+JP K = {•}.
+Another solution was provided by [Aczel(1998)]. He used the trace encoding of functions
+in order to provide an adequate interpretation of the impredicative type Prop of propositions
+and its relationship with Typei . For this reason, we adopt Aczel’s solution.
+Definition 3.2 (Trace encoding of set-theoretic functions). Let u, x, f denote sets. Then,
+app(u, x) := {z | (x, z) ∈ u},
+[
+lam(f ) :=
+({x} × y) =
+(x,y)∈f
+
+[
+
+{(x, z) | z ∈ y}.
+
+(x,y)∈f
+
+Note that for any function f and any x ∈ dom(f ), we have
+app(lam(f ), x) = {y | (x, y) ∈ lam(f )} = {y | y ∈ f (x)} = f (x) .
+Notations.
+(1) In the remainder of this paper, ↓ is used if something is well defined, and ↑ is used
+otherwise.
+Q
+(2) Given sets A, B(x), x ∈ A, let x∈A B(x) denote the set of all functions f such that
+dom(f ) = A and f (x) ∈QB(x) for all
+Q x ∈ A.
+(3) Given a function f ∈ x1 ∈A1 · · · xn ∈An (x1 ,...,xn−1) B(x1 , ..., xn ), we use the notation
+~ n (f ) (resp. and app(f,
+~
+lam
+~x)) for the n-times application of lam (resp. app):
+~ n (f ) := {(x1 , ..., xn , y) | x1 ∈ A1 , ..., xn ∈ An (x1 , ..., xn−1 ), y ∈ f (x1 , ..., xn )}
+lam
+~ n (f, ~x ) := app(...(app(app(f, x1 ), x2 ), ...), xn )
+app
+We suppress the subscript n when the number of times we want to apply lam or app is
+~ 0 (f ) = f and app
+~ 0 (f, nil) = f .
+obvious from the context. Note that lam
+Lemma 3.3 ([Aczel(1998)]). Given a set A, assume B(x) ⊆ 1 for all x ∈ A.
+Q
+(1) {lam(f ) | f ∈ Qx∈A B(x)} ⊆ 1.
+(2) {lam(f ) | f ∈ x∈A B(x)} = 1 iff ∀x ∈ A (B(x) = 1).
+
+12
+
+Proof. Let f ∈
+
+G. LEE AND B. WERNER
+
+Q
+
+x∈A B(x), i.e.,
+
+(
+↑
+f=
+{(x, ∅) | x ∈ A}
+
+if ∃x ∈ A (B(x) = ∅),
+otherwise.
+
+Then, we have
+(
+↑
+if ∃x ∈ A (B(x) = ∅),
+lam(f ) =
+∅ otherwise.
+Q
+This also implies that {lam(f ) | f ∈ x∈A B(x)} = 1 iff ∀x ∈ A (B(x) = 1).
+
+Remark 3.4. A useful feature of trace encoding is that app(u, a) and lam(f ) are always
+defined for any sets u, a, f , including the empty set. This, however, implies that we sometimes lose the information of the domain of a given function f , i.e., we cannot trace back
+to dom(f ) starting from lam(f ). We will see that the use of judgmental equality enables us
+to avoid such a loss when only well-typed terms are involved.
+
+3.2. Inductive types and rule sets. Here, we follow the approaches of [Aczel(1998)] and
+[Dybjer(1991)] for the construction of a set-theoretic interpretation of inductive types. We
+are particularly interested in rule sets.
+We are going to work on the basis of ZF set theory with an axiom guaranteeing the
+existence of countably many (strongly) inaccessible cardinals. Note that such an axiom
+is independent of ZFC. [Werner(1997)] showed that such an axiom is sufficient for a settheoretic interpretation of the cumulative type universes and predicatively inductive types.
+However, it is not clear whether this axiom is necessary for our construction. Indeed, the
+required feature of an inaccessible cardinal κ is the closure property of the universe Vκ under
+the powerset operation. This is a necessary condition for the interpretation of inductive
+types.
+Henceforth, assume that there are countably many (strongly) inaccessible cardinals.
+Let κ0 = ω and κ1 , κ2 , ... enumerate these inaccessible cardinals. We associate each sort
+Typei with its rank(Typei ) := κi . If (Vα )α∈Ord denotes the (standard) universe of sets
+defined as follows, then Vκ is a model of ZF:
+[
+V0 := ∅ and Vα :=
+P(Vβ ) if α > 0
+β∈α
+
+Ord denotes the class of all ordinals, λ denotes a limit ordinal, and P denotes the power
+set operator. InQparticular, if κ is an inaccessible cardinal, A ∈ Vκ , and for every a ∈ A,
+Ba ∈ Vκ , then, a∈A Ba ∈ Vκ . Let rank(Prop) := −1 and V−1 = {0, 1} for convenience.
+Refer to [Drake(1974)] for further details about inaccessible cardinals.
+A rule on a base set U is a pair of sets hu, vi, often written as uv , such that u ⊆ U and
+v ∈ U . A set of rules on U is called a rule set on U . Given a rule set Φ on U , a set w ⊆ U
+is Φ-closed if for any uv ∈ Φ, v ∈ w whenever u ⊆ w. Note that there is the least Φ-closed
+set
+\
+I(Φ) := {w ⊆ U | w Φ-closed} .
+In fact, it is well known that each rule set Φ on U generates a monotone operator on P(U )
+u
+ΓΦ (X) := {v ∈ U | there exists some u ⊆ X such that ∈ Φ}
+v
+
+PROOF-IRRELEVANT MODEL OF CC WITH PRED. INDUCTION AND JUDG. EQUALITY
+
+13
+
+such that I(Φ) is the least fixed point of ΓΦ . Assuming that Φ is a rule set on I × U , Φ
+defines a family IF(Φ) of sets in U over I as
+IF(Φ)(i) := {u ∈ U | hi, ui ∈ I(Φ)}
+for each i ∈ I.
+A rule set is deterministic provided that it contains at most one rule with a given
+conclusion. The rule sets defined below by an inductive definition are deterministic. This
+makes it possible to interpret functions defined by structural recursion on a certain inductive
+type as set-theoretic functions. The interpretations are defined on the corresponding settheoretic inductively defined set, which is the fixpoint of a monotone operator. Refer to
+[Aczel(1977)] and [Moschovakis(1974), Moschovakis(1980)] for further details about rule
+sets, monotone operators, and fixpoints.
+Below, we describe the interpretations of inductive and recursive types with some examples. Given a well-defined (mutually) inductive type Indn{∆I := ∆C }, where
+~ i . si ,
+∆I = x0 : A1 , ..., xℓ : Aℓ and Ai = Π~
+p : P~ . Π~ai : B
+let rank(xi ) := rank(si ).
+Notations.
+(1) With each context Γ, we associate a set JΓK of Γ-valuations of the form hα1 , · · · , αn i,
+where n is the length of Γ and h, ..., i denotes a sequence of a finite length. Given a
+sequence L = hα1 , · · · , αn i and a natural number i < n, we set (L)i = αi+1 . If αi+1
+itself is a sequence of length m, then we write (L)i,j for (αi+1 )j if j < m, etc.
+(2) α, β, αi , βi vary over single values while γ, δ, γi , δi vary over valuations. nil denotes
+the empty sequence. Given two valuations γ and δ, the notation γ, δ denotes their
+concatenation. If δ = hαi, then we write γ, α instead of γ, hαi.
+(3) With each pair (Γ, t) formed by a context Γ and a term t, we associate a function JΓ ⊢ tK
+that is partially defined on Γ-valuations: JΓ ⊢ tKγ denotes JΓ ⊢ tK(γ) when γ ∈ JΓK.
+(4) In the following, we write JtK for JΓ ⊢ tKγ if Γ and γ ∈ JΓK are fixed in the context.
+~ K for u1 ∈ JΓ ⊢ A1 Kγ , ..., un ∈ JΓ, x1 : A1 , ...xn−1 :
+Similarly, we use the notation ~u ∈ JA
+An−1 ⊢ An )Kγ,u1 ...un−1 for some context Γ and Γ-valuation γ ∈ JΓK.
+3.3. Interpretation of inductive types. Here, we claim the existence of the interpretations of inductive types that satisfy the soundness of the rules (ind-wf ), (ind-type), and
+(ind-const) when the conditions in the typing rules are fullfilled. The formal definition is
+given in Appendix C. Refer to [Dybjer(1991)], whose idea is generalized in this paper.
+Lemma 3.5. Suppose Γ ⊢ D, where D = Indn{∆I := ∆C }. Let γ ∈ JΓK be given. As
+mentioned before, we suppress Γ and γ for better readability. Further suppose that
+∆I := d0 : A0 , ..., dℓ : Aℓ , ∆C := c1 : T1 , ..., cm : Tm ,
+~ i . si , Tk := Π~
+~ k . di p~ ~tk .
+Ai := Π~
+p : P~ . Π~bi : B
+p : P~ . Π~zk : Z
+k
+Then, there is some rule set Φ such that the following interpretation of D · di and D · ck
+satisfies the soundness of the rules (ind-type) and (ind-const):
+~
+~ iK ,
+• JD · di K := lam(f
+p, ~bi ) := IF(Φ)(i, p~, ~bi ) for p~, ~bi : JP~ , B
+i ) where fi (~
+~ k ) where gk (~
+~k K .
+• JD · ck K := lam(g
+p, ~zk ) := hk, ~zk i for ~p, ~zk : JP~ , Z
+
+14
+
+G. LEE AND B. WERNER
+
+Remark 3.6. The positivity condition is crucial for showing that the construction of the
+rule set Φ in Appendix C is well defined.
+u
+, where i denotes the ith
+The elements of our rule sets Φ are of the form hi,~p,~t,hj,~
+v ii
+inductive type di , p~ denote the parameters, ~t denote the non-parametric arguments of di ,
+j denotes the jth constructor of di , and ~v denote the non-parametric arguments of the jth
+constructor. Note that p~, ~t, ~v could be empty.
+
+Example 3.7 (Natural numbers). Let DN be the inductive type for natural numbers, as
+in Remark 2.6. Then,
+(
+)
+)
+(
+∅
+{v}
+Φnat =
+v ∈ Vκ0 ,
+∪
+h0, h1ii
+h0, h2, vii
+JnatK = IF(Φnat )(0), JOK = h1i, and app(JSK, n) = h2, ni for any n ∈ JnatK.
+Example 3.8 (Inductive families). The following Coq-expression shows a typical use of
+inductive families.
+Inductive toto : Type -> Type :=
+| Y1 : forall x : Type, toto x
+| Y2 : forall x : Type, toto nat -> toto x -> toto x.
+The inductive type toto can be represented by Dtoto = Ind0 {∆I := ∆C }, where
+∆I
+∆C
+
+:= toto : Type1 → Type1 ,
+:= Y1 : Πx : Type1 . toto x,
+
+Y2 : Πx : Type1 . toto nat → toto x → toto x .
+
+Then,
+Φtoto =
+
+(
+
+∅
+h0, x, h1, xii
+
+x ∈ Vκ1
+
+)
+
+∪
+
+(
+
+{h0, JnatK, v1 i, h0, x, v2 i}
+h0, x, h2, x, v1 , v2 ii
+
+x, v1 , v2 ∈ Vκ1
+
+)
+
+,
+
+app(JtotoK, x) = IF(Φtoto )(0, x), app(JY1 K, x) = h1, xi, and app(JY2 K, x, a, b) = h2, x, a, bi,
+where x ∈ Vκ1 , a ∈ app(JtotoK, JnatK), and b ∈ app(JtotoK, x).
+Example 3.9 (Inductive types with parameters). The following Coq-expression shows a
+typical use of parametric inductive types.
+Inductive titi (x : Type) : Type :=
+| Z1 : titi x
+| Z2 : titi nat -> titi x -> titi x.
+The inductive type titi can be represented by Dtiti = Ind1{∆I := ∆C }, where
+∆I
+∆C
+
+:= titi : Type1 → Type0 ,
+:= Z1 : Πx : Type1 . titi x,
+
+Z2 : Πx : Type1 . titi nat → titi x → titi x .
+
+Then,
+Φtiti =
+
+(
+
+∅
+h0, x, h1ii
+
+x ∈ Vκ1
+
+)
+
+∪
+
+(
+
+{h0, JnatK, v1 i, h0, x, v2 i}
+h0, x, h2, v1 , v2 ii
+
+x ∈ V κ 1 , v1 , v 2 ∈ V κ 0
+
+)
+
+,
+
+app(JtitiK, x) = IF(Φtiti )(0, x), app(JZ1 K, x) := h1i, and app(JZ2 K, x, a, b) := h2, a, bi,
+where x ∈ Vκ1 , a ∈ app(JtitiK, JnatK), and b ∈ app(JtitiK, x).
+
+PROOF-IRRELEVANT MODEL OF CC WITH PRED. INDUCTION AND JUDG. EQUALITY
+
+15
+
+Remark 3.10. Note that in Coq, toto cannot have Type -> Set as its type, unlike titi.
+This difference is also reflected in their interpretations.
+Example 3.11 (Mutually inductive types with parameters). Two inductive types tree and
+forest defined by DT F in Remark 2.5 can be interpreted by means of the following rule
+set:
+)
+(
+{h1, A, v1 i}
+A, v1 ∈ Vκ0 , a ∈ A
+Φ :=
+h0, A, h1, a, v1 ii
+(
+)
+(
+)
+∅
+{h0, A, v1 i, h1, A, v2 i}
+∪
+A ∈ Vκ0 ∪
+A, v1 , v2 ∈ Vκ0 .
+h1, A, h2ii
+h1, A, h3, v1 , v2 ii
+3.4. Interpretation of well-founded structured recursion. A set defined by a (mutual) induction generates a canonical well-founded relation on the set, i.e., the relation
+defined according to the inductive construction of the elements, the so-called structurallysmaller-than-relation. This is the basis for the discipline of structural recursion, which
+stipulates that recursive calls consume structurally smaller data.
+Here, we claim the existence of the interpretations of recursive types that satisfy the
+soundness of the rules (f ix), (f ix-eq), and (ι). A formal definition is given in Appendix D.
+Refer to [Dybjer(1991)], whose study provides the basic idea.
+Lemma 3.12. Suppose Γ ⊢ fix fℓ {R} : Aj , where
+−−−−−−−−→
+~ i . A′ ,
+R = f /k : A := t, Ai ≡ Π~xi : B
+i
+(Γ ⊢ Ai : si )∀i≤n ,
+
+~ i ) = ki + 1,
+lh(B
+
+~ ⊢ ti : Ai )∀i≤n ,
+(Γ, f~ : A
+
+ℓ ≤ n,
+
+~ ~k, ~t) .
+F(f~, A,
+
+Let γ ∈ JΓK be given. We suppress Γ and γ for better readability. Then, there is a rule
+set Ψ such that the following interpretation of fix fℓ {R} satisfies the soundness of the rules
+(f ix), (f ix-eq), and (ι):
+~
+• Jfix fℓ {R}K = lam(h),
+where h(a1 , ..., akℓ , hk, ~zk i) = IF(Ψ)(a1 , ..., akℓ , hk, ~zk i) for ~a, hk, ~zk i ∈
+~ ℓ K.
+JB
+Remark 3.13. The condition for constrained derivation is essential. Indeed, constrained
+derivation corresponds to guarded recursion defined by [Giménez(1995)]; hence, it guarantees that the construction of the rule set Ψ in Appendix D is well defined.
+u
+The elements of our rule sets Ψ are of the form h~x,hk,~
+y i,bi , where k denotes the kth
+constructor of the inductive type d on which the recursion is performed, ~y denote the nonparametric arguments of d, ~x denotes the list of rest arguments of the constructor, and b is
+the result of the function. Note that ~x, ~y could be empty.
+
+Example 3.14 (Primitive recursion). The Coq-expression stated below is a general form
+of primitive recursion.
+Fixpoint PRec (A:Type)(g:A)(h:nat -> A -> A)(n:nat) {struct n} : A :=
+match n with
+| O => g
+| S p => h p (PRec A g h p)
+end.
+
+16
+
+G. LEE AND B. WERNER
+
+The corresponding term is PRec := fix f0 {f0 /3 : B := t}, where
+B = Π(A : Typei ). Π(g : A). Π(h : nat → A → A). Π(n : nat). nat ,
+t = λ(A : Typei ). λ(g : A). λ(h : nat → A → A). λ(n : nat). case(n, P, h1 , h2 ) ,
+P = λ(ℓ : nat). A, h1 = g, and h2 = λ(p : nat). h p (f0 A g h p). JPRecK is characterized by
+the following rule set ΨPRec :=
+(
+)
+∅
+A ∈ Vκi , g ∈ A, h ∈ Jnat → A → AK
+hA, g, h, h1i, gi
+)
+(
+{hA, g, h, p, vi}
+∪
+A ∈ Vκi , g ∈ A, h ∈ Jnat → A → AK, p ∈ JnatK, v ∈ A .
+~
+hA, g, h, h2, pi, app(h,
+p, v)i
+Given a type A, JPRec AK denotes the primitive recursor with values from A. For
+instance,
+~
+app(JplusK,
+m, n) = IF(Prec)(JnatK, m, JhK, n)
+where h = λ(p : nat). λ(ℓ : nat). S ℓ and m, n ∈ JnatK.
+Example 3.15 (Mutually recursive functions). The interpretations of Tsize and Fsize
+from Remark 2.7 are characterized by the following rule set ΨSize :=
+)
+(
+{hA, f, v ′ i}
+A ∈ Vκ0 , f ∈ app(JforestK, A), v ′ ∈ JnatK, a ∈ A
+hA, h1, a, f i, JS v ′ Ki
+(
+)
+∅
+∪
+A ∈ Vκ0
+hA, h2i, JOKi
+(
+{hA, t, v1′ i, hA, f ′ , v2′ i}
+A ∈ Vκ0 , t ∈ app(JtreeK, A),
+∪
+hA, h3, t, f ′ i, app(JplusK, v1′ , v2′ )i
+)
+f ′ ∈ app(JforestK, A), v1′ , v2′ ∈ JnatK .
+
+4. Set-theoretic model and soundness
+Since the denotations JΓK and JΓ ⊢ tK will be defined by mutual induction on the size of
+their arguments, we need a size function | · | that guarantees the termination. In particular,
+the following properties should be satisfied:
+• |Γ| < |Γ ⊢ A| < |Γ, x : A|,
+• |Γ ⊢ t|, |Γ ⊢ A| < |Γ, x := t : A|,
+• |∆I (d)|, |∆C (c)| < |Indn{∆I := ∆C } · x| for all x ∈ dom(∆I , ∆C ), d ∈ dom(∆I ), and
+c ∈ dom(∆C ),
+−−−−−−−−→
+~ and tj ∈ ~t.
+• |Ai |, |tj | < |f /k : A := t| for all Ai ∈ A
+An adequate size function can be defined by a simple extension of the one defined by
+[Miquel and Werner(2003)]:
+• The size |t| of a term t is (recursively) defined as the sum of the sizes of its immediate
+subterms plus 1.
+
+PROOF-IRRELEVANT MODEL OF CC WITH PRED. INDUCTION AND JUDG. EQUALITY
+
+17
+
+− The immediate subterms of Indn{∆I := ∆C } · x are ∆I (d) and ∆C (c), where d ∈
+dom(∆I ) and c ∈ dom(∆C ).
+−−−−−−−−→
+~ ~t.
+− The immediate subterms of fix fj {f /k : A := t} are A,
+• The size of a context Γ is defined as follows:
+− |[ ]| = 1/2,
+− |Γ, (x : t)| = |Γ| + |t|,
+− |Γ, (x := t : A)| = |Γ| + |t| + |A|,
+− |Γ, Indn{∆I := ∆C }| = |Γ| + 1.
+• |Γ ⊢ t| = |Γ| + |t| − 12 .
+Remark 4.1. As mentioned in Remark 3.6 and Remark 3.13, the positivity condition and
+the condition for constrained derivation play a crucial role for establishing the soundness
+proof of Theorem 4.4.
+Definition 4.2. The set-theoretic interpretations of JΓK and Jγ ⊢ tK are defined by a mutual
+induction on the size of their arguments.
+(1) For each context Γ, the set JΓK is defined as follows:
+J[ ]K := {nil},
+JΓ, x : AK := {γ, α | γ ∈ JΓK, JΓ ⊢ AKγ ↓ and α ∈ JΓ ⊢ AKγ },
+JΓ, x := t : AK := {γ, α | γ ∈ JΓK, JΓ ⊢ AKγ ↓, JΓ ⊢ tKγ ↓
+and α = JΓ ⊢ tKγ ∈ JΓ ⊢ AKγ },
+JΓ, Indn{∆I := ∆C }K := {γ | γ ∈ JΓK}.
+(2) The interpretation JΓ ⊢ tK of a term t in a context Γ is a partial function defined on
+JΓK: Given γ ∈ JΓK,
+JΓ ⊢ PropKγ := {0, 1},
+JΓ ⊢ Typei Kγ := Vκi ,
+JΓ ⊢ xK(α1 ,...,αn ) := αi
+
+if x is the ith declared variable in Γ,
+
+(∗)
+
+JΓ ⊢ Πx : A.BKγ := {lam(f ) : f ∈ Πα∈JΓ⊢AKγ JΓ, x : A ⊢ BK(γ,α) },
+JΓ ⊢ λx : A.tKγ := lam(α ∈ JΓ ⊢ AKγ 7→ JΓ, x : A ⊢ tK(γ,α) ),
+JΓ ⊢ t uKγ := app(JΓ ⊢ tKγ , JΓ ⊢ uKγ ),
+JΓ ⊢ let x := t in uKγ := JΓ, (x := t : A) ⊢ uKγ,JΓ⊢tKγ ,
+where A is such that JΓ ⊢ tK ∈ JΓ ⊢ AK,
+
+(†)
+
+JΓ ⊢ Indn{∆I := ∆C } · zKγ := as explained above if defined,
+~
+JΓ ⊢ case(e, P, M1 , . . . , Mℓ )Kγ := app(JΓ
+⊢ Mj K, (JΓ ⊢ eK)1 , ..., (JΓ ⊢ eK)q )
+if (JΓ ⊢ eK)0 = j where lh(e) = q + 1,
+−−−−−−−−→
+JΓ ⊢ (fix fj {f /k : A := t})Kγ := as explained above if defined.
+(∗) If x ∈ dom(Γ), then the occurrence should be unique.
+(†) A could be any term with the given property since the interpretation, when defined,
+is independent of it.
+The following lemma is crucial for the soundness proof.
+
+18
+
+G. LEE AND B. WERNER
+
+Lemma 4.3 (Substitutivity). Let Γ be a context and let u, A be terms such that JΓ ⊢
+uKγ ∈ JΓ ⊢ AKγ for some γ ∈ JΓK (assuming that both of them are defined), and write
+α = JΓ ⊢ uKγ .
+(1) Suppose (γ, α), δ ∈ JΓ, x : A, ∆K. Then, γ, δ ∈ JΓ, ∆[x\u]K.
+(2) Suppose (γ, α), δ ∈ JΓ, x : A, ∆K and JΓ, x : A, ∆ ⊢ tK(γ,α),δ ↓. Then,
+• JΓ, ∆[x\u] ⊢ t[x\u]Kγ,δ ↓.
+• JΓ, ∆[x\u] ⊢ t[x\u]Kγ,δ = JΓ, x : A, ∆ ⊢ tK(γ,α),δ = JΓ, x := u : A, ∆ ⊢ tK(γ,α),δ .
+Proof. The assertions are proved for each ∆ and t by a mutual induction on the size of their
+arguments. In particular, given ∆, the first assertion is proved before the second one for all
+t. In the case of ∆ = [ ], the claims are obvious. Assume that ∆ = ∆0 , y : B and δ = δ0 , β.
+The other cases can be considered similarly.
+(1) (γ, α), δ0 , β ∈ JΓ, x : A, ∆0 , y : BK. Then, using the I.H. of the second claim, we have
+β ∈ JΓ, x : A, ∆0 ⊢ BKγ,α,δ0 = JΓ, ∆0 [x\u] ⊢ B[x\u]Kγ,δ0 .
+That is, γ, δ0 , β ∈ JΓ, ∆0 [x\u], y : B[x\u]K.
+(2) We proceed by induction on t. If t = x, the claim follows because JΓ ⊢ uKγ ↓ implies
+that JΓ, ∆[x\u] ⊢ uKγ,δ ↓ and JΓ, ∆[x\u] ⊢ uKγ,δ = JΓ ⊢ uKγ . This is because the
+interpretation of u does not depend on dom(∆). Other cases can be easily shown by
+using induction hypotheses.
+Theorem 4.4 (Soundness). Our type system is sound with respect to the set-theoretic
+interpretation defined in Definition 4.2 in the following sense:
+(1) If WF(Γ), then JΓK is defined.
+(2) If Γ ⊢ M : A, then JΓK is defined, and for any γ ∈ JΓK, it holds that JΓ ⊢ M Kγ and
+JΓ ⊢ AKγ are defined, and that
+JΓ ⊢ M Kγ ∈ JΓ ⊢ AKγ .
+(3) If Γ ⊢ M = N : A, then JΓK is defined, and for any γ ∈ JΓK, it holds that JΓ ⊢ M Kγ ,
+JΓ ⊢ N Kγ , and JΓ ⊢ AKγ are defined, and that
+JΓ ⊢ M Kγ = JΓ ⊢ N Kγ ∈ JΓ ⊢ AKγ .
+(4) If Γ ⊢ M ≺ N , then JΓK is defined, and for any γ ∈ JΓK, it holds that JΓ ⊢ M Kγ and
+JΓ ⊢ N Kγ are defined, and that
+JΓ ⊢ M Kγ ⊆ JΓ ⊢ N Kγ .
+Proof. We proceed by a simultaneous induction over the typing derivation. The cases
+(wf ), (ax), (var), (weak), and (weak-eq) are obvious.
+(Π) Suppose
+Γ ⊢ A : s1 Γ, x : A ⊢ B : s2
+Γ ⊢ Πx : A.B : s3
+.
+By I.H., it holds that JΓ ⊢ AKγ ∈ JΓ ⊢ s1 Kγ and JΓ, x : A ⊢ BKγ,α ∈ JΓ, x : A ⊢ s2 Kγ,α for all
+α ∈ JΓ ⊢ AKγ . Now, we need to show that
+JΓ ⊢ Πx : A.BKγ ∈ JΓ ⊢ s3 Kγ .
+
+PROOF-IRRELEVANT MODEL OF CC WITH PRED. INDUCTION AND JUDG. EQUALITY
+
+19
+
+If s2 = s3 = Prop, then Lemma 3.3 implies the claim. Assume s1 = Typei , s2 = Typej , s3 =
+Typek , and i, j ≤ k. Then, JΓ ⊢ s3 K = Vκk , where κk is the kth inaccessible cardinal; hence,
+Vκk is closed under the power set operation.
+The cases (Π-eq), (λ), and (λ-eq) are obvious.
+(app) Suppose
+Γ ⊢ M : Πx : A.B Γ ⊢ N : A
+Γ ⊢ M N : B[x\N ]
+.
+By induction hypothesis, it holds that JΓ ⊢ N Kγ ∈ JΓ ⊢ AKγ and JΓ ⊢ M Kγ = lam(f ) for
+some function f with dom(f ) = JΓ ⊢ AK and f (α) ∈ JΓ, x : A ⊢ BKγ,α for any α ∈ JΓ ⊢ AKγ .
+Thus, we have
+JΓ ⊢ M N Kγ = app(JΓ ⊢ M Kγ , JΓ ⊢ N Kγ ) = f (JΓ ⊢ N Kγ )
+∈ JΓ, x : A ⊢ BKγ,JΓ⊢N Kγ = JΓ ⊢ B[x\N ]Kγ .
+The cases (app-eq), (let), and (let-eq) are similar.
+The soundness of (ind-wf ), (ind-type), and (ind-cons) are obvious from the interpretation constructions. The interpretations of inductive types and constructors are possible
+because of the induction hypotheses. This is the same for (f ix), (f ix-eq), (case), and
+(case-eq).
+The cases (ref ), (sym), (trans), (conv), and (conv-eq) are obvious.
+(β) Suppose
+Γ, x : A ⊢ M : B Γ ⊢ A : s1 Γ, x : A ⊢ B : s2 Γ ⊢ N : A
+Γ ⊢ (λx : A.M )N = M [x\N ] : B[x\N ]
+.
+It remains to show that JΓ ⊢ (λx : A : M )N Kγ = JM [x\N ]Kγ :
+JΓ ⊢ (λx : A : M )N Kγ = app(JΓ ⊢ λx : A.M Kγ , JΓ ⊢ N Kγ )
+= app(lam(α ∈ JΓ ⊢ AKγ 7→ JΓ, x : A ⊢ M Kγ,α ), JΓ ⊢ N Kγ )
+= JΓ, x : A ⊢ M Kγ,JΓ⊢N Kγ
+= JM [x\N ]Kγ
+by Lemma 4.3 because we know that JΓ ⊢ N Kγ ∈ JΓ ⊢ AKγ by induction hypothesis. The
+judgmental equality plays a crucial role in this case.
+The case (δ) is obvious, and the case (ζ) follows from Lemma 4.3 and induction hypothesis. The case (ι) is obvious by definition. The cumulativity rules are obviously sound.
+Finally, the soundness of the the constrained typing rules in Figure 4 follows directly from
+the arguments stated above.
+Theorem 4.5 (Consistency). There is no term t such that ⊢ t : Πx : ∗.x .
+Proof. Note that J⊢ Πx : ∗.xKnil = ∅ .
+
+20
+
+G. LEE AND B. WERNER
+
+5. Conclusion
+We identified some critical issues in constructing a set-theoretic, proof-irrelevant model of
+CC with cumulative type universes. Our construction reconfirmed that proof-irrelevance
+is a subtle and difficult subject to tackle when it is combined with the subtyping of the
+universes, in particular, Prop ≺ Type. We showed that the set-theoretic interpretation
+can be relatively easy when we work with judgmental equality. We believe that our study
+provides a (relatively) easy way for justifying the correctness of type theory in Martin-Löfstyled, i.e., with simple model and, in particular, no proof of the strong normalization,
+which is usually very difficult to establish.
+Besides the historical importance of Martin-Löf-style type theory and the technical
+difficulties with external β-reduction, there is another theoretical and practical reason for
+studying type systems with judgmental equality. In general, the equivalence of two systems
+with or without judgmental equality remains an open problem. Proving the equivalence of
+two systems with or without judgmental equality is not a simple task, even though some
+positive results have been achieved by [Coquand(1991)], [Goguen(1994), Goguen(1999)],
+[Adams(2006)], and [Siles and Herbelin(2010)]. However, they are not sufficiently general
+to cover the case with cumulative type universes. Although [Adams(2006)] mentioned that
+it might be possible to extend his proof to more general systems with unique principal
+types instead of type uniqueness as in the case of Luo’s ECC [Luo(1990), Luo(1994)] and
+Coquand’s CIC, it still remains an open question.
+A positive consequence of the work of [Adams(2006)] and [Siles and Herbelin(2010)] is
+that the failed attempt of [Miquel and Werner(2003)], i.e., without using sorted variables,
+would work if one first considers the system CC with judgmental equality and uses its
+equivalence to the usual CC. This is indeed the case for the model construction described
+in this paper, where we restrict the model construction to CC.
+Acknowledgment
+We would like to express our sincere gratitude to Hugo Herbelin and Bruno Barras for
+their insightful discussions and advice. We would also like to thank the anonymous referees
+whose comments enabled us to improve this paper significantly.
+References
+[Aczel(1977)] Peter Aczel. An introduction to inductive definition. In Jon Barwise, editor, Handbook of
+Mathematical Logic, pages 739–782. North-Holland, 1977.
+[Aczel(1998)] Peter Aczel. On relating type theories and set theories. In Proceedings of Types ’98, volume
+1657 of Lecture Notes in Comput. Sci., pages 1–18. Springer, 1998.
+[Adams(2006)] Robin Adams. Pure type systems with judgemental equality. J. Funct. Program., 16(2):
+219–246, 2006.
+[Bertot and Castéran(2004)] Yves Bertot and Pierre Castéran. Interactive Theorem Proving and Program
+Development. Coq’Art: The Calculus of Inductive Constructions. Springer Verlag, 2004.
+[Coquand(1990)] Thierry Coquand. Metamathematical Investigation on a Calculus of Constructions. In
+P. Odifreddi, editor, Logic and Computer Science, volume 31 of APIC series, pages 91–122. Academic
+Press, 1990.
+[Coquand(1991)] Thierry Coquand. An algorithm for testing conversion in type theory. In Logical frameworks, pages 255–279. Cambridge University Press, 1991.
+[Drake(1974)] Frank R. Drake. Set Theory: An Introduction to Large Cardinals, volume 76 of Studies in
+logic and the foundations of mathematics. North Holland, 1974.
+
+PROOF-IRRELEVANT MODEL OF CC WITH PRED. INDUCTION AND JUDG. EQUALITY
+
+21
+
+[Dybjer(1991)] Peter Dybjer. Inductive sets and families in Martin-Löf’s type theory and their set-theoretic
+semantics. In Logical frameworks (Sophia-Antipolis, 1990), pages 280–306. Cambridge Univ. Press,
+1991.
+[Dybjer(2000)] Peter Dybjer. A General Formulation of Simultaneous Inductive-Recursive Definitions in
+Type Theory. J. Symb. Log., 65(2):525–549, 2000.
+[Giménez(1995)] Eduardo Giménez. Codifying guarded definitions with recursive schemes. In Types for
+proofs and programs (Båstad, 1994), volume 996 of Lecture Notes in Comput. Sci., pages 39–59.
+Springer, 1995.
+[Girard et al.(1989)Girard, Taylor, and Lafont] Jean-Yves Girard, Paul Taylor, and Yves Lafont. Proofs and
+types, volume 7 of Cambridge Tracts in Theoretical Computer Science. Cambridge University Press,
+1989.
+[Goguen(1994)] Healfdene Goguen. A Typed Operational Semantics for Type Theory. PhD thesis, University
+of Edinburgh, 1994.
+[Goguen(1999)] Healfdene Goguen. Soundness of the Logical Framework for Its Typed Operational Semantics. In Typed Lambda Calculi and Applications, TLCA’99, pages 177–197, 1999.
+[Letouzey(2004)] Pierre Letouzey. Programmation fonctionnelle certifiée – L’extraction de programmes dans
+l’assistant Coq. PhD thesis, Université Paris-Sud, July 2004.
+[Luo(1989)] Zhaohui Luo. Ecc, an extended calculus of constructions. In LICS, pages 386–395. IEEE Computer Society, 1989.
+[Luo(1990)] Zhaohui Luo. An Extended Calculus of Constructions. PhD thesis, University of Edinburgh,
+November 1990.
+[Luo(1994)] Zhaohui Luo. Computation and reasoning: a type theory for computer science, volume 11 of
+International Series of Monographs on Computer Science. Oxford University Press, Inc., 1994.
+[Martin-Löf(1984)] Per Martin-Löf. Intuitionistic type theory, volume 1 of Studies in Proof Theory. Lecture
+Notes. Bibliopolis, 1984.
+[Miquel and Werner(2003)] Alexandre Miquel and Benjamin Werner. The not so simple proof-irrelevant
+model of CC. In Types for proofs and programs, volume 2646 of Lecture Notes in Comput. Sci., pages
+240–258. Springer, 2003.
+[Moschovakis(1974)] Yiannis N. Moschovakis. Elementary induction on abstract structures, volume 77 of
+Studies in logic and the foundations of mathematics. North Holland, 1974.
+[Moschovakis(1980)] Yiannis N. Moschovakis. Descriptive set theory, volume 100 of Studies in logic and the
+foundations of mathematics. North Holland, 1980.
+[Nordström et al.(1990) Nordström, Petersson, and Smith] Bengt Nordström, Kent Petersson, and Jan M.
+Smith. Programming in Martin-Löf ’s type theory: An introduction. Oxford University Press, 1990.
+[Paulin-Mohring(1996)] Christine Paulin-Mohring. Définitions Inductives en Théorie des Types d’Ordre
+Supérieur. Habilitation á diriger les recherches. Université Claude Bernard Lyon I, 1996.
+[Reynolds(1984)] John C. Reynolds. Polymorphism is not set-theoretic. In Semantics of Data Types, volume
+173 of Lecture Notes in Comput. Sci., pages 145–156. Springer, 1984.
+[Siles and Herbelin(2010)] Vincent Siles and Hugo Herbelin. Equality is typable in semi-full pure type systems. In LICS, pages 21–30, 2010.
+[Werner(1997)] Benjamin Werner. Sets in Types, Types in Sets. In Theoretical Aspects of Computer Software,
+volume 1281 of Lecture Notes in Comput. Sci., pages 530–546. Springer, 1997.
+[Werner(2008)] Benjamin Werner. On the strength of proof-irrelevant type theories. Logical Methods in
+Computer Science, 4(3), 2008.
+
+22
+
+G. LEE AND B. WERNER
+
+Appendix A. Definition of free variables and substitution
+The definitions of the sets of free variables in a context or term are standard.
+(
+u if x = y,
+y[x\u] :=
+y otherwise,
+s[x\u] := s,
+(
+
+Πy : A[x\u].B
+Πy : A[x\u].(B[x\u])
+
+if x = y,
+otherwise,
+
+(∗)
+
+(λy : A.B)[x\u] :=
+
+(
+
+λy : A[x\u].B
+λy : A[x\u].(B[x\u])
+
+if x = y,
+otherwise,
+
+(∗)
+
+(let y := t1 in t2 )[x\u] :=
+
+(
+
+(let y := t1 [x\u] in t2 )
+let y := (t1 [x\u]) in t2 [x\u]
+
+(Πy : A.B)[x\u] :=
+
+if x = y,
+otherwise,
+
+(∗)
+
+(t1 t2 )[x\u] := (t1 [x\u])(t2 [x\u]),
+case(e, P, f~ )[x\u] := case(e[x\u], P [x\u], f~[x\u]),
+
+ (Indn{∆I := ∆C } · y)
+if x ∈ dom(∆I , ∆C ) or F V (u) ∩ dom(∆I , ∆C ) 6= ∅,
+(Indn{∆I := ∆C } · y)[x\u] :=
+
+(Indn{∆I [x\u] := ∆C [x\u]} · y) otherwise,
+
+−−−−−−−−→
+
+fix
+y
+{
+y/k : A := t}
+
+i
+−−−−−−−−→
+if x ∈ {~y } or F V (u) ∩ {~y } =
+6 ∅,
+(fix yi {y/k : A := t})[x\u] :=
+
+−−−−−−−−−−−−−−−−−→
+
+fix yi {y/k : (A[x\u]) := t[x\u]} otherwise.
+
+(†)
+
+(†)
+
+(∗) By using α-conversion, if needed, y is assumed to be not free in u such that the variable
+condition is satisfied.
+(†) The variable condition here implies that the names of inductive types, constructors, and
+recursive functions are uniquely determined, and that they will never be changed once they
+are defined. Thus, these names are bound variables that differ from variables bound by Π
+and λ.
+Appendix B. Constrained typing
+Note that not all fix-point definitions can be accepted because of the possibility of nonnormalizing terms. If one of the arguments belongs to an inductive type, then the function
+starts with a case analysis, and recursive calls are performed on variables coming from
+patterns and representing subterms. This is the usual restriction implemented in Coq
+when a case distinction with respect to a distinguished inductive type in a definition of a
+(mutual) recursive function occurs. These restrictions are imposed by the so-called guardedby-destructors condition defined by [Giménez(1995)]. Here, we follow the simplified version
+given by [Paulin-Mohring(1996)] by using constrained typing.
+The constraints will be imposed with respect to a variable z and an inductive specification ∆I , ∆C , and they have three forms: the empty constraint ǫ, the constraint <z, which
+describes the structural smallness with respect to z, and the constraint =z, which describes
+the equivalence to z. The constraints will be added to any occurrence of a variable in a
+term. Let c, d, ... vary over constraints. The judgments of constrained typing have the form
+
+PROOF-IRRELEVANT MODEL OF CC WITH PRED. INDUCTION AND JUDG. EQUALITY
+
+23
+
+Indn{∆I := ∆C } ∈ Γ (di : Π~
+p : P~ . A) ∈ ∆I lh(~
+p) = n
+ǫ
+c
+Γ ⊢ Q : B C(di p~ : A; B) Γ ⊢ e : di ~p ~u
+~k )<c . Q w~k (ck ~p ~v ) for all (ck : Π~
+~k . di p~ w
+Γ ⊢ hk :d Π(~v : V
+p : P~ . Π~v : V
+~ k ) ∈ ∆C
+Γ ⊢ case(e, Q, (hk )k ) :d Q ~u e
+WF(Γ) x :c A ∈ Γ
+Γ ⊢ x :c A
+
+Γ⊢M :s
+WF(Γ, x :c M )
+
+Γ ⊢ t :c A
+Γ ⊢ t :ǫ A
+
+Γ ⊢ A :ǫ s1
+
+Γ, x :c A ⊢ B :ǫ s2 P(s1 , s2 , s3 )
+Γ ⊢ Πx :c A.B :ǫ s3
+Γ ⊢ A = A′ :ǫ s1 Γ, x :c A ⊢ B = B ′ :ǫ s2 P(s1 , s2 , s3 )
+Γ ⊢ Πx :c A.B = Πx :c A′ .B ′ :ǫ s3
+Γ ⊢ A :ǫ s1 Γ, x :c A ⊢ B :ǫ s2
+Γ, x :c A ⊢ M :d B
+Γ ⊢ λx :c A.M :d Πx :c A.B
+Γ ⊢ A = A′ :ǫ s1 Γ, x :c A ⊢ B :ǫ s2
+Γ, x :c A ⊢ M = M ′ :d B
+Γ ⊢ λx :c A.M = λx :c A′ .M ′ :d Πx :c A.B
+Γ ⊢ M :d Πx :c A.B Γ ⊢ N :c A
+Γ ⊢ M N :d B[x\N ]
+Γ ⊢ M = M ′ :d Πx :c A.B Γ ⊢ N = N :c A
+Γ ⊢ M N = M ′ N ′ :d B[x\N ]
+Figure 4: Constrained typing
+Γ ⊢ M :c N , where the constraints are added to all the variables from dom(Γ). M ǫ and Γǫ
+denote the term M and the term sequence Γ, respectively, where only the constraint ǫ is
+added.
+Given a constraint c, the constraint < c is defined as follows:
+< ǫ := ǫ ,
+
+<=z :=<z ,
+
+<<z :=<z .
+
+The following defines the restriction of a recursive call of inductive type when defining a
+mutual recursion. Given a declaration ∆, ∆<z is defined as follows:
+([ ])<z := [ ],
+(∆, x : A)<z := ∆<z , x :ǫ A
+<z
+
+(∆, x : A)
+
+<z
+
+<z
+
+:= ∆ , x :
+
+if F V (A) ∩ dom(∆I , ∆C ) = ∅,
+
+A if F V (A) ∩ dom(∆I , ∆C ) 6= ∅.
+
+Γ<z is defined similarly for a term sequence Γ. In Figure 4, we list the rules for constrained
+typing. The omitted rules contain only the empty constraint ǫ.
+
+24
+
+G. LEE AND B. WERNER
+
+Appendix C. Interpretation of Inductive types
+Suppose Γ ⊢ D, where D = Indn{∆I := ∆C }, and γ ∈ JΓK. As mentioned before, we
+suppress Γ and γ for better readability. Suppose that
+∆I := d0 : A0 , ..., dℓ : Aℓ , ∆C := c1 : T1 , ..., cm : Tm ,
+~ i . si , Tk := Π~
+~ k . di p~ ~tk , Zk,j := Π~uk,j : H
+~ k,j . di p~ w
+Ai := Π~
+p : P~ . Π~bi : B
+p : P~ . Π~zk : Z
+~ k,j ,
+k
+k,j
+~ i ) = ℓi , lh(~tk ) = ℓi , j ∈ ν(k) := {j | F V (Zk,j ) ∩ dom(∆I ) 6= ∅}, and
+where lh(~
+p) = n, lh(B
+k
+ik , ik,j ≤ ℓ . Furthermore, Z~k′ is defined as
+(
+Zk,j
+if j 6∈ νk ,
+′
+Zk,j :=
+′
+~ k,j . d
+Π~uk,j : H
+if j ∈ νk ,
+ik,j
+where d′ik,j are fresh variables. Further, we suppose that JP~ K, JZ~k′ Kρk , ... are already well
+defined below in the definition of Φ (This will be the case by induction hypothesis.).
+Then, we set JDK := I(Φ), where Φ :=
+)
+(S
+~ k,j Kp~,~z }
+[ [
+~
+~, Jw
+~ k,j Kp~,~zk ,~u , app(z
+u )i | ~u ∈ JH
+k,j , ~
+j∈νk {hik,j , p
+k
+′
+~ Kρ .
+p~, ~zk ∈ JP~ K, JZ
+k k
+~tk Kp~,~zk , hk, ~zk ii
+hi,
+p
+~
+,
+J
+i≤ℓ k∈µ
+i
+
+Here, µi := {k | dik = di }, and ρk associates Vκr(k,j) with d′ik,j , where r(k, j) := rank(dik,j ).
+
+~
+~ i K, and
+We also set JD · di K := lam(f
+p, ~bi ) = IF(Φ)(i, p~, ~bi ) for p~, ~bi : JP~ , B
+i ), where fi (~
+~
+~k K .
+JD · ck K := lam(gk ), where gk (~
+p, ~zk ) = hk, ~zk i for p~, ~zk : JP~ , Z
+Appendix D. Interpretation of well-founded structured recursion
+Below, we use the same notation as that used in Appendix C for the inductive types on
+which the recursive call is running.
+Suppose Γ ⊢ fix fℓ {R} : Aj , where
+−−−−−−−−→
+~ i . A′ , lh(B
+~ i ) = ki + 1, ℓ ≤ n,
+R := f /k : A := t, Ai ≡ Π~xi : B
+i
+(Γ ⊢ Ai : si )∀i≤n ,
+
+~ ⊢ ti : Ai )∀i≤n ,
+(Γ, f~ : A
+
+~ ~k, ~t) .
+F(f~, A,
+
+Let γ ∈ JΓK be given. We suppress Γ and γ for better readability. Then, Jfix fℓ {R}K will
+depend on the ι-reduction.
+~ ℓ , where ak +1 = Tk p~ ~uk , and Bℓ,k +1 = xi p~ ~tk , i.e., k ∈ µi ,
+Suppose Γ ⊢ ~a, akℓ +1 : B
+ℓ
+ℓ
+ℓ
+ℓ
+and that ~a, p~ are all fresh variables, while ~uk represents a branch in the tree-like structure.
+All the free variables occurring in ~uk should be fresh. Then, (tℓ [fi \(fix fi {R})])~a (Tk p~ ~uk )
+β-, ι-reduces to the term Mℓ,k which is obtained from the node term of the branch which
+Tk p~ ~uk represents.
+Suppose that for some gℓ,k , hℓ,k ∈ N, u′1 , ..., u′gℓ,k , u′gℓ,k +1 , ..., u′hℓ,k list all the subterms of
+Mℓ,k that are structurally smaller than ~uk . Each u′q with q ≤ gℓ,k occurs as the (knq + 1)th
+argument of (fix fnq {R}). Thus,
+((fix fnq {R}) ~bnq u′q )
+
+PROOF-IRRELEVANT MODEL OF CC WITH PRED. INDUCTION AND JUDG. EQUALITY
+
+25
+
+is a subterm of Mj,k for some ~bnq : Bnq ,1 , ..., Bnq ,knq . Note that each u′q is an argument
+~ mq . xim p~ ~tmq such that the head of u′q is
+of some constructor Tmq : Π~
+p : P~ . Π~zmq : Z
+q
+~ mq ,jq . xi
+of some type Zmq ,jq = Π~umq ,jq : H
+p~ w
+~ mq ,jq and that xi
+= xin if q ≤ gℓ,k .
+mq ,jq
+
+mq ,jq
+
+q
+
+Furthermore, we suppose that u′q1 , ..., u′qh are all terms among u′1 , ..., u′hℓ,k , which are headed
+by some variables.
+Thus, u′qr = a′qr ~u′mqr ,jqr for a variable a′qr of type
+~ mq ,jq . xi
+Zmqr ,jqr = Π~umqr ,jqr : H
+pw
+~ mqr ,jqr
+mqr ,jqr ~
+r
+r
+and for some terms ~u′mqr ,jqr . Note that a′q1 , ..., a′qh are exactly the free variables occurring
+in ~uk . Suppose that u′qr , ..., u′qrq are all such terms structurally smaller than u′q . Then,
+1
+
+~ mq ,jq . ... λ~umq ,jq : H
+~ mq ,jq . ũ′q ) ~u′m ,j · · · ~u′m ,j
+u′q = (λ~umqr1 ,jqr1 : H
+qrq qrq
+qr1 qr1
+rq
+r1
+rq
+r1
+rq
+rq
+for some ũ′q . Similarly, Mℓ,k can be written as follows:
+~ mq ,jq . ... λ~umq ,jq : H
+~ mq ,jq . (fix fnq {R}) ~bnq ū′ ) ~u′
+(λ~umqr1 ,jqr1 : H
+u′mqr ,jqr
+mqr ,jqr · · · ~
+q
+rq
+r1
+rq
+r1
+rq
+rq
+1
+
+where
+
+q
+
+1
+
+q
+
+~ mq ,jq . ũ′q .
+~ mq ,jq . ... λ~umq ,jq : H
+ū′q = λ~umqr1 ,jqr1 : H
+rq
+rq
+r1
+rq
+r1
+rq
+
+Further, set
+~ mq ,jq )c . (fix fnq {R}) ~bnq ū′
+M̄ℓ,k = (λ~umqrc ,jqrc : H
+q
+rc
+rc
+′
+′
+~
+~
+: Hmq ,jq )c . An {~xnq : bnq , uq }, where c ranges over 1, ..., q. Lastly, let
+
+of type (Π~umqrc ,jqrc
+q
+rc
+rc
+′ be obtained from M
+by
+replacing
+M̄ℓ,k with a fresh variable Xnq .
+Mℓ,k
+ℓ,k
+[
+Then,
+Jfix fℓ {R}K will correspond to the fixpoint of the following rule set:
+ℓ
+
+Ψ :=
+
+[
+
+[
+
+ℓ≤n k∈µiℓ
+
+′
+′ u
+~
+~
+umqrq ,jqrq )i | C}
+mqr1 ,jqr1 , ..., ~
+q∈{1,...,gℓ,k } {hJbnq Kρ , Juq Kρ , app(vq , ~
+′
+hα1 , ..., αkℓ , hk, J~uk Kρ i, JMℓ,k Kη i
+
+(S
+
+~ mq ,jq K, ..., ~umq ,jq ∈ JH
+~ mq ,jq K,
+C ≡ ~umqr1 ,jqr1 ∈ JH
+rq
+r1
+rq
+r1
+rq
+rq
+α
+~ ∈ JBℓ,1 K, ..., JBℓ,kℓ K,
+~ mq ,jq . xi
+vqr ∈ JΠ~umq ,jq : H
+r
+
+r
+
+r
+
+r
+
+mqr ,jqr
+
+p~ w
+~ mqr ,jqr K,
+
+ρ associates α
+~ to ~a, vqr to a′qr , r ∈ {1, ..., h},
+~ mq ,jq )c . A′n {~xnq : ~bnq , u′q }Kρ ,
+vq′ ∈ J(Π~umqrc ,jqrc : H
+q
+rc
+rc
+)
+
+η associates α
+~ to ~a, vqr to a′qr , r ∈ {1, ..., h}, and vq′ to Xnq .
+~
+We set Jfix fℓ {R}K := lam(h),
+where h is a function such that
+h(a1 , ..., akℓ , hk, ~zk i) = IF(Ψ)(a1 , ..., akℓ , hk, ~zk i)
+~ ℓ K.
+where ~a, hk, ~zk i ∈ JB
+
+This work is licensed under the Creative Commons Attribution-NoDerivs License. To view
+a copy of this license, visit http://creativecommons.org/licenses/by-nd/2.0/ or send a
+letter to Creative Commons, 171 Second St, Suite 300, San Francisco, CA 94105, USA, or
+Eisenacher Strasse 2, 10777 Berlin, Germany
+
+

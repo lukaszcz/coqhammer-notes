@@ -1,0 +1,1102 @@
+Logical Methods in Computer Science
+Vol. 4 (3:13) 2008, pp. 1–20
+www.lmcs-online.org
+
+Submitted
+Published
+
+Feb. 13, 2007
+Sep. 26, 2008
+
+ON THE STRENGTH OF PROOF-IRRELEVANT TYPE THEORIES
+BENJAMIN WERNER
+INRIA Saclay – Île-de-France and LIX, Ecole Polytechnique, 91128 PALAISEAU cedex, France
+e-mail address: Benjamin.Werner@inria.fr
+Abstract. We present a type theory with some proof-irrelevance built into the conversion
+rule. We argue that this feature is useful when type theory is used as the logical formalism
+underlying a theorem prover. We also show a close relation with the subset types of the
+theory of PVS. We show that in these theories, because of the additional extentionality, the
+axiom of choice implies the decidability of equality, that is, almost classical logic. Finally
+we describe a simple set-theoretic semantics.
+
+1. Introduction
+A formal proof system, or proof assistant, implements a formalism in a similar way a
+compiler implements a programming language. Among existing formalisms, dependent
+type systems are quite widespread. This can be related to various pleasant features; among
+them
+(1) Proofs are objects of the formalism. The syntax is therefore smoothly uniform, and
+proofs can be rechecked at will. Also, only the correctness of the type-checker, a relatively small and well-identiﬁed piece of software, is critical for the reliability of the
+system (the “de Bruĳn principle”).
+(2) The objects of the formalism are programs (typed λ-terms) and are identiﬁed modulo
+computation (β-conversion). This makes the formalism well-adapted for problems dealing with program correctness. But also the conversion rule allows the computation steps
+not to appear in the proof; for instance 2 + 2 = 4 is simply proved by one reﬂexivity
+step, since this proposition is identiﬁed with 4 = 4 by conversion. In some cases this can
+lead to a dramatic space gain, using the result of certiﬁed computations inside a proof;
+spectacular recent applications include the formal proof of the four-color theorem [15]
+or formal primality proofs [18].
+(3) Finally, type theories are naturally constructive. This makes stating decidability results
+much easier. Furthermore, combining this remark with the two points above, one comes
+to program extraction: taking a proof of a proposition ∀x : A.∃y : B.P (x, y), one can
+erase pieces of the λ-term in order to obtain a functional program of type A → B, whose
+input and result are certiﬁed to be related by P . Up to now however, program extraction
+1998 ACM Subject Classification: F.4.1,F.3.1.
+Key words and phrases: logic, proofs, coq, lambda-calculus, types.
+
+l
+
+LOGICAL METHODS
+IN COMPUTER SCIENCE
+
+c
+DOI:10.2168/LMCS-4 (3:13) 2008
+
+CC
+
+B. Werner
+Creative Commons
+
+2
+
+B. WERNER
+
+was more an external feature of implemented proof systems1: programs certiﬁed by
+extraction are no longer objects of the formalism and cannot be used to assert facts like
+in the point above.
+Some related formalisms only build on some of the points above. For example PVS implements a theory whose objects are functional programs, but where proofs are not objects of
+the formalism.
+An important remark about (2) is that the more terms are identiﬁed by the conversion
+rule, the more powerful this rule is. In order to identify more terms it thus is tempting to
+combine points (2) and (3) by integrating program extraction into the formalism so that
+the conversion rule does not require the computationally irrelevant parts of terms to be
+convertible.
+In what follows, we present and argue in favor of a type-theory along this line. More
+precisely, we claim that such a feature is useful in at least two respects. For one, it gives a
+more comfortable type theory, especially in the way it handles equality. Furthermore it is a
+good starting point to build a platform for programming with dependent types, that is to
+use the theorem prover also as a programming environment. Finally, on a more theoretical
+level, we will also see that by making the theory more extensional, proof-irrelevance brings
+type theory closer to set-theory regarding the consequences of the axiom of choice.
+The central idea of this work is certainly simple enough to be adjusted to various kinds
+of type theories, whether they are predicative or not, with various kinds of inductive types,
+more reﬁned mechanisms to distinguish the computational parts of the proofs etc. . . . In
+what follows we illustrate it by using a marking of the computational content which is
+as simple as possible. The extraction function we use is quite close to Letouzey’s [21, 22],
+except that we discard the inclusion rule Prop ⊂ Type, which would complicate the deﬁnition
+of the type theory and the semantics (see [29] for the last point).
+Related work Almost surprisingly, proof-irrelevant type theories do not seem to enjoy
+wide use yet. In the literature, they are often not studied for themselves, but as means
+for proving properties of other systems. This is the case for the work of Altenkirch [3] and
+Barthe [6]. One very interesting work is Pfenning’s modal type theory which involves proofirrelevance and a sophisticated way to pinpoint which deﬁnitional equality is to be used for
+each part of a term; in comparision we here stick to much simpler extraction mechanism.
+The NuPRL approach using a squash type [9] is very close to ours, but the extentional
+setting gives somewhat diﬀerent results. Finally, let us mention recent work [5] by Barras
+and Bernardo who present a type theory with implicit arguments. This interesting proposal
+can be understood as a theory with proof-irrelevance, where the computational fragment is
+precisely Miquel’s calculus [28]. Their proposal can be understood as a theory similar to
+ours, but with a more sophisticated way to mark what is computational and what is not.
+2. The Theory
+2.1. The λ-terms. The core of our theory is a Pure Type System (PTS) extended with
+Σ-types and some inductive type deﬁnitions. In PTS’s, the types of types are sorts; the set
+of sorts is
+S ≡ {Prop} ∪ {Type(i)|i ∈ N}
+1Except NuPRL; see related work.
+
+PROOF-IRRELEVANT TYPE THEORIES
+
+3
+
+As one can see, we keep the sort names of Coq. As usual, Prop is the impredicative sort and
+the sorts Type(i) give the hierarchy of predicative universes. It comes as no surprise that
+the system contains the usual syntactic constructs of PTSs; however it is comfortable, both
+for deﬁning the conversion rule and constructing a model to tag the variables to indicate
+whether they correspond to a computational piece of code or not; in our case this means
+whether they live in the impredicative or a predicative level (i.e. whether the type of their
+type is Prop or a Type(i)). A similar tagging is done on the projections of Σ-types. Except
+for this detail, the backbone of the theory considered hereafter is essentially Luo’s Extended
+Calculus of Constructions (ECC) [23].
+The syntax of the ECC fragment is therefore
+s ::=
+
+Prop | Type(i)
+
+s ::= ∗ | ⋄
+
+t ::=
+
+s | xs | λxs : t.t | (t t) | Πxs : t.t | Σs xs : t.t | < t, t >Σx:t.t
+| π1 (t) | π2s (t)
+
+Γ ::=
+
+[] | Γ(x : t).
+
+We sometimes call raw terms these terms, when we want to stress that they are considered
+independently of typing issues. The tagging of Σ is there to indicate whether the second
+component of the pair is computational or not (the ﬁrst component will always be). For
+the same technical reason, we also tag the second projection π2 .
+We will sometimes write x for xs , Σx : A.B for Σs x : A.B or π2 (t) for π2s (t) omitting
+the tag s when it is not relevant or can be infered from the context.
+The binding of variables is as usual. We write t[x \ u] for the substitution of the free
+occurrences of variable x in t by u. As has become custom, we will not deal with α-conversion
+here, and leave open the choice between named variables and de Bruĳn indices.
+We also use the common practice of writing A → B (resp. A × B) for Πx : A.B (resp.
+Σx : A.B) when x does not appear free in B. We also write Πx, y : A.B (resp. λx, y : A.t)
+for Πx : A.Πy : A.B (resp. λx : A.λy : A.t).
+2.2. Relaxed conversion. The aim of this work is the study of a relaxed conversion rule.
+While the idea is to identify terms with respect to typing information, the tagging of
+impredicative vs. predicative variables is suﬃcient to deﬁne such a conversion in a simple
+syntactic way. A variable or a second projection π2 (t) is computationally irrelevant when
+tagged with the ∗ mark. This leads to the following deﬁnition.
+Definition 2.1 (Extraction). We can simply deﬁne the extraction relation ⊲ε as the contextual closure of the following rewriting equations
+x∗ ⊲ ε ε
+(ε t) ⊲ε ε
+
+λx : A.ε ⊲ε ε
+π2∗ (t) ⊲ε ε.
+
+We write ⊲∗ε for the reﬂexive-transitive closure of ⊲ε . We say that a term t is of tag ∗ if
+t ⊲∗ε ε and of tag ⋄ if not. We write s(t) for the tag of t.
+
+4
+
+B. WERNER
+
+Definition 2.2 (Reduction). The β-reduction ⊲β is deﬁned as the contextual closure of
+the following equations
+(λxs : A.t u) ⊲β t[xs \ u]
+
+if s(u) = s
+
+π1 (< a, b >Σx:A.B ) ⊲β a
+
+if s(a) = ⋄
+
+π2s (< a, b >Σx:A.B ) ⊲β b
+
+if s(b) = s.
+
+The restrictions on the right-hand side are there in order to ensure that the tag is
+preserved by reduction. Without them (λx⋄ : Prop.x⋄ Prop) can reduce either to ε or
+to Prop which would falsify the Church-Rosser property. Actually we will see that these
+restrictions are always satisﬁed on well-typed terms, but are necessary in order to assert the
+meta-theoretic properties below. While these restrictions are speciﬁc to our way of marking
+computational terms, other methods will probably yield similar technical diﬃculties.
+The relaxed reduction ⊲βε is the union of ⊲β and ⊲ε . We write =βε for the reﬂexive,
+symmetric and transitive closure of ⊲βε and ⊲∗βε for the transitive-reﬂexive closure of ⊲βε .
+It is a good feature to have the predicative universes to be embedded in each other.
+It has been observed (Pollack, McKinna, Barras. . . ) that a smooth way to present this is
+to deﬁne a syntactic subtyping relation which combines this with =β (or here =βε ). Note
+that this notion of subtyping should not be confused with, for instance, subtyping of subset
+types in the style of PVS.
+Definition 2.3 (Syntactic subtyping). The subtyping relation is deﬁned on raw-terms as
+the transitive closure of the following equations
+Type(i) ≤ Type(i + 1)
+
+T =βε T ′ ⇒ T ≤ T ′
+
+B ≤ B ′ ⇒ Πx : A.B ≤ Πx : A.B ′ .
+2.3. Functional fragment typing rules. The typing rules for the kernel of our theory
+are given in PTS-style [4] and correspond to Luo’s ECC. The diﬀerences are the use of
+subtyping in the conversion rule and the tagging of variables when they are “pushed” into
+the context.
+The rules are given in ﬁgure 1. In the rule Prod, max is the maximum of two sorts for
+the order Prop < Type(0) < Type(1) < . . .
+2.4. Treatment of propositional equality. Propositional equality is a ﬁrst example
+whose treatment changes when switching to a proof-irrelevant type theory. The deﬁnition
+itself is unchanged; two objects a and b of a given type A are equal if and only if they enjoy
+the same properties
+a =A b ≡ ΠP : A → Prop.(P a) → (P b)
+It is well-known that reﬂexivity, symmetry and transitivity of equality can easily be
+proved. When seen as an inductive deﬁnition, the deﬁnition of “=A ” is viewed as its own
+elimination principle.
+Let us write refl for the canonical proof of reﬂexivity
+refl ≡ λA : Type(i).λx : A.λP : A → Prop.λp : (P x).p
+
+PROOF-IRRELEVANT TYPE THEORIES
+
+(Prop)
+
+Γ ⊢ wf
+Γ ⊢ Prop : Type(i)
+(Base)
+
+Γ ⊢ A : Type(i)
+Γ(x⋄ : A) ⊢ wf
+
+(Conv)
+(Prod)
+
+Γ(x : A) ⊢ t : B
+Γ ⊢ λx : A.t : Πx : A.B
+
+(Pair)
+
+Γ⊢A:s
+
+(Proj1)
+
+(Cont*)
+
+Γ ⊢ A : Prop
+Γ(x∗ : A) ⊢ wf
+
+Γ(xs : A) ⊢ B : Type(i)
+Γ(xs : A) ⊢ B : Prop
+
+Γ ⊢ Πxs : A.B : Prop
+(App)
+
+⋄ : A.B : Type(i)
+
+Γ⊢a:A
+
+Γ ⊢ wf
+if (x : A) ∈ Γ
+Γ⊢x:A
+
+Γ ⊢ Πxs : A.B : max(s, Type(i))
+
+Γ(x⋄ : A) ⊢ B : Type(i)
+Γ ⊢ Σ⋄ x
+
+Γ ⊢ wf
+Γ ⊢ Type(i) : Type(i + p)
+
+Γ⊢t:A
+Γ⊢B:s
+if A ≤ B
+Γ⊢t:B
+
+Γ⊢A:s
+
+(Prod*)
+
+(Sig)
+
+(Var)
+
+[] ⊢ wf
+
+(Cont)
+
+(Lam)
+
+(Type)
+
+5
+
+Γ ⊢ t : Πxs : A.B
+Γ⊢u:A
+(if s(u) = s)
+Γ ⊢ (t u) : B[x \ u]
+(Sig∗ )
+
+Γ(x⋄ : A) ⊢ B : Prop
+Γ ⊢ Σ∗ x⋄ : A.B : Prop
+
+Γ(x : A) ⊢ b : B
+
+Γ ⊢ Σs x : A.B : Type(i)
+
+Γ ⊢< a, b >Σx:A.B : Σs x : A.B
+Γ ⊢ t : Σs x : A.B
+Γ ⊢ π1 (t) : A
+
+(Proj2)
+
+Γ ⊢ t : Σs x : A.B
+Γ ⊢ π2s (t) : B[x \ π1 (t)]
+
+Figure 1: The ECC fragment
+In many cases, it is useful to extend this elimination over the computational levels
+Eq_reci : ΠA : Type(i).ΠP : A → Type(i).Πa, b : A.(P a) → a =A b → (P b)
+There is however a peculiarity to Eq_rec: in Coq, it is deﬁned by case analysis and therefore
+comes with a computation rule. The term (Eq_rec A P a b p e) of type (P b) reduces to p
+in the case where e is a canonical proof by reﬂexivity; in this case, a and b are convertible
+and thus coherence and normalization of the type theory are preserved.
+As shown in the next section, such a reduction rule is useful, especially when programming with dependent types. In our proof-irrelevant theory however, we cannot rely on the
+information given by the equality proof e, since all equality proofs are treated as convertible. Furthermore, allowing, for any e, the reduction rule (Eq_rec A P a b p e) ⊲ p is too
+permissive, since it easily breaks the subject reduction property in incoherent contexts.
+We therefore put the burden of checking convertibility between a and b on the reduction
+rule of Eq_rec by extending reduction with the following, conditional rule
+(Eq_rec A P a b p e) ⊲ p if a =ε b
+
+6
+
+B. WERNER
+
+When being precise, this means that =εβ and ⊲ are actually two mutual inductive deﬁnitions.
+An alternative would be the non-linear rule
+(Eq_rec A P a a p e) ⊲ p
+but this allows an encoding of Klop’s counter-example [20] and thus breaks the ChurchRosser property (for untyped terms). We thus develop the metatheory for the ﬁrst version.
+2.5. Generalization. In Coq, computational eliminations are provided for more inductive
+deﬁnitions than just propositional equality. The condition is that
+(1) The deﬁnition has at most one constructor,
+(2) the arguments of this constructor are all, themselves, non-computational.
+It appears that it is reasonably straightforward to extend our type theory, by generalizing
+the Eq_rec feature, in order to capture this Coq behavior in the case where the inductive
+deﬁnition is non-recursive. We brieﬂy indicate how but without precise justiﬁcation. The
+remainder of this paragraph is thus not considered in the meta-theoretical justiﬁcations; it
+is also not necessary for the rest of the article.
+~ for Πx1 : A1 . . . . Πxn : An .T and t ~u for (t u1 . . . un ).
+We write Π~x : A.T
+~
+Consider an inductive deﬁnition I : Π~x : A.Prop
+with a unique constructor c : Π~y :
+~
+B.(I ~u). The non-computational elimination scheme is
+~
+~
+~ ~x → P ~x
+I_ind : ΠP : (Π~x : A.Prop).(Π~
+y : B.P
+~u) → Π~x : A.I
+with the reduction rule
+
+(I_ind X p ~a (c ~b)) ⊲ (p ~b)
+We can then provide a computational elimination
+~
+~
+~ ~x → X ~x
+I_rec : ΠX : (Π~x : A.Type).(Π~
+y : B.X
+~u) → Π~x : A.I
+with the following reduction rule
+(I_rec X p ~a i) ⊲ (p ~ε)
+
+if ~u =βε ~a
+
+To understand the last condition, one should note that although the variables ~y are free in
+~u, they do not interfere with the conversion since their types ensure they are all tagged by
+∗.
+2.6. Data Types. In order to be practical, the theory needs to be extended by inductive
+deﬁnitions in the style of Coq, Lego and others. We do not detail the typing rules and
+liberally use integers, booleans, usual functions and predicates ranging over them. We
+refer to the Coq documentation [11, 14]; for a possibly more modern presentation [8] is
+interesting.
+Let us just mention that data types live in Type. That is, for instance, nat : Type(0);
+thus, their elements are of tag ⋄.
+
+PROOF-IRRELEVANT TYPE THEORIES
+
+7
+
+3. Basic metatheory
+We sketch the basic meta-theory of the calculus deﬁned up to here. The proof techniques
+are relatively traditional, even if one has to take care of the more delicate behavior of relaxed
+reduction for the ﬁrst lemmas (similarly to [29]).
+Lemma 3.1. If t ⊲β t′ , then s(t) = s(t′ ). Thus, the same is true if t ⊲∗βε t′ .
+Proof. By a straightforward case analysis of the form of t.
+
+
+
+Lemma 3.2 (β-postponement). If t ⊲∗βε t′ , then there exists t′′ such that t ⊲∗ε t′′ and t′′ ⊲∗β t′ .
+Proof. One ﬁrst shows that if t ⊲β t′ ⊲ε t′′ , then there exists t′′′ such that t ⊲∗ε t′′′ and either
+t′′′ = t′′ or t′′′ ⊲β t′′ . This is done by checking how the two redexes are located with respect
+to each other. The proof of the lemma then easily follows.
+
+Lemma 3.3 (Church-Rosser). For t a raw term, if t ⊲∗βε t1 and t ⊲∗βε t2 , then there exists
+t3 such that t2 ⊲∗βε t3 and t2 ⊲∗βε t3 .
+Proof. By a quite straightforward adaptation of the usual Tait and Martin-Löf method.
+The delicate point was to choose the right formulation of the reduction rule speciﬁc to the
+elimination of propositional equality, as mentioned in section 2.4.
+
+An immediate but very important consequence is that
+Corollary 3.4 (Uniqueness of product formation). If Πx : A.B ≤ Πx : A′ .B ′ , then A =βε
+A′ and B ≤ B ′ .
+Corollary 3.5. For any T ,
+• T ≤ Prop ⇐⇒ Prop ≤ T ⇐⇒ T =βε Prop ⇐⇒ T ⊲∗βε Prop
+• T ≤ Type(i) ⇐⇒ T ⊲∗βε Type(j) with j ≤ i
+• Type(i) ≤ T ⇐⇒ T ⊲∗βε Type(j) with i ≤ j
+• if T ≤ U and U ≤ T then U =βε T .
+Furthermore, ⊲ε is obviously strongly normalizing. One therefore can "pre-cook" all
+terms by ⊲ε when checking relaxed convertibility.
+Lemma 3.6 (pre-cooking of terms). Let t1 and t2 be raw terms. Let t′1 and t′2 be their
+respective ⊲ε -normal forms. Then, t1 =βε t2 if and only if t′1 =β t′2 .
+While this property is important for implementation, its converse is also true and
+semantically understandable. Computationally relevant β-reductions are never blocked by
+not-yet-performed ε-reductions.
+Lemma 3.7. Let t1 be any raw term. Suppose t1 ⊲ε t2 ⊲β t3 . Then there exists t4 such that
+t1 ⊲β t4 ⊲∗ε t3 .
+Proof. It is easy to see that ⊲ε cannot create new β-redexes, nor does it duplicate existing
+ones.
+
+Lemma 3.8. If t⊲βε t′ , for any term u and variable xs(u) , one has t[xs(u) \u]⊲βε t′ [xs(u) \u].
+Thus, if t =βε t′ then t[xs(u) \ u] =βε t′ [xs(u) \ u].
+Proof. By straightforward induction over the structure of t. One uses the fact that, since
+xs(u) and u have the same syntactic sort, the terms t and t[xs(u) \ u] also have the same
+syntactic sort.
+
+
+8
+
+B. WERNER
+
+Lemma 3.9 (Substitution). If Γ(x : A)∆ ⊢ t : T and Γ ⊢ a : A are derivable, if a and x
+have the same (syntactic) sort, then Γ∆[x \ a] ⊢ t[x \ a] : T [x \ a] is derivable.
+Proof. By induction over the structure of the ﬁrst derivation, like in the usual proof. The
+condition over the syntactic sorts is necessary for the case of the conversion rule, in order
+to apply the previous lemma.
+
+Lemma 3.10 (Inversion or Stripping). If Γ ⊢ t : T is derivable, then so are Γ ⊢ wf and
+Γ ⊢ T : s for some sort s. Furthermore, the following clauses hold.
+If Γ ⊢ x : T is derivable, then:
+
+If Γ ⊢ (t u) : V is derivable, then:
+
+• (x, U ) ∈ Γ,
+
+• Γ ⊢ t : Πx : U.W ,
+
+• Γ ⊢ T : s is derivable,
+
+• Γ ⊢ u : U,
+
+• U ≤ T.
+
+• W [x \ u] ≤ V .
+
+If Γ ⊢ λx : U.t : W is derivable, then:
+
+If Γ ⊢ Πx : A.B : T is derivable, then
+
+• Γ(x : U ) ⊢ t : T ,
+
+• Γ ⊢ A : s1 ,
+
+• Πx : U.T ≤ W .
+
+• Γ(x : A) ⊢ B : s2 ,
+• either s2 = Prop and Prop ≤ T
+or max(s1 , s2 ) ≤ T .
+
+If Γ ⊢ Σ∗ x⋄ : A.B : T is derivable, then
+
+If Γ ⊢ Σ⋄ x⋄ : A.B : T is derivable, then
+
+• Γ ⊢ A : Type(i),
+
+• Γ ⊢ A : Type(i),
+
+• Γ(x : A) ⊢ B : Prop,
+
+• Γ(x : A) ⊢ B : Type(j),
+
+• Type(i) ≤ T .
+
+• Type(max(i, j)) ≤ T .
+
+Γ ⊢ Σx∗ : A.B : T is not derivable.
+
+If Γ ⊢< t, u >Σx⋄ :T.U : V is derivable,
+• Σx⋄ : T.U ≤ V ,
+• Γ ⊢ t : T,
+• Γ ⊢ u : U [x⋄ \ t],
+• s(t) = ⋄.
+
+If Γ ⊢ π1 (t) : T is derivable, then
+
+If Γ ⊢ π2s (t) : T is derivable, then
+
+• Γ ⊢ t : Σx⋄ : A.B,
+
+• Γ ⊢ t : Σs x⋄ : A.B,
+
+• A ≤ T.
+
+• B[x⋄ \ π1 (t)] ≤ T
+
+If Γ ⊢ Prop : T is derivable, then Type(1) ≤ T
+
+If Γ ⊢ Type(i) : T , then Type(i + 1) ≤ T
+
+Proof. Simultaneously by induction over the derivation.
+
+
+
+PROOF-IRRELEVANT TYPE THEORIES
+
+9
+
+Corollary 3.11 (Principal type). If Γ ⊢ t : T , then there exists U such that Γ ⊢ t : U and
+for all V , if Γ ⊢ t : V , then U ≤ V .
+Proof. By induction over the structure of t, using the previous lemma and corollaries 3.4
+and 3.5.
+
+Of course, subject reduction holds only for ⊲β -reduction, since ε is not meant to be
+typable.
+Lemma 3.12 (Subject reduction). If Γ ⊢ t : T is derivable, if t ⊲β t′ (resp. T ⊲β T ′ ,
+Γ ⊲β Γ′ ), then Γ ⊢ t′ : T (resp. Γ ⊢ t : T ′ , Γ′ ⊢ t : T ).
+Proof. By induction over the structure of t. Depending upon the position of the redex, one
+uses either the substitution or the stripping lemmas above. We only detail the case where
+a β-reduction occurs at the root of the term.
+If t = λxs : U.v u, s(u) = s and t′ = v[xs \ u], we know that Γ(xs : U ) ⊢ v : V , Γ ⊢ u : U
+and V [xs \ u] ≤ T . Thus we can apply lemma 3.9 to deduce
+Γ ⊢ v[xs \ u] : V [xs \ u]
+and
+Γ ⊢ V [xs \ u] : s
+where s is the sort such that Γ(xs : U ) ⊢ V : s. The result then follows through one
+application of the conversion rule.
+
+Lemma 3.13. If Γ ⊢ t : T is derivable, then there exists a sort s such that Γ ⊢ T : s;
+furthermore Γ ⊢ T : Prop if and only if t is of tag ∗.
+Proof. By induction over the structure of t. The Church-Rosser property ensures that Prop
+and Type(i) are not convertible.
+
+A most important property is of course normalization. We do not claim any proof here,
+although we very strongly conjecture it. A smooth way to prove it is probably to build on
+top of the simple set-theoretical model using an interpretation of types as saturated Λ-sets
+as ﬁrst proposed by Altenkirch [2, 27].
+Conjecture 3.14 (Strong Normalization). If Γ ⊢ t : T is derivable, then t is strongly
+normalizing.
+Stating strong normalization is important in the practice of proof-checking, since it
+entails decidability of type-checking and type-inference.
+Corollary 3.15. Given Γ, it is decidable whether Γ ⊢ wf. Given Γ and a raw term t, it is
+decidable whether there exists T such that Γ ⊢ t : T holds.
+Proof. By induction over the structure of t, using the stripping lemma. Normalization
+ensures that the relation ≤ is decidable for well-formed types.
+
+The other usual side-product of normalization is a syntactic assessment of constructivity.
+Corollary 3.16. If [] ⊢ t : Σx : A.B, then t⊲∗β < a, b >Σx:A.B with [] ⊢ a : A and
+[] ⊢ b : B[x \ a].
+Proof. By case analysis over the normal form of t, using the stripping lemma.
+
+
+
+10
+
+B. WERNER
+
+4. Programming with dependent types
+We now list some applications of the relaxed conversion rule, which all follow the slogan that
+proof-irrelevance makes programming with dependent types more convenient and eﬃcient.
+From now on, we will write {x : A|P } for Σ∗ x : A.P , that is for a Σ-type whose second
+component is non-computational.
+4.1. Dependent equality. Programming with dependent types means that terms occur
+in the type of computational objects (i.e. not only in propositions). The way equality is
+handled over such families of types is thus a crucial point which is often problematic in
+intensional type theories.
+Let us take a simple example. Suppose we have deﬁned a data-type of arrays over
+some type A. If n is a natural number, (tab n) is the type of arrays of size n. That is
+tab : nat → Type(i). Furthermore, let us assume we have a function modeling access to the
+array acc : Πn : nat.tab n → nat → A.
+Commutativity of addition can be proved in the theory: com : Πm, p : nat.(m + p) =
+(p + m). Yet tab (m + p) and tab (p + m) are two distinct types with distinct inhabitants.
+For instance, if we have an array t : tab (m + p), we can use the operator Eq_rec described
+above to transform it into an array of size p + m
+t′ ≡ Eq_rec nat tab (m + p) (p + m) t (com (m + p) (p + m)) : tab(p + m)
+Of course, t and t′ should have the same inhabitants, and we would like to prove
+Πi : nat.acc (m + p) t i =A acc (p + m) t′ i
+It is known [19, 25] that in order to do so, one needs the reduction rule for Eq_rec together
+with a proof that equality proofs are unique. The latter property being generally established
+by a variant of what Streicher calls the “K axiom”
+K : ΠA : Type.Πa : A.ΠP : a =A a → Prop.(P (refl a)) → Πe : a =A a.(P e)
+where refl stands for the canonical proof by reﬂexivity.
+Here, since equality proofs are also irrelevant to conversion, this axiom becomes trivial.
+Actually, since (P e) and (P (refl a)) are convertible, this statement does not even need to
+be mentioned anymore, and the associated reduction rule becomes superﬂuous.
+In general, it should be interesting to transpose work like McBride’s [25] in the framework of proof-irrelevant theories.
+4.2. Partial functions and equality over subset types. In the literature of type theory, subset types come in many ﬂavors; they designate the restriction of a type to the
+elements verifying a certain predicate. The type {x : A|P } can be viewed as the constructive statement "there exists an element of A verifying P ", but also as the data-type
+A restricted to elements verifying P . In most current intensional type theories, the latter
+approach is not very practical since equality is deﬁned over it in a too narrow way. We have
+< a, p > =β < a′ , p′ > only if a =β a′ and p =β p′ ; the problem is that one would like
+to get rid of the second condition. The same is true for propositional Leibniz equality and
+one can establish
+< a, p > ={x:A|P } < a, p′ > → p =P [x\a] p′
+
+PROOF-IRRELEVANT TYPE THEORIES
+
+11
+
+In general however, one is only interested in the validity of the assertion (P a), not the way
+it is proved. A program awaiting an argument of type {x : A|P } will behave identically if
+fed with < a, p > or < a, p′ > .
+Therefore, each time a construct {x : A|P } is used indeed as a data-type, one cannot
+use Leibniz equality in practice. Instead, one has to deﬁne a less restrictive equivalence
+relation ≃A,P which simply states that the two ﬁrst components of the pair are equal
+< a, p > ≃A,P < a′ , p′ > ≡ a =A a′
+But using ≃A,P instead of ={x:A|P } quickly becomes very tedious; typically, for every function f : {x : A|P } → B one has to prove
+Πc, c′ : {x : A|P } . c ≃A,P c′ → (f c) =B (f c′ )
+and even more speciﬁc statements if B is itself a subset type.
+In our theory, one can prove without diﬃculties that ={x:A|P } and ≃A,P are equivalent,
+and there is indeed no need anymore for deﬁning ≃A,P . Furthermore, one has < a, p >
+=βε < a, p′ > , so the two terms are computationally identiﬁed which is stronger than
+Leibniz equality, avoids the use of the deductive level and makes proofs and developments
+more concise.
+Array bounds. The same can be observed when partial functions are curryﬁed. Let us take
+again the example of arrays, but suppose this time the access function awaits a proof that
+the index is within the bounds of the array.
+tab : nat → Type(i)
+acc : Πn : nat.tab n → Πi : nat.i < n → A
+So given an array t of size n, its corresponding access function is
+a ≡ acc n t : Πi : nat.i < n → A
+In traditional type theory, this deﬁnition is cumbersome to use, since one has to state
+explicitly that the values (a i pi ), where pi : i < n do not depend upon pi . The type above
+is therefore not suﬃcient to describe an array; instead one needs the additional condition
+Tirr : Πi : nat.Πpi , p′i : i < n.(a i pi ) =A (a i p′i )
+where =A stands for the propositional Leibniz equality.
+This is again verbose and cumbersome since Tirr has to be invoked repeatedly. In
+our theory, not only the condition Tirr becomes trivial, since for any pi and p′i one has
+(a i pi ) =βε (a i p′i ), but this last coercion is stronger than propositional equality: there is
+no need anymore to have recourse to the deductive level and prove this equality. The proof
+terms are therefore clearer and smaller.
+4.3. On-the-fly extraction. An important point, which we only brieﬂy mention here is the
+consequence for the implementation when switching to a proof-irrelevant theory. In a proofchecker, the environment consists of a sequence of deﬁnitions or lemmas which have been
+type-checked. If the proof-checker implements a proof-irrelevant theory, it is reasonable to
+keep two versions of each constant: the full proof-term, which can be printed or re-checked,
+and the extracted one (that is ⊲ε -normalized) which is used for conversion check. This
+would be even more natural when building on recent Coq implementations which already
+
+12
+
+B. WERNER
+
+use a dual storing of constants, the second representation being non-printable compiled code
+precisely used for fast conversion check.
+In other words, a proof-system built upon a theory as the one presented here would allow
+the user to eﬃciently exploit the computational behavior of a constructive proof in order to
+prove new facts. This makes the beneﬁts of program extraction technology available inside
+the system and helps transforming proof-system into viable programming environments.
+5. Relating to PVS
+Subset types also form the core of PVS. In this formalism the objects of type {x : A|P } are
+also of type A, and objects of type A can be of type {x : A|P }. This makes type checking
+undecidable and is thus impossible in our setting. But we show that it is possible to build
+explicit coercions between the corresponding types of our theory which basically behave like
+the identity.
+What is presented in this section is strongly related to the work of Sozeau [35], which
+describes a way to provide a PVS style input mode for Coq.
+The following lemma states that the construction and destruction operations of our
+subset types can actually be omitted when checking conversion.
+Lemma 5.1 (Singleton simpliﬁcation). The typing relation of our theory remains unchanged if we extend the ⊲ε reduction of our theory by2.
+< a, p > Σ∗ x:A.P ⊲ε a
+π1 (c) ⊲ε c when c : Σ∗ x : A.B
+The following deﬁnition is directly transposed3 from PVS [31]. We do not treat dependent types in full generality (see chapter 3 of [31]).
+Definition 5.2 (Maximal super-type). The maximal super-type is a partial function µ
+from terms to terms, recursively deﬁned by the following equations. In all these equations,
+A and B are of type Type(i) in a given context.
+µ(A) ≡ A
+
+if A is a data-type
+
+µ(A → B) ≡ A → µ(B)
+
+µ({x : A|P }) ≡ µ(A)
+µ(A × B) ≡ µ(A) × µ(B).
+
+Definition 5.3 (η-reduction). The generalized η-reduction, written ⊲η , is the contextual
+closure of
+λx : A.(t x) ⊲η t if x is not free in t
+< π1 (t), π2 (t) > ⊲η t
+We can now construct the coercion function from A to µ(A).
+Lemma 5.4. If Γ ⊢ A : Type(i) and µ(A) is defined, then
+• Γ ⊢ µ(A) : Type(i),
+2To make the second clause rigorous, a solution is to modify slightly the theory by adding a tag the ﬁrst
+projection (π1∗ (t) and π1⋄ (t)). This does not signiﬁcantly change the metatheory.
+3A diﬀerence is that in PVS, propositions and booleans are identiﬁed; but this point is independent of
+this study. It is however possible to do the same in our theory by assuming a computational version of
+excluded-middle.
+
+PROOF-IRRELEVANT TYPE THEORIES
+
+13
+
+• there exists a function µ(A) which is of type A → µ(A) in Γ,
+• furthermore, when applying the singleton simplification S to µ(A) one obtains an ηexpansion of the identity function; to be precise, S(µ(A)) ⊲∗εβη λx : A.x.
+Proof. It is almost trivial to check that Γ ⊢ µ(A) : Type(i). The two other clauses are
+proved by induction over the structure of A.
+• If A is of the form {x : B|P } with µ(B) : B → µ(B), then
+µ(A) ≡ λx : {x : B|P }.(µ(B) π1 (x)) : {x : B|P } → µ(B)
+Furthermore, since P : Prop, π1 (x) is here simpliﬁed to x, and by induction hypothesis we
+know that S(µ(B)) x reduces to x. We can conclude that S(µ(A)) ⊲∗εβη λx : {x : B|P }.x.
+• If A is of the form C → B with µ(B) : B → µ(B), then
+µ(A) ≡ λh : C → B.λx : C.µ(B) (h x) : C → µ(B)
+Since (S(µ(B)) (h x)) ⊲∗εβη (h x), we have S(µ(A)) ⊲∗εβη λh : A → B.h.
+• If A is of the form B × C, then
+µ(A) ≡ λx : B × C. < (µ(B) π1 (x)), (µ(C) π2 (x)) >µ(B)×µ(C)
+
+Again, the induction hypotheses assure that µ(A) ⊲∗εβη λx : B × C.x.
+The opposite operation, going from from µ(A) to A, can only be performed when some
+conditions are veriﬁed (type-checking conditions, or TCC’s in PVS terminology). We can
+also transpose this to our theory, still keeping the simple computational behavior of the
+coercion function. This time however, our typing being less ﬂexible than PVS’, we have
+to deﬁne the coercion function and its type simultaneously; furthermore, in general, this
+operation is well-typed only if the type-theory supports generalized η-reduction4.
+This unfortunate restriction is typical when deﬁning transformations over programs
+with dependent types. It should however not be taken too seriously, and we believe this
+cosmetic imperfection can generally be tackled in practice5.
+Lemma 5.5 (subtype constraint). Given Γ ⊢ A : Type(i), if µ(A) is defined, then one can
+define π(A) and π(A) such that, in the theory where conversion is extended with ⊲η , one
+has
+Γ ⊢ π(A) : µ(A) → Prop and Γ ⊢ π(A) : Πx : µ(A).(π(A) x) → A
+Furthermore, π(A) ⊲εβη -normalizes to λx : µ(A).λp : (π(A) x).x.
+Proof. By straightforward induction. We only provide detail for the case where A = B → C.
+Then π(A) ≡ λf : A → µ(B).∀x : A.(π(B) (f x)) and π(A) ≡ λf : A → µ(B).λp : ∀x :
+
+A.(π(B) (f x)).λx : A.(π(B) (f x) (p x)).
+
+4It should be mentionned that adding η-reduction to such a type system yields non-trivial technical
+
+diﬃculties, which are mostly independent of the question of proof-irrelevance.
+5
+For one, in practical cases, η-does not seem necessary very often (only with some nested existentials).
+And even then, it should be possible to tackle the problem by proving the corresponding equality on the
+deductive level.
+
+14
+
+B. WERNER
+
+6. A more extensional theory
+Especially during the 1970s and 1980s, there was an intense debate about the respective
+advantages of intensional versus extensional type theories. The latter denomination seems
+to cover various features like replacing conversion by propositional equality in the conversion rule or adding primitive quotient types. In general, these features provide a more
+comfortable construction of some mathematical concepts and are closer to set-theoretical
+practice. But they break other desirable properties, like decidability of type-checking and
+strong normalization.
+The theory presented here should therefore be considered as belonging to the intentional
+family. However, we retrieve some features usually understood as extensional.
+6.1. The axiom of choice. Consider the usual form of the (typed) axiom of choice (AC)
+(∀x : A.∃y : B.R(x, y)) ⇒ ∃f : A → B.∀x : A.R(x, f x)
+When we transpose it into our type theory, we can choose to translate the existential
+quantiﬁer either by a Σ-type, or the existential quantiﬁer deﬁned in Prop
+∃x : A.P ≡ ΠQ : Prop.(Πx : A.P → Q) → Q : Prop
+If we use a Σ-type, we get a type which obviously inhabited, using the projections π1
+and π2 . However, if we read the existential quantiﬁers of AC as deﬁned above, we obtain a
+(non-computational) proposition which is not provable in type theory.
+Schematically, this propositions states that if Πx : A.∃y : B.R(x, y) is provable, then
+the corresponding function from A to B exists “in the model”. This assumption is strong
+and allows to encode IZF set theory into type theory (see [36]).
+What is new is that our proof-irrelevant type theory is extensional enough to perform
+the ﬁrst part of Goodman and Myhill’s proof based on Diaconescu’s observation. Assuming
+AC, we can prove the decidability of equality. Consider any type A and two objects a and
+b of type A. We deﬁne a type corresponding to the unordered pair
+{a, b} ≡ {x : A|x =A a ∨ x =A b}
+′
+′
+Let us write a (resp. b ) for the element of {a, b} corresponding to a (resp. b); so π1 (a′ ) =βε a
+and π1 (b′ ) =βε b. It is then easy to prove that
+Πz : {a, b}.∃e : bool.(e =bool true ∧ π1 (z) =A a) ∨ (e =bool false ∧ π1 (z) =A b)
+and from the axiom of choice we deduce
+∃f : {a, b} → bool.Πz : {a, b}.(f z =bool true ∧ π1 (z) =A a) ∨ (f z =bool false ∧ π1 (z) =A b)
+Finally given such a function f , one can compare (f a′ ) and (f b′ ), since both are booleans
+over which equality is decidable.
+The key point is then that, thanks to proof-irrelevance, the equivalence between a′ ={a,b}
+′
+b and a =A b is provable in the theory. Therefore, if (f a′ ) and (f b′ ) are diﬀerent, so are a
+and b. On the other hand, if (f a′ ) =bool (f b′ ) =bool true then π1 (b′ ) =A a and so b =A a.
+In the same way, (f a′ ) =bool (f b′ ) =bool false entails b =A a.
+We thus deduce a =A b ∨ a 6=A b and by generalizing with respect to a, b and A we
+obtain
+ΠA : Type(i).Πa, b : A.a =A b ∨ a 6=A b
+
+PROOF-IRRELEVANT TYPE THEORIES
+
+15
+
+which is a quite classical statement. We have formalized this proof in Coq, assuming proofirrelevance as an axiom.
+Note of course that this “decidability” is restricted to a disjunction in Prop and that it is
+not possible to build an actual generic decision function. Indeed, constructivity of results in
+the predicative fragment of the theory are preserved, even if assuming the excluded-middle
+in Prop.
+6.2. Other classical non-computational axioms. At present, we have not been able
+to deduce the excluded middle (EM) from the statement above6. We leave this theoretical
+question to future investigations but it seems quite clear that in most cases, when admitting
+AC one will also be willing to admit EM. In fact both axioms are validated by the simple
+set-theoretical model and give a setting where the Type(i)’s are inhabited by computational
+types (i.e. from {x : A|P } we can compute x of type A) and Prop allows classical reasoning
+about those programs.
+Another practical statement which is validated by the set-theoretical model is the axiom
+that point-wise equal functions are equal
+(EXT) ΠA, B : Type(i).Πf, g : A → B.(Πx : A.f x =B g x) → f =A→B g
+Note that combining this axiom with AC (and thus decidability of equality) is already
+enough to prove (in Prop) the existence of a function deciding whether a Turing machine
+halts.
+6.3. Quotients and normalized types. Quotient sets are a typically extensional concept
+whose adaptation to type theory has always been problematic. Again, one has to choose
+between “eﬀective” quotients and decidability of type-checking. Searching for a possible
+compromise, Courtieu [13] ended up with an interesting notion of normalized type7. The
+idea is remarkably simple: given a function f : A → B, we can deﬁne {(f x)|x : A} which is
+the subtype of B corresponding to the range of f . His rules are straightforwardly translated
+into our theory by simply taking
+{f (x)|x : A} ≡ {y : B|∃x : A.y =B f x}
+Courtieu also gives the typing rules for functions going from A to {f (x)|x : A}, and
+back in the case where f is actually of type A → A.
+The relation with quotients being that in the case f : A → A we can understand
+{f (x)|x : A} as the type A quotiented by the relation
+x R y ⇐⇒ f x =A f y
+In practice this appears to be often the case, and Courtieu describes several applications.
+
+6In set theory, decidability of equality entails the excluded middle, since {x ∈ N|P } is equal to N if and
+
+only if P holds.
+7A similar notion has been developed for NuPRL [30].
+
+16
+
+B. WERNER
+
+7. Simple semantics
+When justifying the correctness of a program extraction mechanism, one can use either
+semantics or syntax. In the ﬁrst case, one builds a model and veriﬁes it validates extraction [7]. In the latter case, at least in the framework of type theories, this mainly means
+building a realizability interpretation on top of the strong normalization property [32]. This
+second approach is diﬃcult here, since our theory is itself built using the erasure of noncomputational terms. Furthermore, for complex theories, it appears easier to prove strong
+normalization using an already deﬁned model [2, 27, 12].
+For this reason alone, it is worth treating the topic of semantics here. Furthermore,
+we believe it is a good point for a theory meant to be used in a proof-system to bear
+simple semantics, in order to justify easily the validity of additional axioms like the ones
+mentioned in the previous section or extensions like the useful reduction rule for Eq_rec
+(par. 2.4) which is diﬃcult to treat by purely syntactic means.
+Set-theoretical interpretations are the most straightforward way to provide semantics
+for typed λ-calculi. It consists, given an interpretation I of the free variables, of interpreting
+a type T by a set |T |I , and terms t : T by elements |t|I of |T |I . Furthermore, λ-abstractions
+are interpreted by their set-theoretical counterparts: |λx : A.t|I is the function mapping
+α ∈ |A|I to |t|I;x←α. While these interpretations are not interesting for studying the
+dynamics of proof-normalization, they have the virtue of simplicity.
+Since Reynolds [34], it is well-known that impredicative or polymorphic types, as the
+inhabitants of Prop, bear only a trivial set-theoretical interpretation: if P : Prop, then |P |I
+is either the empty set or a singleton. In other words, all proofs of proposition P have
+the same interpretation. Since our theory precisely identiﬁes all the elements of P at the
+computational level, the set-theoretical setting is, for its simplicity the most appealing for
+our goal.
+Although the set-theoretical model construction is not as simple as it might seem [29],
+the setting is not new; We try to give a reasonably precise description here.
+7.1. Notations. Peter Aczel’s way to encode set-theoretic functions provides a tempting
+framework for a model construction, and a previous version of this section relied on it.
+However, because of technical diﬃculties appearing when proving the subject reduction
+property for the semantic interpretation we ﬁnally favor the traditional set theoretic vision
+of functions, where the application f (x) is only deﬁned when x belongs to the domain of
+the function f .
+If I is a mapping from variables to sets and α is a set, we write I; x ← α for the
+function mapping x to α and identical to I elsewhere.
+The interpretation of the hierarchy Type(i) goes beyond ZFC set theory and relies on
+the existence of inaccessible cardinals. This means, we postulate, for every natural number
+n the existence of a set Un such that
+• Un ∈ Un+1 ,
+• Un is closed by all set-theoretical operations.
+As usual, we write ∅ for the empty set. We write I for the canonical singleton {∅}. If A
+is a set and (Ba )a∈A a family of sets indexed over A, we use the set-theoretical dependent
+
+PROOF-IRRELEVANT TYPE THEORIES
+
+|Γ ⊢ t|I
+In the other cases:
+|Γ ⊢ x⋄ |I
+|Γ ⊢ λx : A.t|I
+|Γ ⊢ (t u)|I
+|Γ ⊢ Σx : A.B|I
+|Γ ⊢ Πx : A.B|I
+
+17
+
+≡ ∅ if t is of sort ∗
+≡
+≡
+≡
+≡
+
+I(x⋄ )
+α ∈ |Γ ⊢ A|I 7→ |Γ(x : A) ⊢ t|I;x←α
+|Γ ⊢ t|I (|Γ ⊢ u|I )
+Σα∈|Γ⊢A|I |Γ(x : A) ⊢ B|I;x←α
+\
+≡
+|Γ(x : A) ⊢ B|I;x←α if Γ ⊢ Πx : A.B : Prop
+α∈|Γ⊢A|I
+
+|Γ ⊢ Πx : A.B|I
+|Γ ⊢< t, u >Σx:A.B |I
+|Γ ⊢ πi (t)|I
+|Γ ⊢ Prop|I
+|Γ ⊢ Type(i)|I
+|Γ ⊢ (Eq_rec A P a b p e)|I
+
+≡ Πα∈|Γ⊢A|I |Γ(x : A) ⊢ B|I;x←α in the other cases
+≡
+≡
+≡
+≡
+≡
+
+(|Γ ⊢ t|I , |Γ ⊢ u|I )
+αi if |Γ ⊢ t|I is a pair (α1 , α2 )
+{∅; I}
+Ui
+|Γ ⊢ p|I
+
+Figure 2: Deﬁnition of the semantics
+products and sums
+Πa∈A Ba ≡ {f ∈ A →
+
+[
+
+Ba | ∀a ∈ A.f (a) ∈ Ba }
+
+a∈A
+
+Σa∈A Ba ≡ {(a, b) ∈ A ×
+
+[
+
+Ba | a ∈ A ∧ b ∈ Ba }
+
+a∈A
+
+Finally we write x ∈ A 7→ t for the set-theoretical function construction and, of course,
+f (x) for set-theoretical function application.
+7.2. Construction. Over the ECC fragment of the type theory, the interpretation is constructed straightforwardly. The fact that non-computational terms are syntacticly tagged
+makes the deﬁnition easier. We deﬁne
+S
+Definition 7.1. For any mapping I from variables to i∈N Ui , we deﬁne a mapping associating a set |Γ ⊢ t|I to a term t and a context Γ. This function is deﬁned by induction
+over the size of t by the following equations of ﬁgure 2; we can restrict ourselves to the case
+where Γ ⊢ t : T for some T .
+The following extension of interpretations to contexts is the usual.
+Definition 7.2. We deﬁne the condition I ∈ |Γ| by the following clauses
+• I ∈ |[]|,
+• I ∈ |Γ| ∧ I(x) ∈ |Γ ⊢ A|I ⇒ I ∈ |Γ(x : A)|.
+This deﬁnition should not be surprising. It is a partial deﬁnition, because of two clauses
+• The case of the application, since |Γ ⊢ (t u)|I is only deﬁned when |Γ ⊢ t|I is a (settheoretic) function and its domains contains |Γ ⊢ u|I .
+
+18
+
+B. WERNER
+
+• The cases of the projections, since |Γ ⊢ πi (t)|I is only deﬁned when |Γ ⊢ t|I is a (settheoretic) pair.
+Note also that the deﬁnition depends upon Γ only to discriminate between the case where
+Πx : A.B is impredicative and is not. A more interesting technical point is the last clause: by
+anticipating the reduction of Eq_rec we have a total deﬁnition which is obviously invariant
+by reduction.
+Lemma 7.3 (Substitutivity). Suppose Γ(xs : U )∆ ⊢ t : T , Γ ⊢ u : U and s = s(u). Suppose
+furthermore
+(1) |Γ(x : U )∆| is defined,
+(2) if I ∈ |Γ(x : U )∆| ⇒ |Γ(x : U )∆ ⊢ t|I ∈ |Γ(x : U )∆ ⊢ T |I ,
+(3) I ∈ |Γ| ⇒ |Γ ⊢ u|I ∈ |Γ ⊢ U |I .
+Let I ∈ |Γ∆[x \ u]|; we have
+• |Γ∆[x \ u] ⊢ t[x \ u]|I is defined and equal to |Γ(xs : U )∆ ⊢ t|I;x←|Γ⊢u|I
+• (I; x ← |Γ ⊢ u|I ) ∈ kΓ(x : U )∆|.
+Proof. By a simple induction over the structure of the derivation.
+Note that in the case where t is of the form Πy : A.B, one uses the fact that typing is
+preserved by substitution (lemma 3.9) in order to ensure that the applied clause remains
+the same (Πx : A.B being of type Prop or Type(i)).
+
+Lemma 7.4 (Correctness for reduction). Let Γ ⊢ t : T be derivable; have I ∈ |Γ| such that
+|Γ ⊢ t|I is defined. If t ⊲ε t′ , then |Γ ⊢ t′ |I = |Γ ⊢ t|I .
+Proof. By induction over the typing derivation. As pointed out in [29], the restriction on
+the β-reduction that ensures that the tag does not change is essential here.
+
+Corollary 7.5. Let Γ ⊢ t : T and Γ ⊢ t′ : T be derivable; have I ∈ |Γ| such that |Γ ⊢ t|I
+and |Γ ⊢ t′ |I are defined. t =βε t′ , then we have |t|I = |t′ |I .
+Soundness is then proved without much diﬃculty.
+Theorem 7.6. If Γ ⊢ wf is derivable, then |Γ| is defined. If Γ ⊢ t : T is derivable, and
+I ∈ |Γ| then |Γ ⊢ t|I ∈ |Γ ⊢ T |I (and both objects are defined).
+Proof. By induction over the derivation. When checking the correctness of the interpretation
+of Eq_rec, one simply has to remark that propositional Leibniz equality is indeed interpreted
+by set-theoretical equality; that is, if |Γ ⊢ a|I and |Γ ⊢ b|I are both elements of |Γ ⊢ A|I ,
+then
+• |Γ ⊢ a =A b|I = I if |Γ ⊢ a|I = |Γ ⊢ b|I ,
+• |Γ ⊢ a =A b|I = ∅ if Γ ⊢ |a|I 6= |Γ ⊢ b|I .
+
+It is easy to check that the axioms AC, EM and EXT of the previous section are valid
+in this model.
+8. Conclusion and further work
+We have tried to show that a relaxed conversion rule can make type theories more practical,
+without necessarily giving up normalization or decidable type checking. In particular, we
+have shown that this approach brings closer the world of PVS and type theories of the Coq
+family.
+
+PROOF-IRRELEVANT TYPE THEORIES
+
+19
+
+We also view this as a contribution to closing the gap between proof systems like Coq
+and safe programming environments like Dependent ML or ATS [10, 37]. But this will only
+be assessed by practice; the ﬁrst step is thus to implement such a theory.
+9. Acknowledgements
+Christine Paulin deserves special thanks, since she me gave the idea of a relaxed conversion
+rule long ago as well as the hint for the computation rule of paragraph 2.4. Bruno Barras
+was very helpful by pointing out some errors and Makoto Tatsuta by helping me to check
+that deﬁning simultaneously reduction and conversion did not break Church-Rosser. A
+question of Russell O’Connor suggested the generalization of paragraph 2.5. This work
+also beneﬁted from discussions with Bruno Barras, Hugo Herbelin and Benjamin Grégoire.
+Anonymous referees gave numerous useful comments and hints.
+References
+[1] P. Aczel. "On relating type theories and set theories", in Types for Proofs and Programs, edited by
+Altenkirch, Naraschewski and Reus, Proceedings of Types ’98, LNCS 1657 (1999).
+[2] T. Altenkirch. “Proving strong normalization for CC by modifying realizability semantics”. In
+H. Barendregt and T. Nipkow Eds, Types for Proofs and Programs, LNCS 806, Springer-Verlag, 1994.
+[3] T. Altenkirch. “Extensional Equality in Intensional Type Theory”. LICS’99, IEEE, 1999.
+[4] H. Barendregt.Lambda Calculi with Types.Technical Report 91-19, Catholic University Nĳmegen,
+1991.In Handbook of Logic in Computer Science, Vol II, Elsevier, 1992.
+[5] B. Barras and B. Bernardo. “The Implicit Calculus of Constructions as a Programming Language with
+Dependent Types”. In R. Amadio, editor, Proceedings of FOSSACS’08, volume 4962 of LNCS, pages
+365-379. Springer-Verlag, 2008.
+[6] G. Barthe. “The relevance of proof-irrelevance”. In K.G. Larsen, S. Skyum, and G. Winskel, editors,
+Proceedings of ICALP’98, volume 1443 of LNCS, pages 755-768. Springer-Verlag, 1998.
+[7] S. Berardi. “An Application of PER Models to Program Extraction”. Mathematical Structures in
+Computer Science, vol. 3(3), pages 309-331, 1993.
+[8] F. Blanqui. “Deﬁnitions by rewriting in the Calculus of Constructions”. Mathematical Structures in
+Computer Science, vol. 15(1), 2003.
+[9] J. Caldwell. “Moving Proofs-as-Programs into Practice”, In Proceedings of the 12th IEEE International
+Conference on Automated Software Engineering, IEEE, 1997.
+[10] Chiyan Chen and Hongwei Xi, “Combining Programming with Theorem Proving”. ICFP’05, IEEE,
+2005.
+[11] The Coq Development Team. The Coq Proof-Assistant User’s Manual, INRIA. On
+http://coq.inria.fr/.
+[12] T. Coquand and A. Spiwack. “A Proof of Strong Normalisation using Domain Theory”. In Proceedings
+of LICS’06, IEEE, 2006.
+[13] P. Courtieu. “Normalized Types”. Proceedings of CSL 2001, L. Fribourg Ed., LNCS 2142, Springer,
+2001.
+[14] E. Gimenez. “A Tutorial on Recursive Types in Coq”. INRIA Technical Report. 1999.
+[15] G. Gonthier. A computer-checked proof of the Four Colour Theorem. Manuscript,
+http://research.microsoft.com/~gonthier/4colproof.pdf, 2005.
+[16] B. Grégoire and X. Leroy. “A compiled implementation of strong reduction”, proceedings of ICFP,
+IEEE, 2002.
+[17] B. Grégoire. Compilation des termes de preuves: un (nouveau) mariage entre Coq et Ocaml. Thèse de
+doctorat, Université Paris 7, 2003.
+[18] B. Grégoire, L. Théry and B. Werner. “A computational approach to Pocklington certiﬁcates in type
+theory”. In proceedings of FLOPS 2006, M. Hagiya and P. Wadler (Eds), Volume 3945 of LNCS,
+Springer-Verlag, 2006.
+
+20
+
+B. WERNER
+
+[19] M. Hofmann and T. Streicher. “A groupoid model refutes uniqueness of identity proofs”. Proceedings
+of LICS’94, Paris. IEEE, 1994.
+[20] J. W. Klop. Combinatory Reduction Systems. Ph.D. Thesis, Utrecht University, 1980.
+[21] P. Letouzey. Programmation fonctionnelle certifiée: l’extraction de programmes dans l’assistant Coq.
+Thèse de doctorat. Université Paris-sud, 2004.
+[22] P. Letouzey. A New Extraction for Coq. In Geuvers and Wiedĳk (Eds.), Proceedings of TYPES 2002,
+LNCS 2646, 2003.
+[23] Z. Luo. “ECC: An Extended Calculus of Constructions.” Proceedings of LICS’89, IEEE, 1989.
+[24] P. Martin-Löf. Intuitionistic Type Theory. Studies in Proof Theory, Bibliopolis, 1984.
+[25] C. McBride. “Elimination with a Motive”. P. Callaghan, Z. Luo, J. McKinna and R. Pollack (Eds.),
+Proceedings of TYPES’00, LNCS 2277, Springer Verlag, 2002.
+[26] J. McKinna and R. Pollack. “Pure Type Systems formalized”. In TLCA’93, M. Bezem and J. F. Groote
+Eds, LNCS 664, Springer-Verlag, Berlin, 1993.
+[27] P.-A. Melliès and B. Werner. “A Generic Normalization Proof for Pure Type System”. In TYPES’96,
+E. Gimenez and C. Paulin-Mohring Eds, LNCS 1512, Springer-Verlag, Berlin, 1998.
+[28] A. Miquel. “The Implicit Calculus of Constructions”. In proceedings of TLCA’01, LNCS 2044,
+Springer-Verlag, 2001.
+[29] A. Miquel and B. Werner. “The not so simple proof-irrelevant model of CC”. In Geuvers and Wiedĳk
+(Eds.), Proceedings of TYPES 2002, LNCS 2646, 2003.
+[30] A. Nogin and A. Kopilov. “Formalizing Type Operations Using the “Image” Type Constructor”. To
+appear in WoLLIC 2006, ENTCS.
+[31] S. Owre and N. Shankar. “The Formal Semantics of PVS”. SRI Technical Report CSL-97-2R. Revised
+March 1999.
+[32] C. Paulin-Mohring. Extraction de Programmes dans le Calcul des Constructions. Thèse de doctorat,
+Université Paris 7, 1989.
+[33] F. Pfenning. “Intensionality, Extensionality, and Proof Irrelevance in Modal Type Theory”. In Proceedings of LICS, IEEE, 2001.
+[34] J. Reynolds. “Polymorphism is not Set-Theoretic”. In Semantics of Data Types, G. Kahn, D. MacQueen
+and G. Plotkin (Eds.), LNCS 173, Springer-Verlag, 1984.
+[35] M. Sozeau. “Subset Coercions in Coq”. In TYPES’06, T. Altenkirch and C. McBride (Eds.), LNCS
+4502, Springer-Verlag, 2007.
+[36] B. Werner. “Sets in Types, Types in Set”. In, M. Abadi and T. Itoh (Eds), Theoretical Aspects of
+Computer Science, TACS’97, LNCS 1281, Springer-Verlag, 1997.
+[37] Hongwei Xi, Dependent Types in Practical Programming, Ph.D, CMU, 1998.
+
+This work is licensed under the Creative Commons Attribution-NoDerivs License. To view
+a copy of this license, visit http://creativecommons.org/licenses/by-nd/2.0/ or send a
+letter to Creative Commons, 559 Nathan Abbott Way, Stanford, California 94305, USA.
+
+
