@@ -8,7 +8,7 @@ could? Sources: `src/plugin/coq_transl.ml`, `coq_transl_opts.ml`, `tptp_out.ml`
 limitations) and the TYPES 2016 shallow PTS embedding paper; sibling notes
 `notes/monomorphisation.md` (TODO 5/6), `notes/dependent_types.md` (TODO 9),
 `notes/extraction.md` (TODO 7/9), `notes/indexed_families.md` and its research
-reports in `notes/indexed_families/research/` (cited below as [R-ford],
+reports in `notes/research/` (cited below as [R-ford],
 [R-enc], [R-eras]). Tactic-level claims about `congruence`/`sauto`/`lia`
 were verified on this branch (probe: `n <> S n`).*
 

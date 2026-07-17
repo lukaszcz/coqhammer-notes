@@ -4,10 +4,10 @@
 `coq_erasure.ml`, `coq_transl_opts.ml` (extraction branch, Rocq 9.2); the
 CoqHammer paper (Czajka & Kaliszyk, JAR 61, 2018) and the shallow PTS
 embedding paper (Czajka, TYPES 2016 post-proceedings); three commissioned
-literature surveys in `notes/indexed_families/research/` (fording &
+literature surveys in `notes/research/` (fording &
 pattern-matching elimination; hammer/SMT datatype encodings; erasure &
 proof-irrelevance semantics) with primary texts archived in
-`notes/indexed_families/papers/`; companion notes `notes/extraction.md`,
+`notes/papers/`; companion notes `notes/extraction.md`,
 `notes/dependent_types.md`, `notes/monomorphisation.md`. All concrete FOL
 outputs below were produced with `Hammer_transl` using the plugin built from
 this branch. Terminology: "junk model" = the proof-irrelevant total model
@@ -597,10 +597,10 @@ the paths Phase C touches).
 ## References
 
 Research reports (this directory):
-`indexed_families/research/fording-pattern-matching-elimination.md`,
-`indexed_families/research/hammer-smt-datatype-encodings.md`,
-`indexed_families/research/erasure-index-representation-semantics.md`.
-Archived primary texts: `indexed_families/papers/` (see its README for the
+`research/fording-pattern-matching-elimination.md`,
+`research/hammer-smt-datatype-encodings.md`,
+`research/erasure-index-representation-semantics.md`.
+Archived primary texts: `papers/` (see its README for the
 full citation table). Key primaries: McBride 1999 (thesis, §3.5, §5.2);
 Goguen–McBride–McKinna 2006; Cockx–Devriese–Piessens ICFP 2014;
 Cockx–Devriese JFP 2018; Sozeau–Mangin ICFP 2019;
