@@ -36,8 +36,14 @@ index-blind erasure, with stored indices kept; MetaCoq mechanises it
 with the $\mathsf{Subsingleton}$ criterion for case erasure
 \cite{SozeauEtAl2020}.  Our $\tscase{}{}{}{}$ is the stratified image of
 CIC's singleton elimination \cite{Rocq}, extended from ``parameters put
-aside'' to forced arguments; that this extension under proof irrelevance
-is exactly UIP is the analysis of Gilbert, Cockx, Sozeau and Tabareau
+aside'' to \emph{verbatim-forced} arguments --- a strict subset of the
+forced arguments of \cite{BradyEtAl2004,GilbertEtAl2019}, which also
+count \emph{pattern-forced} positions occurring under constructors in
+an index and recoverable by injectivity;
+\cref{rem:singleton-criterion} delimits the two notions and notes the
+pattern-forced generalisation as future work.  That extensions of this
+kind under proof irrelevance are exactly UIP is the analysis of
+Gilbert, Cockx, Sozeau and Tabareau
 \cite{GilbertEtAl2019}, whose corrected criterion (non-forced arguments
 propositional, orthogonal index patterns, guardedness) delimits what can
 be \emph{definitional} --- our model needs only what is \emph{true} in a
@@ -61,7 +67,19 @@ CoqHammer translation \cite{CzajkaKaliszyk2018,CzajkaKaliszyk2016}, its
 proof-theoretically sound core \cite{Czajka2018}, and the companion
 paper \cite{Extraction2026} whose architecture this paper extends;
 \cref{sec:intro-impl} and \cref{rem:impl-sites} give the
-correspondence.  For HOL hammers, the translation stack and its
+correspondence.  On the Agda side, the closest relative is the
+agda2atp/Apia route of Bove, Dybjer and Sicard-Ram{\'i}rez
+\cite{BoveEtAl2012}, which ships a first-order sub-language of Agda to
+untyped TPTP; there inductive types reach the ATPs through
+user-supplied postulates rather than a generated theory with a
+once-and-for-all soundness proof.  SMTCoq
+\cite{ArmandEtAl2011,EkiciEtAl2017} secures the Coq--solver connection
+by the complementary discipline: per-run certificates replayed inside
+Coq by a reflexive checker, so trust never rests on the encoding, at
+the price of coverage restricted to the checker's theories --- whereas
+the model-theoretic route proves the translation sound once, for every
+goal in the fragment, with reconstruction as the per-proof arbiter.
+For HOL hammers, the translation stack and its
 model-with-junk soundness proofs are due to Meng and Paulson
 \cite{MengPaulson2008} and Blanchette et al.\
 \cite{BlanchetteEtAl2016}; their monotonicity analysis --- a type's

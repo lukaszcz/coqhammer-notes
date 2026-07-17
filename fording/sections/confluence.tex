@@ -110,6 +110,26 @@ on the last clause used.
   be a constructor form, but the development
   $\mathsf{case}(e^{\ast}; \tup{br}^{\ast})$ is reached by clause (6)
   either way.
+\item Clause (6) with constructor-form scrutinee --- the parallel step
+  is a congruence but the development fires the $\iota$-redex.  Here $e
+  = \mathsf{case}(\wcns{c}_i(\tup{e}); \{\wcns{c}_j(\tup{x}_j)
+  \Rightarrow b_j\}_j)$ and $e^{\ast} =
+  \subst{b_i^{\ast}}{\tup{e}^{\ast}}{\tup{x}_i}$ by
+  \cref{def:development}.  The step gives $e' =
+  \mathsf{case}(e''; \{\wcns{c}_j(\tup{x}_j) \Rightarrow b'_j\}_j)$
+  with $\wcns{c}_i(\tup{e}) \Rightarrow e''$ and $b_j \Rightarrow
+  b'_j$; the scrutinee derivation can only be by clause (5) --- a
+  constructor form is neither a variable, $\bx$, a constant, nor an
+  application, so no other clause matches its shape --- hence $e'' =
+  \wcns{c}_i(\tup{e}'')$ with $e_l \Rightarrow e''_l$ componentwise.
+  The induction hypotheses give $e''_l \Rightarrow e_l^{\ast}$ and
+  $b'_i \Rightarrow b_i^{\ast}$, so clause (9) applied to $e' =
+  \mathsf{case}(\wcns{c}_i(\tup{e}''); \{\wcns{c}_j(\tup{x}_j)
+  \Rightarrow b'_j\}_j)$ yields $e' \Rightarrow
+  \subst{b_i^{\ast}}{\tup{e}^{\ast}}{\tup{x}_i} = e^{\ast}$.  (This is
+  the redex-created-by-development configuration the Takahashi method
+  is designed for; the symmetric configuration --- step fires the
+  redex, development likewise --- is clause (9) below.)
 \item Clause (4) with $e_1 = \lambda x.b$: then $e_1 \Rightarrow e_1'$
   is by clause (3), $e_1' = \lambda x.b'$, and $e^{\ast} =
   \subst{b^{\ast}}{a^{\ast}}{x}$; from $e' = (\lambda x.b')\,a'$ apply

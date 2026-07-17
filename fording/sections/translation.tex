@@ -94,6 +94,13 @@ recursion on $e$:
     \fapp \cdots \fapp \compf_\theta(e_j)$;
   \item if $h = x$ is a variable: $\compf_\theta(e) = x \fapp
     \compf_\theta(e_1) \fapp \cdots \fapp \compf_\theta(e_j)$;
+  \item if $h = \bx$ (necessarily $j \geq 1$): $\compf_\theta(e) =
+    \prfc \fapp \compf_\theta(e_1) \fapp \cdots \fapp
+    \compf_\theta(e_j)$;
+  \item if $h = \wcns{c}(\tup{e}')$ is a constructor form (necessarily
+    $j \geq 1$): $\compf_\theta(e) =
+    \Ihat{\wcns{c}}(\compf_\theta(\tup{e}')) \fapp \compf_\theta(e_1)
+    \fapp \cdots \fapp \compf_\theta(e_j)$;
   \item if $h$ is a $\lambda$-abstraction, case or fix (a \emph{complex
     head}): let $u$ be its \emph{value translation} defined below; then
     $\compf_\theta(e) = u \fapp \compf_\theta(e_1) \fapp \cdots \fapp
@@ -121,14 +128,42 @@ recursion on $e$:
     m)]$; the value is $f^0(\tup{w})$.
   \end{itemize}
 \end{itemize}
+The case analysis is exhaustive, so $\compf_\theta$ is total: every
+$\lbox$ term is an atomic form or an application spine, and the head of
+a spine --- not itself an application --- is $\theta$-bound, a
+constant, an ordinary variable, $\bx$, a constructor form, or complex.
 \end{definition}
+
+\begin{remark}[The two degenerate head clauses]
+\label{rem:box-head}
+The $\bx$-headed clause is not a safety margin: such spines are
+reachable from well-typed sources.  The definition
+\[
+  c \defeq \lambda p{:}\bot.\ \lambda x{:}\nat.\
+  \texfalso{p}{\nat \to \nat}\ x \ : \ \bot \to \nat \to \nat
+\]
+erases to $\lambda x.\ \bx\,x$, whose compilation reaches rule (5) of
+\cref{def:compile} with body $\bx\,x$ and emits $\forall x.\
+\Ihat{c}(x) \feq \prfc \fapp x$ --- dead code applied, denoting the
+junk class $\cls{\bx\,\hat{x}}$ (\cref{lem:comp-adequacy}).
+Constructor-headed spines $\wcns{c}(\tup{e}')\,e_1$, by contrast, we
+believe unreachable from erasures of well-typed $\CICi$ terms --- by
+rigidity (\cref{lem:rigid}) a constructor term never has a $\Pi$-type
+--- but $\compf$ is also invoked on terms embedded in goals, premises
+and specifications, so relying on unreachability would require
+maintaining a typing invariant across every invocation site.  The
+clause costs one line and makes every totality statement in this
+section (\cref{lem:compile-term}, the totality of $\guardf$ and $\Ff$
+in \cref{def:guard-F}) unconditional.
+\end{remark}
 
 \begin{definition}[Body compilation $\mathrm{B}$]
 \label{def:compile}
 $\mathrm{B}_\theta(L;\, e)$ takes a first-order term $L$ (the
 \emph{left-hand side}, linear in its variables, whose variables include
 $\fv{e}$ minus the $\theta$-bound ones) and a $\lbox$ term $e$, and
-emits axioms:
+emits axioms; throughout, $\forall.\ \phi$ denotes the universal
+closure of $\phi$ (all free first-order variables quantified):
 \begin{enumerate}[leftmargin=2em]
 \item If $e = \lambda x.e'$: run $\mathrm{B}_\theta(L \fapp x;\, e')$.
 \item If $e = \mathsf{case}(x;\, \{\wcns{c}_i(\tup{z}_i) \Rightarrow
@@ -140,8 +175,7 @@ emits axioms:
 \item If $e = \mathsf{case}(s;\, \tup{br})$ with $s$ not a variable of
   $L$: let $g = \mathrm{X}(\lambda z.\mathsf{case}(z;\tup{br}))$ with
   closure $\tup{w}' = \fv{\tup{br}}$ and witness as in \cref{def:compC};
-  emit $\forall.\ L \feq g(\compf_\theta(s), \tup{w}')$ (universal
-  closure over the variables of $L$), and run
+  emit $\forall.\ L \feq g(\compf_\theta(s), \tup{w}')$, and run
   $\mathrm{B}_\theta(g(z, \tup{w}');\, \mathsf{case}(z; \tup{br}))$ for
   fresh $z$.
 \item If $e = \mathsf{fix}\,g_0.e'$: compute the value translation $u =
@@ -187,14 +221,40 @@ hash-consing merges repeated liftings.
 \begin{remark}[Shape of the equations]
 \label{rem:eq-shape}
 All axioms emitted by compilation are universally quantified equations
-$L \feq R$ whose left-hand sides are linear terms
-$f(\tup{\pi}) \fapp x_1 \fapp \cdots \fapp x_k$ with $\tup{\pi}$
-constructor patterns and variables; grouped by head symbol they are
-pairwise non-overlapping, so oriented left to right they form an
-orthogonal rewrite system \cite{BaaderNipkow1998}.  Nothing about
-indexed families disturbs this: the patterns are patterns of
-\emph{informative} constructor arguments, and index information never
-reaches $\lbox$.
+$L \feq R$ whose left-hand sides are \emph{linear} terms of the form
+\[
+  f(\tup{\pi}) \fapp \pi'_1 \fapp \cdots \fapp \pi'_k \qquad (k \geq 0),
+\]
+where $f$ is a compiled symbol and each of $\tup{\pi}, \pi'_1, \dots,
+\pi'_k$ is a variable or a constructor pattern.  Note that constructor
+patterns occur in $\fapp$-positions too: rule (2) of \cref{def:compile}
+may refine a variable that rule (1) appended --- a branch body that is
+a $\lambda$-abstraction followed by a case on the new variable ---
+producing left-hand sides such as $f(\Ihat{\csO}) \fapp
+\Ihat{\wcns{c}}(\tup{z})$.  The left-hand sides are pairwise
+non-overlapping: the equations emitted for one head symbol are the
+leaves of a \emph{refinement tree} in which rule (1) wraps the current
+left-hand side $L$ in one $\fapp$-application of a fresh variable,
+rule (2) splits one variable of $L$ into all constructors of the
+scrutinised datatype, and rules (3)--(5) emit and stop.  Two distinct
+leaves diverge at a rule-(2) split of some variable $x$ of a common
+intermediate left-hand side $L_0$; in the two final left-hand sides,
+$L_0$ persists as the subterm at a fixed depth on the left
+$\fapp$-spine (later steps only wrap it in further $\fapp$-applications
+or instantiate its variables), and the position of $x$ carries an
+instance of $\Ihat{\wcns{c}}(\cdots)$ in one and of
+$\Ihat{\wcns{d}}(\cdots)$ in the other with $\wcns{c} \neq \wcns{d}$,
+so no unifier exists between either final left-hand side and the other
+or a left-spine subterm of the other.  Left-hand sides with distinct
+head symbols cannot unify at all (the head symbol sits at the bottom of
+the left spine), and each pointer axiom is the sole equation of its
+head $f^0$, with an all-variable left-hand side that cannot unify with
+a proper left-spine subterm of a renamed copy of itself
+($\fapp$-depths differ).  Left-linear and non-overlapping, the
+equations oriented left to right form an orthogonal rewrite system
+\cite{BaaderNipkow1998}.  Nothing about indexed families disturbs
+this: the patterns are patterns of \emph{informative} constructor
+arguments, and index information never reaches $\lbox$.
 \end{remark}
 
 \begin{example}[Compilation over families]
@@ -265,7 +325,8 @@ where in the binder clauses the bound source variable is reused as the
 bound first-order variable, and $\compf = \compf_\emptyset$ is the term
 translation of \cref{def:compC}, whose complex-head clauses may emit
 further axioms.  $\guardf$ and $\Ff$ are total on $\Sfrag$ and
-structurally recursive; no normalisation of the source is involved.
+structurally recursive ($\compf$ is total on $\lbox$ terms,
+\cref{def:compC}); no normalisation of the source is involved.
 \end{definition}
 
 The new clause is the first: the guard of a family occurrence carries
@@ -393,7 +454,7 @@ inversion axiom; the defining equations of item 3 make no such claim.
 \label{ex:running-axioms}
 For $\vect$ (constructor typing, then inversion):
 \begin{gather*}
-  \Ihat{\vect}(\Ihat{\csvnil}, \Ihat{\csO}), \qquad
+  \Ihat{\vect}(\Ihat{\csvnil}, \Ihat{\csO}),\\
   \forall n\,a\,v.\ \Ihat{\nat}(n) \to \guard{A}{a} \to
     \Ihat{\vect}(v, n) \to
     \Ihat{\vect}\bigl(\Ihat{\csvcons}(n,a,v),\, \Ihat{\csS}(n)\bigr),\\
@@ -401,7 +462,7 @@ For $\vect$ (constructor typing, then inversion):
   \forall w\,z.\ \Ihat{\vect}(w, z) \to
   \bigl(w \feq \Ihat{\csvnil} \wedge z \feq \Ihat{\csO}\bigr) \vee{}\\
   \exists n\,a\,v.\ \bigl(\Ihat{\nat}(n) \wedge \guard{A}{a} \wedge
-    \Ihat{\vect}(v,n) \wedge
+    \Ihat{\vect}(v,n) \wedge{}\\
     w \feq \Ihat{\csvcons}(n,a,v) \wedge z \feq \Ihat{\csS}(n)\bigr),
   \end{multlined}
 \end{gather*}
@@ -431,11 +492,11 @@ $\forall w\,z.\ \Ihat{\mathsf{bnd}}(w,z) \to \exists n\,k.\,
 For the predicate $\mathsf{le}$, the case-analysis axiom is
 \begin{multline*}
   \forall z_1 z_2.\ \Ihat{\mathsf{le}}(z_1,z_2) \to
-  \exists n.\,\bigl(\Ihat{\nat}(n) \wedge z_1 \feq n \wedge z_2 \feq
-  n\bigr) \vee{}\\
-  \exists n\,m.\,\bigl(\Ihat{\nat}(n) \wedge \Ihat{\nat}(m) \wedge
-  \Ihat{\mathsf{le}}(n,m) \wedge z_1 \feq n \wedge z_2 \feq
-  \Ihat{\csS}(m)\bigr),
+  \Bigl(\exists n.\,\bigl(\Ihat{\nat}(n) \wedge z_1 \feq n \wedge z_2
+  \feq n\bigr)\Bigr) \vee{}\\
+  \Bigl(\exists n\,m.\,\bigl(\Ihat{\nat}(n) \wedge \Ihat{\nat}(m)
+  \wedge \Ihat{\mathsf{le}}(n,m) \wedge z_1 \feq n \wedge z_2 \feq
+  \Ihat{\csS}(m)\bigr)\Bigr),
 \end{multline*}
 the classical inversion principle.
 \end{example}
@@ -478,10 +539,14 @@ $c \defeq \lambda x\,y{:}\sigma.\ \lambda e{:}\mathsf{eq}_\sigma(x,y).\
 compiles to the single unguarded equation $\forall x\,y\,w.\
 \Ihat{c}(x,y,w) \feq w$ together with its specification axiom
 \[
-  \forall x\,y.\ \guard{\sigma}{x} \to \guard{\sigma}{y} \to
-  \forall w.\ \Ihat{\mathsf{eq}_\sigma}(x,y) \to \guard{\tau[x]}{w} \to
-  \guard{\tau[y]}{\Ihat{c}(x,y,w)}.
+  \forall x.\ \guard{\sigma}{x} \to \forall y.\ \guard{\sigma}{y} \to
+  \Ihat{\mathsf{eq}_\sigma}(x,y) \to
+  \forall w.\ \guard{\tau[x]}{w} \to
+  \guard{\tau[y]}{\Ihat{c}(x,y,w)}
 \]
+(displayed in the order \cref{def:spec} emits: each $\Pi$-binder
+contributes its quantifier and guard in place, each propositional
+premise its $\Ff$-image in place).
 This closes, in the idealised setting, the implementation gap in which
 a user-written match on an equality proof receives no definitional
 axiom at all while a fixed list of library transport constants is
@@ -501,12 +566,12 @@ first-order equivalence, not a soundness matter:
 
 \begin{lemma}[Solving forced equations]
 \label{lem:n-one}
-Let $\Phi(\tup{y})$ be a first-order formula, $y_j$ one of the
+Let $\Psi(\tup{y})$ be a first-order formula, $y_j$ one of the
 variables, and $z$ a term not containing any $y$.  Then
 \[
-  \provesfol\ \Bigl(\exists \tup{y}.\ z \feq y_j \wedge \Phi(\tup{y})
+  \provesfol\ \Bigl(\exists \tup{y}.\ z \feq y_j \wedge \Psi(\tup{y})
   \Bigr) \leftrightarrow \exists \tup{y} \setminus y_j.\
-  \Phi(\tup{y})[z/y_j],
+  \Psi(\tup{y})[z/y_j],
 \]
 and the same holds with the equation oriented $y_j \feq z$, and under
 any prefix of universal quantifiers and implications.  Consequently,

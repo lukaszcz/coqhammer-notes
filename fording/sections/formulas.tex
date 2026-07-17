@@ -141,22 +141,59 @@ $\F{\varphi_0}$ (elimination is no longer too weak); and in a positive
 position, establishing the instance at tag $\Ihat{\wcns{RF}}$ together
 with $b \feq \Ihat{\cstrue}$ is impossible for the same reason
 (introduction cannot cheat the index).  In the atomic variant the same
-two inferences route through the declaration-level inversion axiom ---
-one resolution step more, contingent on premise selection.  Which
-variant is operationally better is an empirical question; the content
-of \cref{thm:expansion,prop:expansion-derivable} is that it is
+two inferences route through the declaration-level inversion axiom.
+To see the advertised prover behaviour once, here is the refutation at
+the clause level for the forward direction of the view --- the goal
+$\forall b\,r.\ \Ihat{\mathsf{rfl}}(r,b) \to b \feq \Ihat{\cstrue} \to
+\F{\varphi_0}$ --- from the atomic translation:
+\begin{enumerate}[leftmargin=2.5em]
+\item $\Ihat{\mathsf{rfl}}(r_0, b_0)$;\quad $b_0 \feq \Ihat{\cstrue}$;
+  \quad $\neg\F{\varphi_0}$ \hfill (negated goal, Skolemised)
+\item $\bigl(\F{\varphi_0} \wedge r_0 \feq \Ihat{\wcns{RT}} \wedge b_0
+  \feq \Ihat{\cstrue}\bigr) \vee \bigl(\F{\neg\varphi_0} \wedge r_0
+  \feq \Ihat{\wcns{RF}} \wedge b_0 \feq \Ihat{\csfalse}\bigr)$
+  \hfill (resolve 1 with the inversion axiom of
+  $\mathsf{rfl}_{\varphi_0}$)
+\item left disjunct: $\F{\varphi_0}$ contradicts $\neg\F{\varphi_0}$;
+\item right disjunct: $b_0 \feq \Ihat{\csfalse}$ with $b_0 \feq
+  \Ihat{\cstrue}$ gives $\Ihat{\cstrue} \feq \Ihat{\csfalse}$, refuted
+  by discrimination for $\bool$.
+\end{enumerate}
+In the expanded variant the hypothesis arrives \emph{as} the
+disjunction of step 2: the resolution of step 2 disappears, and with
+it the requirement that premise selection offered the inversion axiom
+at all.  Which variant is operationally better on balance is an
+empirical question that this paper deliberately does not attempt to
+answer --- no benchmark evaluation is included, and the idealisation
+of \cref{sec:intro-impl} would make one premature; the content of
+\cref{thm:expansion,prop:expansion-derivable} is that it is
 \emph{only} an operational question.
 \end{example}
 
-\begin{remark}[Existential residue]
+\begin{remark}[Existential residue and size]
 Expansion introduces $\exists \tup{y}$ in guard positions; in negative
 positions these become universals after clausification.  For
 enumeration-like and subset-like families the residue is empty or a
 single carrier variable after \cref{lem:n-one} ($\mathsf{rfl}$:
 none; $\mathsf{bnd}$: one), which is exactly the class of families for
 which implementations enable expansion; for recursive families like
-$\vect$ the atomic guard is the reasonable default.  Nothing in the
-soundness statement forces either choice.
+$\vect$ the atomic guard is the reasonable default.  The cost is
+bounded and does not compound: each expanded occurrence adds one copy
+of $\Xp{I}$, of size
+\[
+  |\Xp{I}| \;=\; \sum_{i \le M} \Bigl(\, r_i +
+  \textstyle\sum_j |\guard{A_{ij}}{\cdot}| +
+  \sum_l |\F{\varphi_{il}}| + (m + 1) \,\Bigr)
+\]
+--- per constructor, the existential block, the argument guards, the
+premise images, the tag equation and the $m$ index equations ---
+linear in the size of $I$'s \emph{translated declaration}, independent
+of how many other occurrences are expanded and of any recursion in
+$I$, and not iterable: the guards inside $\Xp{I}$ are atoms of the
+base translation by construction.  Shallow encodings have historically
+died of formula blowup; one-level fording caps the growth at
+declaration size per occurrence.  Nothing in the soundness statement
+forces either choice.
 \end{remark}
 
 \subsection{Which guards are load-bearing}
@@ -169,24 +206,65 @@ halves sharpen.
 
 \begin{proposition}[Unguarded inversion is inconsistent]
 \label{prop:unguarded-inconsistent}
-Let $I$ be a datatype some constructor $\wcns{c}_i$ of which has a
-constructor-headed index term: $t_{ih} = \wcns{c}'(\dots)$ for some
-position $h$, where $\wcns{c}'$ belongs to a datatype $I'$ that has a
-second constructor $\wcns{d} \neq \wcns{c}'$.  Let $\mathrm{Inv}^-_I$
-be the inversion axiom of $I$ with its guard atom $\Ihat{I}(w,
-\tup{z})$ deleted.  Then $\{\mathrm{Inv}^-_I\}$ together with the
-discrimination axioms of $I$ and of $I'$ --- axioms the translation
-must emit in any case --- is inconsistent.  In particular, for $\vect$
-(\cref{ex:running-axioms}) the theory $\{\mathrm{Inv}^-_{\vect}\} \cup
-\{\text{discrimination for } \nat, \vect\}$ is inconsistent.
+Let $I$ be a datatype of $\Env$ with $m \geq 1$ indices, and let
+$\mathrm{Inv}^-_I$ be the inversion axiom of $I$ with its guard atom
+$\Ihat{I}(w, \tup{z})$ deleted.  Write $\mathrm{Str}(I)$ for the
+injectivity and discrimination axioms of $I$ --- axioms the
+translation must emit in any case.  Then:
+\begin{enumerate}[leftmargin=2em]
+\item $\{\mathrm{Inv}^-_I\} \cup \mathrm{Str}(I) \provesfol \forall
+  z\,z'.\ z \feq z'$: the unguarded axiom collapses the universe to a
+  point.
+\item Consequently $\{\mathrm{Inv}^-_I\} \cup \mathrm{Str}(I) \cup
+  \{\delta\}$ is inconsistent for \emph{every} discrimination axiom
+  $\delta$ of every datatype of $\Env$.  In particular, if $I$ itself
+  has two constructors, $\{\mathrm{Inv}^-_I\} \cup \mathrm{Str}(I)$ is
+  already inconsistent; and if $\Env$ declares any datatype with two
+  constructors ($\bool$, $\nat$, \dots), the unguarded inversion axiom
+  of every family whatsoever is inconsistent with axioms the
+  translation emits unconditionally.
+\item If moreover some constructor $\wcns{c}_i$ of $I$ has a
+  constructor-headed index term $t_{ih} = \wcns{c}'(\dots)$ whose
+  datatype $I'$ has a second constructor $\wcns{d} \neq \wcns{c}'$,
+  then discrimination alone suffices: $\{\mathrm{Inv}^-_I\}$ together
+  with the discrimination axioms of $I$ and of $I'$ is inconsistent,
+  with no use of injectivity.
+\end{enumerate}
+In particular, for $\vect$ (\cref{ex:running-axioms}) the theory
+consisting of $\mathrm{Inv}^-_{\vect}$ and the discrimination axioms
+of $\nat$ and $\vect$ is inconsistent.
 \end{proposition}
 
 \begin{proof}
-Instantiate the universally quantified variables of $\mathrm{Inv}^-_I$
-by $w \defeq \Ihat{\wcns{c}}_i(\tup{x})$, $z_h \defeq
-\Ihat{\wcns{d}}(\tup{x}')$, the remaining $z$'s by fresh variables
-($\tup{x}, \tup{x}'$ fresh).  In the resulting disjunction, every
-disjunct $i' \neq i$ contains the equation
+(1) Take fresh variables $w, \tup{z}, \tup{z}'$ and the two instances
+$\mathrm{Inv}^-_I(w, \tup{z})$ and $\mathrm{Inv}^-_I(w, \tup{z}')$ ---
+the \emph{same} element variable, two arbitrary index tuples.  Reason
+by cases on both disjunctions.  A case pairs a disjunct $i$, with
+witnesses $\tup{y}$ giving $w \feq \Ihat{\wcns{c}}_i(\tup{y})$ and
+$z_h \feq \compf(\erase{t_{ih}})[\tup{y}]$ for all $h$, against a
+disjunct $i'$ with witnesses $\tup{y}'$ (the guard and premise
+conjuncts are discarded).  If $i \neq i'$: the two tag equations give
+$\Ihat{\wcns{c}}_i(\tup{y}) \feq \Ihat{\wcns{c}}_{i'}(\tup{y}')$,
+refuted by discrimination for $I$, and the case closes vacuously.  If
+$i = i'$ and $r_i = 0$: the index equations have identical closed
+right-hand sides, so $z_h \feq z'_h$.  If $i = i'$ and $r_i > 0$:
+injectivity for $\wcns{c}_i$ turns the two tag equations into $\tup{y}
+\feq \tup{y}'$ componentwise, and congruence of $\feq$ gives
+$\compf(\erase{t_{ih}})[\tup{y}] \feq
+\compf(\erase{t_{ih}})[\tup{y}']$ --- the same first-order term at
+componentwise-equal arguments --- hence $z_h \feq z'_h$.  Every case
+yields $z_1 \feq z'_1$, so $\forall w\,\tup{z}\,\tup{z}'.\ z_1 \feq
+z'_1$; as $z_1, z'_1$ are two distinct universally quantified
+variables, $\forall z\,z'.\ z \feq z'$ follows.
+
+(2) From the collapse, instantiate $z, z'$ at
+$\Ihat{\wcns{d}}_1(\tup{y})$ and $\Ihat{\wcns{d}}_2(\tup{y}')$ for two
+distinct constructors of $\delta$'s datatype, contradicting $\delta$.
+
+(3) Instantiate $\mathrm{Inv}^-_I$ at $w \defeq
+\Ihat{\wcns{c}}_i(\tup{x})$, $z_h \defeq \Ihat{\wcns{d}}(\tup{x}')$,
+the remaining $z$'s fresh ($\tup{x}, \tup{x}'$ fresh).  Every disjunct
+$i' \neq i$ contains the equation
 $\Ihat{\wcns{c}}_i(\tup{x}) \feq \Ihat{\wcns{c}}_{i'}(\tup{y})$,
 refuted by discrimination for $I$; the disjunct $i$ contains
 $\Ihat{\wcns{d}}(\tup{x}') \feq \compf(\erase{t_{ih}})[\tup{y}]$, whose
@@ -202,34 +280,56 @@ For $\vect$, concretely: $w \defeq \Ihat{\csvnil}$, $z \defeq
 
 \begin{remark}
 \label{rem:unguarded-general}
-The hypothesis delimits the blast radius precisely.  Rigid index
-patterns (the proposition) cover $\vect$, $\Fin$ and every family whose
-constructors specialise an index.  Enumeration-shaped families with
-bare-variable or absent index constraints are caught by the
-\emph{cardinality} mechanism instead: for $\mathsf{rfl}_{\varphi_0}$,
-the unguarded inversion entails $\forall w.\ w \feq \Ihat{\wcns{RT}}
-\vee w \feq \Ihat{\wcns{RF}}$ (each disjunct contains the corresponding
-tag equation as a conjunct), a two-element bound on the whole untyped
-universe; in any environment that also declares $\nat$ --- or any
-datatype with three provably distinct closed terms --- instantiating
-$w$ at $\Ihat{\csO}$, $\Ihat{\csS}(\Ihat{\csO})$ and
-$\Ihat{\csS}(\Ihat{\csS}(\Ihat{\csO}))$ --- pairwise distinct by
-discrimination and injectivity of $\nat$ --- forces two of them equal
-by pigeonhole, hence $\bot$.  This is Meng and Paulson's two-element
-universe \cite[\S 2.3]{MengPaulson2008}; exhaustiveness sentences are
-exactly the sentences whose guards can never be dropped
-\cite{BlanchetteEtAl2016}.  For a fully generic family (every index a
-bare variable, constructors carrying arguments) the unguarded axiom is
-false in $\ML$ --- any junk instantiation of $w$ refutes it there ---
-but need not be inconsistent; soundness fails all the same, via
-\cref{lem:coincidence}.  Note the strengthening against the non-indexed
-case of \cite{Extraction2026}: there, guard omission made the
-disjunctive axiom false in $\ML$, and inconsistency required an
-auxiliary single-constructor datatype; here the family's own index
-equations or tag equations detonate it.  For the implementation this
-means: an indexed inversion axiom accidentally emitted unguarded is
-typically not a weak axiom but a refutation-generator, poisoning every
-problem it enters (cf.\ \cref{cor:consistency}).
+Three comments delimit the blast radius exactly.
+
+First, the mechanism of part (1) is worth naming: it is the
+derivation of \emph{index uniqueness} (\cref{prop:index-unique}) with
+the two guard atoms replaced by instances of the unguarded axiom.
+Fording makes ``every member determines its index tuple'' a
+first-order consequence of the structural axioms; an unguarded
+inversion asserts that every element is a member at \emph{every}
+index tuple; the two statements annihilate.  This strictly sharpens
+the non-indexed situation of \cite{Extraction2026}, where guard
+omission made the disjunctive axiom false in $\ML$ but inconsistency
+needed further apparatus: here the family's own index equations
+detonate it, whatever the shape of its index patterns.
+
+Second, the two-constructor hypothesis in part (2) is not slack but
+the exact boundary.  Since part (1) derives the total collapse, the
+variant theory is consistent if and only if it has a one-element
+model; any discrimination axiom refutes that, and in its absence the
+collapse can be realised.  Concretely, let $\Env_{\mathsf{unit}}$
+declare exactly $\mathsf{data}\ U : () \to \Set \defeq \{\wcns{tt} :
+U\}$ and $\mathsf{data}\ F : (U) \to \Set \defeq \{\wcns{mk} : \forall
+y{:}U.\ F(\wcns{tt})\}$.  Its emitted theory with $\mathrm{Inv}^-_F$
+in place of $F$'s inversion axiom is satisfied by the one-element
+structure (universe $\{\bullet\}$, all atoms true: constructor typing,
+the guarded inversion of $U$, injectivity and $\mathrm{Inv}^-_F$ all
+hold outright, and no discrimination axiom exists).  Yet
+$\mathrm{Inv}^-_F$ is still \emph{false} in $\ML$: instantiate $w$ at
+the junk class $\cls{\wcns{tt}\,\wcns{tt}}$, which is no
+$\wcns{mk}$-form by \cref{cor:discrimination}(2).  Guard omission is
+thus unsound always, and inconsistent exactly when the ambient theory
+can distinguish two elements --- which any realistic environment can.
+
+Third, for enumeration-shaped families the collapse can also be
+reached without touching the index equations, by \emph{cardinality}:
+for $\mathsf{rfl}_{\varphi_0}$, the unguarded inversion entails
+$\forall w.\ w \feq \Ihat{\wcns{RT}} \vee w \feq \Ihat{\wcns{RF}}$
+(each disjunct contains the corresponding tag equation as a conjunct),
+a two-element bound on the whole untyped universe; three provably
+distinct closed terms --- $\Ihat{\csO}$, $\Ihat{\csS}(\Ihat{\csO})$,
+$\Ihat{\csS}(\Ihat{\csS}(\Ihat{\csO}))$ in any environment declaring
+$\nat$ --- force two of them equal by pigeonhole, hence $\bot$.  This
+is Meng and Paulson's two-element universe
+\cite[\S 2.3]{MengPaulson2008}; exhaustiveness sentences are exactly
+the sentences whose guards can never be dropped
+\cite{BlanchetteEtAl2016}.
+
+For the implementation the verdict is uniform: an indexed inversion
+axiom accidentally emitted unguarded is typically not a weak axiom but
+a refutation-generator, poisoning every problem it enters (cf.\
+\cref{cor:consistency}).
 \end{remark}
 
 \begin{proposition}[Index arguments of guards are mandatory]
@@ -394,12 +494,32 @@ $\csvnil$-equation fails: $\Ihat{\mathsf{vhead}}^{\ML'}(d,
 \cls{\csvnil}) = \cls{\kappa\,e\,\csvnil} = \cls{\csO} \neq \cls{\bx} =
 \prfc^{\ML'}$, the last two being distinct $\lred$-normal forms
 (\cref{thm:confluence}).
-
-The moral generalises: the premised theory cannot distinguish the
-extracted program from any \emph{repair of its dead code}, because
-every axiom that could see the dead branch is either premised on a
-refutable index equation or guarded by an uninhabited instance.
 \end{proof}
+
+\begin{remark}[A family of countermodels: dead code is undetermined]
+\label{rem:repair-family}
+The countermodel is one of a family, uniformly in the repair.  For an
+\emph{arbitrary} closed $\lbox$ term $e_0$, let $\kappa_{e_0}$ be
+$\erase{\mathsf{vhead}}$ with the dead branch body replaced by $e_0$
+(the proof used $e_0 = \csO$), and let $\ML'_{e_0}$ reinterpret
+$\Ihat{\mathsf{vhead}}^0$ and $\Ihat{\mathsf{vhead}}$ through the
+witness $\kappa_{e_0}$ exactly as above.  Every verification step of
+the proof holds verbatim, because none consults the dead-branch value:
+the pointer axiom holds by construction; the premised
+$\csvnil$-equation is vacuous whatever the branch computes; and the
+premised $\csvcons$-equation and the specification axiom only ever
+evaluate $\kappa_{e_0}$ at $\csvcons$-forms, where all repairs agree
+with $\erase{\mathsf{vhead}}$.  Hence $\ML'_{e_0} \vDash \Th^\pi$ for
+every $e_0$, while $\Ihat{\mathsf{vhead}}^{\ML'_{e_0}}(d,
+\cls{\csvnil}) = \cls{e_0}$ ranges over \emph{all} of $\Dom$ as $e_0$
+ranges over closed terms.  So $\Th^\pi$ determines nothing whatever
+about the dead branch: it cannot distinguish the extracted program
+from any repair of its dead code, every axiom that could see the
+branch being either premised on a refutable index equation or guarded
+by an uninhabited instance.  The unguarded theory, by contrast, pins
+the branch to $\prfc$ --- which is exactly the additional, sound
+content \cref{prop:match-equations} attributes to it.
+\end{remark}
 
 \begin{proposition}[Pruned branches are semantically dead]
 \label{prop:pruning}
@@ -440,11 +560,17 @@ are what the factored architecture naturally produces; index premises
 are sound but strictly weaker, buying nothing semantically (their one
 virtue is to keep the equation silent at wrong-index instantiations,
 a reconstruction-signal nicety); pruning is sound and removes only
-equations that no guarded reasoning can reach, at the price that we do
-\emph{not} claim conservativity --- a first-order derivation of a goal
-may in principle route through junk instances of a pruned equation, so
-pruning can only be justified operationally, not by the model.  All
-three verdicts are instances of the companion paper's division of
+equations that no guarded reasoning can reach.  Whether pruning is
+also \emph{conservative} --- whether removing the pruned equations
+changes the set of provable translated goals --- we do not know.  Both
+theories hold in $\ML$, so the model separates neither from the other;
+we know of no goal whose derivation requires a junk instance of a
+pruned equation, but we also have no countermodel argument in the
+style of \cref{prop:premised-weaker} (the pruned equation constrains
+the compiled symbol at instances that the specification axiom's guards
+do not reach, but other defining equations may).  Until one of the two
+is exhibited, pruning is justified operationally, not semantically.
+All three verdicts are instances of the companion paper's division of
 labour: equations carry computation, valid everywhere; typing content
 lives in guarded specification and inversion axioms.
 \end{remark}
@@ -475,6 +601,9 @@ gives $y_j \feq y'_j$ for all $j$; each index equation pair $z_h \feq
 congruence of $\feq$ (the two right-hand sides are the same first-order
 term at componentwise-equal arguments).  For $r_i = 0$ the two
 right-hand sides are identical closed terms.
+(\Cref{prop:unguarded-inconsistent}(1) is this derivation with the two
+guard atoms replaced by instances of the unguarded axiom --- which is
+why unguarding is not merely false but explosive.)
 \end{proof}
 
 \begin{remark}[Injectivity of type formers is neither expressible nor

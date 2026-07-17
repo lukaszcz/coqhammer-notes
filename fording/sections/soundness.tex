@@ -89,14 +89,32 @@ of that spine and hence occur applied, contradicting the assumption.
 \subsection{The fundamental lemma}
 \label{sec:soundness-fundamental}
 
-Throughout this subsection we assume the \emph{environment hypothesis}
-for the fixed environment $\Env$ (discharged in
-\cref{thm:env-validity}):
+Throughout, the domain $\Dom$, the interpretations $\semr{\cdot}{}$,
+$\pv{\cdot}$, $\kv{\cdot}$ and the structure $\ML$ are the ones
+constructed in \cref{sec:semantics} over the \emph{full} fixed
+environment $\Env$.  For a well-formed prefix $\Env'$ of $\Env$, the
+\emph{environment hypothesis at $\Env'$} is:
 \begin{itemize}[leftmargin=2em]
-\item[(H)] for every term definition $c \defeq t : \tau_c$ in $\Env$,
-  $\cls{c} \in \semr{\tau_c}{}$; and for every lemma $c \defeq \pi :
-  \varphi_c$ in $\Env$, $\pv{\varphi_c} = 1$.
+\item[(H$_{\Env'}$)] for every term definition $c \defeq t : \tau_c$
+  in $\Env'$, $\cls{c} \in \semr{\tau_c}{}$; and for every lemma $c
+  \defeq \pi : \varphi_c$ in $\Env'$, $\pv{\varphi_c} = 1$;
 \end{itemize}
+we write (H) for (H$_{\Env}$) (discharged in \cref{thm:env-validity}).
+The fundamental lemma is stated relative to a prefix precisely so that
+\cref{thm:env-validity} can establish (H) by induction on declaration
+position without circularity: the lemma is applied to bodies typed
+over the \emph{strict} prefix preceding the definition under scrutiny,
+and only the hypothesis for that prefix is assumed.  The
+parameterisation costs nothing: a derivation over $\Env'$ is verbatim
+a derivation over $\Env$ (typing consults declarations by name, and
+$\Env'$-conversion is contained in $\Env$-conversion, under which the
+semantics is invariant); all semantic machinery ---
+\cref{def:interp,def:model},
+\cref{lem:sem-basic,lem:sem-subst,lem:conv-inv}, the rank apparatus
+--- is defined once over the full $\Env$ and does not depend on any
+(H$_{\Env'}$); and the proof below consults the hypothesis only in the
+constant cases, for constants the derivation mentions, which lie in
+$\Env'$.
 
 We use the simultaneous form of \cref{lem:sem-subst} throughout: for a
 simultaneous substitution of terms $\tup{a}$ for distinct variables
@@ -107,13 +125,15 @@ iterating; likewise for terms and propositions.
 
 \begin{lemma}[Fundamental lemma]
 \label{lem:fundamental}
-Assume (H).  Let $\mathcal{D}$ be a guard discipline over $\Gamma$ and
-$\rho \vDash_{\mathcal{D}} \Gamma$.
+Let $\Env'$ be a well-formed prefix of $\Env$ (possibly $\Env$ itself)
+such that (H$_{\Env'}$) holds.  Let $\mathcal{D}$ be a guard
+discipline over a context $\Gamma$ over $\Env'$, and $\rho
+\vDash_{\mathcal{D}} \Gamma$.
 \begin{enumerate}[leftmargin=2em]
-\item If $\Gamma \vdash t : \sigma$ and $t$ respects $\mathcal{D}$, then
-  $\sem{t}_\rho \in \semr{\sigma}{\rho}$.
-\item If $\Gamma \vdash \pi : \varphi$ and $\pi$ respects $\mathcal{D}$,
-  then $\pvr{\varphi}{\rho} = 1$.
+\item If $\Gamma \vdash t : \sigma$ is derivable over $\Env'$ and $t$
+  respects $\mathcal{D}$, then $\sem{t}_\rho \in \semr{\sigma}{\rho}$.
+\item If $\Gamma \vdash \pi : \varphi$ is derivable over $\Env'$ and
+  $\pi$ respects $\mathcal{D}$, then $\pvr{\varphi}{\rho} = 1$.
 \end{enumerate}
 \end{lemma}
 
@@ -123,18 +143,29 @@ By induction on the size of the typing derivation, mutually for (1) and
 \cref{lem:sem-subst} (semantic substitution, in simultaneous form),
 \cref{lem:conv-inv} (conversion invariance, which handles the two
 conversion rules), and \cref{lem:respect-local} to propagate the
-discipline to subphrases; types, propositions and predicate expressions
-contain no applied occurrences of disciplined variables in well-formed
-judgements, by the same locality argument.  When extending $\rho$ at
-bound variables we $\alpha$-rename so that disciplined variables,
-$V_f$-variables and context variables are not shadowed.
+discipline to subphrases.  Occurrences of disciplined variables
+\emph{inside types, propositions and predicate expressions} incur no
+semantic obligation and need no propagation.  Such occurrences do
+exist --- if the codomain of $T_f$ is an index type, a branch body may
+contain a well-formed annotation $\lambda x{:}\vect(f\,k\,w).\,\dots$
+with $w \in V_f$, an applied occurrence of $f$ inside a type that
+satisfies the guard condition --- but every semantic clause of
+\cref{def:interp} consumes embedded terms only through the denotation
+$\sem{\cdot}_\rho$, which is defined for \emph{every} valuation:
+membership of $\rho(f)$ in a (rank-restricted) type interpretation is
+consulted only where this lemma's conclusion demands it for a term or
+proof judgement, never when a type or proposition is evaluated.  When
+extending $\rho$ at bound variables we $\alpha$-rename so that
+disciplined variables, $V_f$-variables and context variables are not
+shadowed.
 
 \emph{Variables, constants.}  If $t = x$ is not disciplined, $\rho(x)
 \in \semr{\sigma}{\rho}$ by $\rho \vDash_{\mathcal{D}} \Gamma$; a bare
 disciplined $f$ does not respect $\mathcal{D}$, so this case cannot
-arise for it.  For a term constant, $\sem{c}_\rho = \cls{c} \in
-\semr{\tau_c}{}$ by (H), the $\delta$-rule and weakening; for a lemma
-constant in (2), directly by (H).
+arise for it.  For a term constant --- declared in $\Env'$, since the
+derivation is over $\Env'$ --- $\sem{c}_\rho = \cls{c} \in
+\semr{\tau_c}{}$ by (H$_{\Env'}$), the $\delta$-rule and weakening;
+for a lemma constant in (2), directly by (H$_{\Env'}$).
 
 \emph{Disciplined spines.}  Suppose $t = f\,a_1 \cdots a_j$ with $(f,
 V_f, m_f) \in \mathcal{D}$ and $j \geq n_f$ (respect makes $f\,a_1
@@ -471,12 +502,17 @@ declarations, and $G$ a closed shallow goal.  Then:
 \end{theorem}
 
 \begin{proof}
-(1) By induction on the position of the definition in $\Env$: the body
-of $c \defeq t : \tau_c$ is typed over the strict prefix, for which (H)
-holds by induction; \cref{lem:fundamental} with empty context,
-discipline and valuation gives $\sem{t}_{} \in \semr{\tau_c}{}$, and
-$\cls{c} = \sem{t}_{}$ by the $\delta$-rule.  Lemmas identically via
-part (2) of the fundamental lemma.
+(1) We prove (H$_{\Env'}$) for every well-formed prefix $\Env'$ of
+$\Env$, by induction on its length; (H) is the case $\Env' = \Env$.
+The empty prefix is vacuous.  If $\Env'$ ends in a datatype or
+predicate declaration, (H$_{\Env'}$) coincides with the induction
+hypothesis.  If $\Env'$ ends in $c \defeq t : \tau_c$, the body $t$ is
+typed over the strict prefix $\Env''$ preceding it, for which
+(H$_{\Env''}$) holds by induction; \cref{lem:fundamental} at prefix
+$\Env''$, with empty context, discipline and valuation, gives
+$\sem{t}_{} \in \semr{\tau_c}{}$, and $\cls{c} = \sem{t}_{}$ by the
+$\delta$-rule (a conversion of the full environment, so the classes
+coincide).  Lemmas identically via part (2) of the fundamental lemma.
 
 (2) We check each axiom family of \cref{def:theory}.
 
@@ -516,10 +552,35 @@ $\sem{t_{ih}}_{\rho_0}$.
 \emph{Injectivity and discrimination}: \cref{cor:discrimination}(1) ---
 at all elements of $\Dom$, with no guard.
 
-\emph{Predicate clause and case-analysis axioms}: as constructor typing
-and inversion one level down, exactly as in \cite{Extraction2026},
-using the stage construction of $\pv{J}$, \cref{lem:coincidence} and
-\cref{lem:comp-adequacy}.
+\emph{Predicate clause axioms}: let $\tup{d}$ be an assignment of
+$\tup{x}$ under which the guards $\guard{\tau_{ji}}{x_i}$ and the
+premise images $\F{\varphi_{jl}}$ all hold in $\ML$, and let $\rho_0 =
+[\tup{x} \mapsto \tup{d}\,]$.  By \cref{lem:coincidence}, $d_i \in
+\semr{\tau_{ji}}{\rho_0}$ for every $i$ and $\pvr{\varphi_{jl}}
+{\rho_0} = 1$ for every $l$; for a recursive premise $J(\tup{v})$ the
+latter reads $\sem{\tup{v}}_{\rho_0} \in \pv{J}$, i.e.\ membership at
+some finite stage.  The stage construction of \cref{def:interp}, at
+the successor of the maximum of those stages, puts
+$\sem{\tup{u}_j}_{\rho_0}$ in $\pv{J}$, and \cref{lem:comp-adequacy}
+identifies the denotations of the conclusion atom's arguments
+$\compf(\erase{\tup{u}_j})$ with exactly this tuple; hence the
+conclusion atom holds.
+
+\emph{Predicate case-analysis axioms}: let $\tup{d} \in \Ihat{J}^{\ML}
+= \pv{J}$, and let $s + 1$ be the least stage containing it.
+Unfolding \cref{def:interp} yields a clause $j$ and a valuation
+$\rho_0 = [\tup{x} \mapsto \tup{d}'\,]$ with $d'_i \in
+\semr{\tau_{ji}}{\rho_0}$, true non-recursive premises,
+recursive-premise tuples in $\pv{J}^{s} \subseteq \pv{J}$, and $\tup{d}
+= \sem{\tup{u}_j}_{\rho_0}$.  Instantiate the existentials of the
+$j$-th disjunct at $\tup{d}'$: the guard and premise conjuncts hold by
+\cref{lem:coincidence}, and each index equation $z_h \feq
+\compf(\erase{u_{jh}})$ holds because $d_h = \sem{u_{jh}}_{\rho_0}$
+while \cref{lem:comp-adequacy} identifies the right-hand side's
+denotation at the chosen witnesses with the same class.  These are the
+inversion and constructor-typing arguments one level down: predicates
+have no element, so the constructor equation is absent and the
+element-free tuple plays the role of $(w, \tup{z})$.
 \end{proof}
 
 \subsection{Main theorem and corollaries}
@@ -561,7 +622,8 @@ $\F{G}$ and $\F{\neg G}$.
 \end{corollary}
 
 \begin{proof}
-By \cref{lem:fundamental} (via \cref{thm:env-validity}(1)),
+By \cref{lem:fundamental} at $\Env' = \Env$ (with (H) supplied by
+\cref{thm:env-validity}(1)),
 $\pv{\neg G} = 1$, so $\pv{G} = 0$ and \cref{thm:soundness} applies
 contrapositively; for the second statement, $\ML$ satisfies every
 consequence of $\ThE$ and $\F{\neg G} = \F{G} \to \bot$.
@@ -605,26 +667,26 @@ declaration order) and recursive components of smaller rank (induction
 on rank); premises are absent.  Distinctness is
 \cref{cor:discrimination}(1) by induction on the terms.
 
-(2) Write $\Phi$ for the displayed map.  \emph{Well-definedness and
-injectivity}: the image element is a constructor term; injectivity of
-$\Phi$ follows from \cref{cor:discrimination}(1) by induction on
-sequence length, together with the injectivity of $n \mapsto
-\cls{\csS^n(\csO)}$ (also \cref{cor:discrimination}(1)).  \emph{Image in
-$\semr{\vect}{}$}: by induction on $n$ using
+(2) Write $\mathsf{enc}$ for the displayed map.  \emph{Well-definedness
+and injectivity}: the image element is a constructor term; injectivity
+of $\mathsf{enc}$ follows from \cref{cor:discrimination}(1) by
+induction on sequence length, together with the injectivity of $n
+\mapsto \cls{\csS^n(\csO)}$ (also \cref{cor:discrimination}(1)).
+\emph{Image in $\semr{\vect}{}$}: by induction on $n$ using
 \cref{lem:index-reflection}(5) and, for the index computation,
 $\sem{\csS\,n}_{[n \mapsto \cls{\csS^{n-1}(\csO)}]} =
 \cls{\csS^n(\csO)}$.  \emph{Surjectivity}: let $(\tup{d}, d) \in
 \semr{\vect}{}$ and induct on $\rank{\vect}{d}$.  If the decomposition
 is by $\csvnil$: $\tup{d} = (\sem{\csO}) = (\cls{\csO})$ and $d =
-\cls{\csvnil} = \Phi(\varepsilon)$.  If by $\csvcons$ with components
-$\cls{e_n}, \cls{e_a}, \cls{e_w}$: the recursive condition gives
-$(\cls{e_n}, \cls{e_w}) \in \semr{\vect}{}$ (the index tuple of the
-recursive argument is $(\sem{n}_{\rho_0}) = (\cls{e_n})$), so by the
-inner induction $\cls{e_w} = \Phi(a_2, \dots, a_n)$-image with
-$\cls{e_n} = \cls{\csS^{n-1}(\csO)}$; moreover $\cls{e_a} \in
-\semr{A}{}$, and $\tup{d} = (\sem{\csS\,n}_{\rho_0}) =
-(\cls{\csS^{n}(\csO)})$; hence $(\tup{d}, d) = \Phi(\cls{e_a}, a_2,
-\dots, a_n)$.  The bijection $\mathbb{N} \cong \semr{\nat}{}$ is the
+\cls{\csvnil} = \mathsf{enc}(\varepsilon)$.  If by $\csvcons$ with
+components $\cls{e_n}, \cls{e_a}, \cls{e_w}$: the recursive condition
+gives $(\cls{e_n}, \cls{e_w}) \in \semr{\vect}{}$ (the index tuple of
+the recursive argument is $(\sem{n}_{\rho_0}) = (\cls{e_n})$), so by
+the inner induction $\cls{e_w} = \mathsf{enc}(a_2, \dots,
+a_n)$-image with $\cls{e_n} = \cls{\csS^{n-1}(\csO)}$; moreover
+$\cls{e_a} \in \semr{A}{}$, and $\tup{d} = (\sem{\csS\,n}_{\rho_0}) =
+(\cls{\csS^{n}(\csO)})$; hence $(\tup{d}, d) =
+\mathsf{enc}(\cls{e_a}, a_2, \dots, a_n)$.  The bijection $\mathbb{N} \cong \semr{\nat}{}$ is the
 $m = 0$ instance, as in \cite{Extraction2026}.  The final claim unfolds
 \cref{def:interp} clause by clause under the bijections.
 \end{proof}
@@ -636,7 +698,13 @@ If $\Env$ additionally contains postulates $c : \varphi$ (or $c :
 \cite{Extraction2026}: \cref{thm:env-validity} goes through
 provided each postulate is true in the semantics ($\pv{\varphi} = 1$;
 for a postulated constant, $\cls{c} \in \semr{\sigma}{}$ under the
-evident extension of $\ML$).  Excluded middle and proof irrelevance are
+evident extension of $\ML$ --- re-run the construction of
+\cref{sec:semantics} over the term language enlarged by the constant
+$c$ with no $\delta$-rule; constructor and compiled-symbol
+interpretations are given by the same clauses with the same witnesses,
+$c$ itself denotes its own class $\cls{c}$, and every validity
+argument is unaffected, none of them consulting the absence of extra
+constants).  Excluded middle and proof irrelevance are
 true; functional extensionality is \emph{not}
 (\cref{rem:funext-leak}); a postulated inhabitant of an empty instance
 ($c : \Fin(\csO)$) is not, and voids the guarantee --- which is the

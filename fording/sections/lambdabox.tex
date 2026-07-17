@@ -132,10 +132,12 @@ structural recursion:
   & \erase{\tval{t}} &= \erase{t}
   \\
   \erase{\tsplit{\pi}{p_1 p_2.t}} &= \erase{t}
-  & \erase{\tcast{\pi}{z.\tau}{t}} &= \erase{t}
-  \\
-  \erase{\tscase{J}{\pi}{\tup{z}.\tau}{\tup{p}.t}} &= \erase{t}
   & \erase{\texfalso{\pi}{\sigma}} &= \bx
+  \\
+  \erase{\tcast{\pi}{z.\tau}{t}} &= \erase{t}
+  \\
+  \erase{\tscase{J}{\pi}{\tup{z}.\tau}{\tup{p}.t}}
+    &\mathrlap{{}= \erase{t}}
 \end{align*}
 \end{definition}
 

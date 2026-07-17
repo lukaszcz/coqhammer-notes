@@ -18,52 +18,46 @@
 \title{Fording:\\
   A Sound Shallow Translation of Indexed Inductive Families\\
   into First-Order Logic}
-\author{}
-\date{AI draft of \today}
+\author{{\L}ukasz Czajka}
+\date{}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-  Hammer-style proof automation for the Calculus of Inductive Constructions
-  (CIC) translates goals and premises into untyped first-order logic (FOL)
-  and runs classical automated theorem provers on the result.  A companion
-  paper defines such a translation, factored through program extraction, for
-  a monomorphic fragment with non-indexed inductive datatypes, and proves it
-  sound against a proof-irrelevant term model containing ill-typed ``junk''
-  elements.  The present paper extends the architecture, and its soundness
-  proof, to \emph{indexed inductive families} --- vectors, finite sets,
-  bounded numbers, \textsf{reflect}-style views, and user-declared
-  equality-like singletons.  The mechanism is McBride's \emph{fording}:
-  every constructor $\wcns{c} : \forall \tup{a}.\ I\,\tup{t}(\tup{a})$ is
-  treated as a constructor of a non-indexed type carrying the equational
-  premises $\tup{u} \feq \tup{t}(\tup{a})$, so that index constraints become
-  propositional payload, stated --- never solved --- at translation time.
-  The translation remains \emph{shallow}: index constraints arrive at the
-  prover as first-order equations inside guard formulas and inversion
-  axioms, matches on families compile to per-constructor rewrite equations,
-  and no inhabitation predicate mediates the logical structure.  We define
-  the source calculus (a stratified fragment of CIC with indexed datatypes,
-  indexed inductive predicates, forded dependent case analysis, and
-  elimination of index-determined propositional singletons), the erasure to
-  an untyped functional calculus, the emitted first-order theory, and a term
-  model with junk in which every emitted axiom is proved valid; soundness
-  and consistency of the translation follow.  The model construction doubles
-  as an arbiter for the design questions documented in implementations of
-  related translations: the guard of a family's inversion axiom is not
-  merely necessary --- for families that specialise indices to
-  constructor forms its omission is \emph{inconsistent}; forgetting the
-  index arguments of guard predicates reproduces, and is refuted by, the
-  type-indexed-equality unsoundness observed in \fstar{} (issue \#1542);
-  per-constructor match equations need no guards even at statically
-  impossible branches; index equations for forced arguments are redundant;
-  per-occurrence inlining of the forded inversion disjunction is sound in
-  both polarities and interderivable with the axiomatic form; and the
-  unconditional collapse of singleton eliminations is exactly the point
-  where the model's validation of uniqueness of identity proofs is spent.
-  Every obstruction catalogued in the dependent-pattern-matching literature
-  --- heterogeneous equality, Streicher's K, green slime --- is either
-  validated by the model or dissolved by the untyped target.
+  Hammer-style proof automation for the Calculus of Inductive
+  Constructions (CIC) translates goals and library facts into untyped
+  classical first-order logic (FOL) and runs automated theorem provers
+  on the result.  A companion paper carries this out for a monomorphic
+  fragment with non-indexed inductive datatypes, factoring the
+  translation through program extraction and proving every emitted
+  axiom valid in one proof-irrelevant term model whose domain contains
+  ill-typed ``junk''.  This paper extends the calculus, the
+  translation and the soundness proof to \emph{indexed inductive
+  families}: vectors, finite sets, \textsf{reflect}-style views,
+  equality-like singletons.  The mechanism is McBride's \emph{fording}
+  --- index constraints become equational payload, stated but never
+  solved at translation time.  A family is represented by a
+  $(1{+}m)$-ary guard predicate; its emitted theory is the first-order
+  image of its ford: constructor typing with index conclusions, a
+  guarded inversion axiom whose disjuncts carry constructor payloads
+  and index equations, and unguarded per-constructor match equations.
+  The model interprets a family in stages as a set of (index-tuple,
+  element) pairs, with an \emph{index-reflection} lemma as the
+  semantic content of fording; every emitted axiom holds in the model,
+  so the translation is sound and the emitted theory consistent.  The
+  model then arbitrates design questions documented in implementations
+  of related encodings: omitting the inversion guard collapses the
+  universe and is \emph{inconsistent} for every family once some
+  two-constructor datatype is declared; forgetting the index arguments
+  of guard predicates reproduces the \fstar{} \#1542 unsoundness;
+  match equations need no guards even at statically impossible
+  branches, index-premised variants being sound but strictly weaker;
+  per-occurrence expansion of the ford is sound in both polarities and
+  logically inert; index uniqueness is derivable while type-former
+  injectivity is inexpressible by design; and the unconditional
+  singleton collapse is exactly where the model's uniqueness of
+  identity proofs is spent.
 \end{abstract}
 
 \tableofcontents

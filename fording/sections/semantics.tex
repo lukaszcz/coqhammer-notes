@@ -88,7 +88,16 @@ recursion, and index-term denotations $\sem{\cdot}_{\rho_0}$ are erasure
 classes, defined independently of any type interpretation.  The stages
 are increasing in $s$ (induction on $s$, the defining condition being
 monotone in the stage at recursive positions).  Set $\semr{I}{} =
-\bigcup_s \stage{I}{s}$, and for an occurrence:
+\bigcup_s \stage{I}{s}$,\footnote{A reader may expect the invariant
+$\semr{I}{} \subseteq \semr{\sigma_1}{} \times \cdots \times
+\semr{\sigma_m}{} \times \Dom$ --- index tuples inhabiting their index
+types.  It is not built into the stages, and it is stated and needed
+nowhere in the development: index-term denotations are erasure
+classes, supplied independently of every type interpretation, and no
+lemma ever requires an index tuple to inhabit anything.  This is
+itself information about the translation: no guard is ever emitted for
+an index argument place (\cref{def:theory}), and the model shows why
+none is missed.} and for an occurrence:
 \[
   \semr{I(\tup{u})}{\rho} =
   \{\, d \in \Dom \mid (\sem{\tup{u}}_\rho,\, d) \in \semr{I}{} \,\}.
@@ -309,8 +318,16 @@ $\ML$ is the first-order $\SigFOL$-structure with universe $\Dom$ and:
   \dots, e_r)}$ for representatives $e_i \in d_i$;
 \item for every symbol $f$ introduced by compilation with closure arity
   $s$, extension arity $m$ and witness $e_f$ (free variables $\tup{w}$):
-  $f^{\ML}(\tup{d}, \tup{d}') = \cls{\subst{e_f}{\tup{e}}{\tup{w}}\;
-  e'_1 \cdots e'_m}$ for representatives; in particular
+  writing $\tup{d}$ for the values at the closure places and $\tup{d}'$
+  for those at the extension places,
+  $f^{\ML}(\dots) = \cls{\subst{e_f}{\tup{e}}{\tup{w}}\;
+  e'_1 \cdots e'_m}$ for representatives.  The argument places appear
+  in the order of the symbol's introduction in \cref{def:compC}:
+  closure places first for constants and for $\lambda$- and fix-lifts,
+  whereas a case-lift symbol $g(z, \tup{w}')$ takes its single
+  extension place (the scrutinee) first, so for it
+  $g^{\ML}(d, \tup{d}') =
+  \cls{\subst{e_g}{\tup{e}'}{\tup{w}'}\;e}$.  In particular
   $\Ihat{c}^{\ML}(\tup{d}) = \cls{c\,\tup{e}}$ and $(\Ihat{c}^0)^{\ML} =
   \cls{c}$.
 \end{itemize}
@@ -324,11 +341,12 @@ first-order assignments.
 \subsection{Adequacy of the term translation and of compilation}
 \label{sec:semantics-adequacy}
 
-The two lemmas of this subsection are stated and proved exactly as in
-the companion paper; we reproduce them because the soundness proof cites
-their content, and because their \emph{independence} of the indexed
-extension is itself the point: compilation concerns only the program
-half, which is index-blind.
+The two lemmas of this subsection are the companion paper's, re-proved
+here in full --- including the cases for the two head clauses added in
+\cref{def:compC} --- both because the soundness proof cites their
+content and because their \emph{independence} of the indexed extension
+is itself the point: compilation concerns only the program half, which
+is index-blind.
 
 \begin{definition}[Coherent template maps]
 \label{def:coherent}
@@ -354,16 +372,66 @@ $t$ with $\theta = \emptyset$.
 \end{lemma}
 
 \begin{proof}
-By induction on $e$ following the clauses of \cref{def:compC}, exactly
-as in \cite[\S 5.4]{Extraction2026}.  Variables, $\bx$ and constructors
-are immediate ($\Ihat{\wcns{c}}^{\ML}$ applies the constructor to the
-argument classes).  For spines: a $\theta$-bound head uses coherence and
-the induction hypothesis on the arguments; a constant head uses
-$\Ihat{c}^{\ML}(\tup{d}) = \cls{c\,\tup{e}}$ and the pointer
-interpretation; a variable head is immediate; a complex head uses the
-interpretation of the lifted symbol via its witness, plus one
-$\beta$-step for case lifts.  The final claim is the special case $e =
-\erase{t}$, using \cref{def:valuation}.
+By induction on $e$ following the clauses of \cref{def:compC}.  Fix
+representatives $\hat{e}_i \in \den{\compf_\theta(e_i)}{\rho}$; by the
+induction hypothesis we may take $\hat{e}_i = e_i^{\rho,
+\sigma_\theta}$.  Since $\fapp^{\ML}$ is the application of classes,
+any $\fapp$-chain below denotes the class of the corresponding applied
+representatives.
+\begin{itemize}[leftmargin=2em]
+\item $e = x$ ordinary: $\den{x}{\rho} = \rho(x) =
+  \cls{x^{\rho,\sigma_\theta}}$ by the definition of the substitution.
+  $e = \bx$: both sides are $\cls{\bx}$.  $e = \wcns{c}(\tup{e})$:
+  $\den{\Ihat{\wcns{c}}(\compf_\theta(\tup{e}))}{\rho} =
+  \Ihat{\wcns{c}}^{\ML}(\cls{\tup{e}^{\rho,\sigma_\theta}}) =
+  \cls{\wcns{c}(\tup{e}^{\rho,\sigma_\theta})}$ by the induction
+  hypothesis and \cref{def:model}.
+\item Spine with $\theta$-bound head, $\theta(g) = (f, \tup{w}, m)$:
+  the denotation of $f(\tup{w}, \compf_\theta(e_1), \dots,
+  \compf_\theta(e_m))$ is $f^{\ML}(\den{\tup{w}}{\rho},
+  \cls{\hat{e}_1}, \dots, \cls{\hat{e}_m}) =
+  \cls{\sigma_\theta(g)\,\hat{e}_1 \cdots \hat{e}_m}$ by coherence
+  (\cref{def:coherent}); the $\fapp$-chain appends $\hat{e}_{m+1},
+  \dots, \hat{e}_j$, giving $\cls{\sigma_\theta(g)\,\hat{e}_1 \cdots
+  \hat{e}_j} = \cls{e^{\rho,\sigma_\theta}}$.
+\item Constant head $c$ with $j \geq a_c$:
+  $\Ihat{c}^{\ML}(\cls{\hat{e}_1}, \dots, \cls{\hat{e}_{a_c}}) =
+  \cls{c\,\hat{e}_1 \cdots \hat{e}_{a_c}}$ by \cref{def:model} (the
+  witness of $\Ihat{c}$ is the constant $c$), and the $\fapp$-chain
+  appends the rest.  With $j < a_c$: $(\Ihat{c}^0)^{\ML} = \cls{c}$ and
+  the $\fapp$-chain gives $\cls{c\,\hat{e}_1 \cdots \hat{e}_j}$.
+\item Variable head: $\rho(x) \cdot \cls{\hat{e}_1} \cdots
+  \cls{\hat{e}_j} = \cls{x^{\rho}\,\hat{e}_1 \cdots \hat{e}_j}$.
+\item $\bx$-head: $\prfc^{\ML} = \cls{\bx}$ and the $\fapp$-chain gives
+  $\cls{\bx\,\hat{e}_1 \cdots \hat{e}_j}$, the class of
+  $e^{\rho,\sigma_\theta}$ --- dead code applied is junk, but a
+  perfectly good domain element.
+\item Constructor head $\wcns{c}(\tup{e}')$: by the constructor case,
+  $\den{\Ihat{\wcns{c}}(\compf_\theta(\tup{e}'))}{\rho} =
+  \cls{\wcns{c}(\tup{e}'^{\rho,\sigma_\theta})}$, and the
+  $\fapp$-chain appends $\hat{e}_1, \dots, \hat{e}_j$.
+\item Complex heads, via their value translations.  $\lambda$-lift $h$
+  with value $f(\tup{w})$: by \cref{def:model}, $f^{\ML}
+  (\den{\tup{w}}{\rho}) = \cls{\subst{h}{\tup{\hat{w}}}{\tup{w}}} =
+  \cls{h^{\rho,\sigma_\theta}}$, the witness being $h$ itself and the
+  closure parameters receiving the values $\rho$ assigns them.
+  Case-lift
+  $h = \mathsf{case}(s; \tup{br})$ with value $g(\compf_\theta(s),
+  \tup{w}')$: $g^{\ML}(\cls{\hat{s}}, \den{\tup{w}'}{\rho}) =
+  \cls{(\lambda z.\mathsf{case}(z; \tup{br}))
+  [\tup{\hat{w}}'/\tup{w}']\;\hat{s}}$, which $\beta$-reduces in one
+  step to $\cls{\mathsf{case}(\hat{s};
+  \tup{br}[\tup{\hat{w}}'/\tup{w}'])} = \cls{h^{\rho,\sigma_\theta}}$,
+  using the induction hypothesis for $\hat{s}$.  Fix-lift with value
+  $f^0(\tup{w})$: $(f^0)^{\ML}(\den{\tup{w}}{\rho}) =
+  \cls{\subst{h}{\tup{\hat{w}}}{\tup{w}}} = \cls{h^{\rho,
+  \sigma_\theta}}$ via the witness $e_{f^0} = h$.  In each case the
+  $\fapp$-chain then appends $\hat{e}_1, \dots, \hat{e}_j$.
+\end{itemize}
+The final claim is the special case $e = \erase{t}$ with $\theta =
+\emptyset$: free variables of $\erase{t}$ are free term variables of
+$t$, so $\cls{\erase{t}^{\rho,\emptyset}} = \cls{\erase{t}^{\rho}} =
+\sem{t}_\rho$ by \cref{def:valuation}.
 \end{proof}
 
 \begin{lemma}[Soundness of compilation]
@@ -384,35 +452,65 @@ performs.  Then:
 \end{lemma}
 
 \begin{proof}
-By induction on the tree of procedure calls, exactly as in
-\cite[\S 5.4]{Extraction2026}; we reproduce the argument in compact form
-since \cref{sec:formulas} leans on part (2).
+By induction on the tree of procedure calls; part (1) is the invariant
+that makes part (2) a local computation at each emitting step.
 
 \emph{Roots.}  For $c \defeq t : \tau$ with $\erase{t} = \lambda
-\tup{z}.e_0$: $\den{\Ihat{c}(\tup{z})}{\rho} = \cls{c\,\tup{e}} =
-\cls{\erase{t}\,\tup{e}}$ (one $\delta$-step) $= \cls{e_0^\rho}$
-($\beta$-steps), with $\theta = \emptyset$.  For $\erase{t} =
-\mathsf{fix}\,g_0.\lambda\tup{z}.e_0$: set $\sigma_\theta(g_0) =
-\erase{t}$; coherence is the $\delta$-step, and the invariant follows by
-a $\mu$-step and $\beta$-steps.  For $\lambda$-, case- and fix-lifts the
-invariant holds by the definition of the lifted symbol's interpretation
-via its witness (for case lifts with one $\beta$-step; for fix lifts,
-extend $\sigma_\theta$ with the closed instance of the witness at the
-representatives of $\den{\tup{w}}{\rho}$).
+\tup{z}.e_0$ (maximal prefix): $\theta = \emptyset$, and for any
+$\rho$ with representatives $\tup{e}$ of $\rho(\tup{z})$,
+$\den{\Ihat{c}(\tup{z})}{\rho} = \cls{c\,\tup{e}}$
+(\cref{def:model}) $= \cls{\erase{t}\,\tup{e}}$ (one $\delta$-step)
+$= \cls{e_0^\rho}$ ($|\tup{z}|$ $\beta$-steps).  For $\erase{t} =
+\mathsf{fix}\,g_0.\lambda\tup{z}.e_0$: set $\sigma_\theta(g_0) \defeq
+\erase{t}$; coherence of $(\theta, \sigma_\theta)$ is the computation
+$\Ihat{c}^{\ML}(\tup{d}) = \cls{c\,\tup{e}} =
+\cls{\erase{t}\,\tup{e}} = \cls{\sigma_\theta(g_0)\,\tup{e}}$, and the
+invariant for the initial call $\mathrm{B}(\Ihat{c}(\tup{z}); e_0)$
+follows by one further $\mu$-step and the $\beta$-steps.  For a
+$\lambda$-lift ($\mathrm{B}_\theta(f(\tup{w}); h)$) the invariant is
+the interpretation of $f$ through its witness; for a case-lift
+($\mathrm{B}_\theta(g(z, \tup{w}'); \mathsf{case}(z;\tup{br}))$) it is
+the witness interpretation followed by one $\beta$-step ($e_g$ is the
+$\lambda$-wrapped case); for a fix-lift, extend $\sigma_\theta$ by
+mapping $g_0$ to the \emph{closed instance} of the witness at
+representatives of $\den{\tup{w}}{\rho}$ --- coherence for the new
+binding is then the same computation as at the root, one level down.
 
-\emph{Rule (1)}: one $\beta$-step.  \emph{Rule (2)}: an assignment of
-the refined left-hand side induces the assignment of $L$ mapping $x$ to
-$\cls{\wcns{c}_i(\tup{e})}$; a head $\iota$-step converts the
-representative --- note the $\iota$-step of $\lbox$ fires on \emph{any}
-constructor form, with no index side condition, which is why the
-emitted equations hold at all elements.  \emph{Rule (3)}: both sides of
-the emitted axiom denote $\cls{\mathsf{case}(s;\tup{br})^{\rho,
-\sigma_\theta}}$ by the invariant, \cref{lem:comp-adequacy} and one
-$\beta$-step.  \emph{Rule (4)}: both sides denote
-$\cls{e^{\rho,\sigma_\theta}}$ via the fix-lift witness.  \emph{Rule
-(5)}: the invariant and \cref{lem:comp-adequacy}.  \emph{Pointer
-axioms}: both sides denote $\cls{c\,\tup{e}}$ (resp.\ the fix-lift
-value applied).
+\emph{Rule (1)} ($L \mapsto L \fapp x$, $e = \lambda x.e'$): an
+assignment of the extended left-hand side restricts to one of $L$; the
+invariant transfers by one $\beta$-step on representatives,
+$\cls{(\lambda x.e'^{\rho,\sigma_\theta})\,\hat{x}} =
+\cls{e'^{\rho[x],\sigma_\theta}}$.
+
+\emph{Rule (2)} (refinement of a pattern variable): an assignment
+$\rho'$ of the variables of
+$\subst{L}{\Ihat{\wcns{c}}_i(\tup{z}_i)}{x}$ induces the assignment
+$\rho$ of $L$ that agrees with $\rho'$ elsewhere and maps $x$ to
+$\Ihat{\wcns{c}}_i^{\ML}(\rho'(\tup{z}_i)) =
+\cls{\wcns{c}_i(\tup{e})}$; the two left-hand sides then denote the
+same element, and on the right, a head $\iota$-step converts the
+representative of $\mathsf{case}(x;\dots)^{\rho,\sigma_\theta}$ into
+that of $(\subst{b_i}{\wcns{c}_i(\tup{z}_i)}{x})^{\rho',
+\sigma_\theta}$.  Note that the $\iota$-step of $\lbox$ fires on
+\emph{any} constructor form, with no index side condition --- this is
+why the emitted equations hold at all elements, wrong-index
+instantiations included, which \cref{prop:match-equations} isolates.
+
+\emph{Rule (3)}: by the invariant, the left-hand side of the emitted
+axiom denotes $\cls{\mathsf{case}(s;\tup{br})^{\rho,\sigma_\theta}}$;
+by \cref{lem:comp-adequacy} and one $\beta$-step through the witness
+of $g$, so does the right-hand side $g(\compf_\theta(s), \tup{w}')$;
+and the invariant for the recursive call on $g(z, \tup{w}')$ is the
+case-lift root computation above.  \emph{Rule (4)}: both sides denote
+$\cls{e^{\rho,\sigma_\theta}}$, the left by the invariant and the
+right through the fix-lift witness of $f^0$.  \emph{Rule (5)}: the
+invariant identifies the left-hand side's denotation with
+$\cls{e^{\rho,\sigma_\theta}}$, and \cref{lem:comp-adequacy}
+identifies the right-hand side's with the same class.  \emph{Pointer
+axioms}: for a constant, both sides of $\Ihat{c}^0 \fapp z_1 \fapp
+\cdots \fapp z_{a_c} \feq \Ihat{c}(\tup{z})$ denote
+$\cls{c\,\tup{e}}$; for a fix-lift, both sides denote the witness
+instance applied to the extension arguments.
 \end{proof}
 
 \subsection{Coincidence: the translation reflects the semantics}
@@ -442,14 +540,39 @@ Mutual induction on the structure of $\sigma$ and $\varphi$, following
   \cref{lem:comp-adequacy} to identify
   $\den{\compf(\erase{a_h})}{\rho} = \sem{a_h}_\rho$ --- iff
   $\den{u}{\rho} \in \semr{I(\tup{a})}{\rho}$ by \cref{def:interp}.
-\item $\sigma = \Pi x{:}\sigma'.\tau$, $\sigma = \varphi' \to \tau$,
-  $\sigma = \refty{x{:}\sigma'}{\varphi'}$: as in
-  \cite{Extraction2026}, by the induction hypotheses and, for the
-  refinement clause, the first-order substitution lemma.
-\item Connectives, $\top$, $\bot$, quantifiers: the classical
-  satisfaction clauses match the truth-value clauses literally, with
-  induction hypothesis (1) carving out exactly
-  $\semr{\sigma'}{\rho}$ under each guard.
+\item $\sigma = \Pi x{:}\sigma'.\tau$ (with $x$ $\alpha$-renamed fresh
+  for $u$ and $\rho$): $\ML, \rho \vDash \forall x.\ \guard{\sigma'}{x}
+  \to \guard{\tau}{u \fapp x}$ iff for every $d \in \Dom$, $\ML,
+  \rho[x \mapsto d] \vDash \guard{\sigma'}{x}$ implies $\ML, \rho[x
+  \mapsto d] \vDash \guard{\tau}{u \fapp x}$; by both induction
+  hypotheses (at the extended valuation) this says: for every $d \in
+  \semr{\sigma'}{\rho}$, $\den{u}{\rho} \cdot d \in
+  \semr{\tau}{\rho[x \mapsto d]}$ --- which is the defining condition
+  of $\den{u}{\rho} \in \semr{\Pi x{:}\sigma'.\tau}{\rho}$
+  (\cref{def:interp}).
+\item $\sigma = \varphi' \to \tau$: satisfaction of $\F{\varphi'} \to
+  \guard{\tau}{u}$ says $\pvr{\varphi'}{\rho} = 1$ implies
+  $\den{u}{\rho} \in \semr{\tau}{\rho}$ (both induction hypotheses),
+  the defining condition of $\semr{\varphi' \to \tau}{\rho}$.
+\item $\sigma = \refty{x{:}\sigma'}{\varphi'}$: the first conjunct is
+  the induction hypothesis for $\sigma'$; for the second, the
+  first-order substitution lemma gives $\ML, \rho \vDash
+  \subst{\F{\varphi'}}{u}{x}$ iff $\ML, \rho[x \mapsto \den{u}{\rho}]
+  \vDash \F{\varphi'}$, which by induction hypothesis (2) is
+  $\pvr{\varphi'}{\rho[x \mapsto \den{u}{\rho}]} = 1$; together, the
+  defining condition of the refinement interpretation.
+\item Connectives, $\top$, $\bot$: $\Ff$ is homomorphic and both
+  $\vDash$ and $\pv{\cdot}$ interpret the connectives by the classical
+  truth tables, so induction hypothesis (2) on the components
+  concludes.
+\item Quantifiers: $\ML, \rho \vDash \forall x.\ \guard{\sigma'}{x}
+  \to \F{\varphi'}$ iff $\pvr{\varphi'}{\rho[x \mapsto d]} = 1$ for
+  every $d \in \semr{\sigma'}{\rho}$ (both induction hypotheses, as in
+  the $\Pi$-case) iff $\min_{d \in \semr{\sigma'}{\rho}}
+  \pvr{\varphi'}{\rho[x \mapsto d]} = 1 = \pvr{\forall
+  x{:}\sigma'.\varphi'}{\rho}$; the empty-range conventions agree
+  (vacuous satisfaction, $\min\emptyset = 1$).  Dually for $\exists$
+  with $\wedge$ and $\max\emptyset = 0$.
 \item Equations and $J$-atoms: by \cref{lem:comp-adequacy},
   $\den{\compf(\erase{a})}{\rho} = \sem{a}_\rho$, and the model
   interprets $\feq$ as class equality and $\Ihat{J}$ as $\pv{J}$.

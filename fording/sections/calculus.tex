@@ -238,8 +238,8 @@ $0$-index occurrence $\nat()$), $\bool$ likewise, and a datatype $A$
   &\qquad \{\ \csvnil : \vect(\csO);\ \
     \csvcons : \forall (n{:}\nat)(a{:}A)(v{:}\vect(n)).\ \vect(\csS\,n)
     \ \}\\
-  &\mathsf{data}\ \Fin : (\nat) \to \Set \defeq
-    \{\ \wcns{fz} : \forall n{:}\nat.\ \Fin(\csS\,n);\ \
+  &\mathsf{data}\ \Fin : (\nat) \to \Set \defeq\\
+  &\qquad \{\ \wcns{fz} : \forall n{:}\nat.\ \Fin(\csS\,n);\ \
     \wcns{fs} : \forall (n{:}\nat)(k{:}\Fin(n)).\ \Fin(\csS\,n)\ \}\\
   &\mathsf{data}\ \mathsf{bnd} : (\nat) \to \Set \defeq
     \{\ \wcns{B} : \forall (n{:}\nat)(k{:}\nat).\
@@ -250,9 +250,9 @@ $0$-index occurrence $\nat()$), $\bool$ likewise, and a datatype $A$
     \wcns{RF} : \neg\varphi_0 \Rightarrow
     \mathsf{rfl}_{\varphi_0}(\csfalse)\ \}\\
   &\mathsf{pred}\ \mathsf{le} : (\nat, \nat) \to \Prop \defeq\\
-  &\qquad \{\ \wcns{le_n} : \forall n{:}\nat.\ \mathsf{le}(n,n);\ \
-    \wcns{le_S} : \forall (n\,m{:}\nat).\ \mathsf{le}(n,m) \to
-      \mathsf{le}(n, \csS\,m)\ \}\\
+  &\qquad \{\ \wcns{le_n} : \forall n{:}\nat.\ \mathsf{le}(n,n);\\
+  &\qquad\phantom{\{}\ \wcns{le_S} : \forall (n\,m{:}\nat).\
+      \mathsf{le}(n,m) \to \mathsf{le}(n, \csS\,m)\ \}\\
   &\mathsf{pred}\ \mathsf{eq}_\sigma : (\sigma, \sigma) \to \Prop \defeq
     \{\ \wcns{refl}_{\mathsf{eq}} : \forall x{:}\sigma.\
       \mathsf{eq}_\sigma(x,x)\ \}
@@ -268,6 +268,24 @@ the monomorphic image of ssreflect's $\mathsf{reflect}\ P\ b$ at $P =
 $\mathsf{eq}_\sigma$ is a user-declared equality --- the primitive
 $=_\sigma$ remains available, and \cref{ex:eq-pred} compares the two.
 \end{example}
+
+\begin{remark}[Function-indexed families]
+\label{rem:function-index}
+The index types $\sigma_h$ of \cref{def:env} are arbitrary closed set
+types --- including $\Pi$-types, so families indexed by
+\emph{functions} are in the fragment.  This is deliberate and sound:
+index equality means conversion-class equality in the model
+(\cref{def:interp}), and nothing in the development inspects the shape
+of index types.  It deserves a warning, though, because function
+indices are exactly where the intensionality of that equality bites
+hardest (\cref{rem:funext-leak}): the instances $I(\lambda
+x{:}\nat.\,\mathsf{add}\ \csO\ x)$ and $I(\lambda x{:}\nat.\,x)$ have
+distinct index classes, their interpretations are disjoint
+(\cref{lem:index-reflection}(3)), and no emitted axiom relates them
+--- so goals that transport members between extensionally equal but
+non-convertible indices are soundly, and irremediably within this
+model, out of reach.
+\end{remark}
 
 \begin{definition}[Contexts]
 A \emph{context} $\Gamma$ is a finite list of declarations $x : \sigma$,
@@ -302,8 +320,8 @@ $\vdash t : \sigma$ (resp.\ $\vdash \varphi \sprop$ and $\vdash \pi :
 \small
 \[
 \begin{array}{c}
-\rul{I : (\sigma_1, \dots, \sigma_m) \to \Set \in \Env \quad
-     \Gamma \vdash a_h : \sigma_h \ (1 \le h \le m)}
+\rul{I : (\tup{\sigma}) \to \Set \in \Env \quad
+     \Gamma \vdash \tup{a} : \tup{\sigma}}
     {\Gamma \vdash I(\tup{a}) \styp}
 \qquad
 \rul{\Gamma \vdash \sigma \styp \quad \Gamma, x{:}\sigma \vdash \tau \styp}
@@ -341,9 +359,9 @@ $\vdash t : \sigma$ (resp.\ $\vdash \varphi \sprop$ and $\vdash \pi :
 \qquad
 \rul{\Gamma \vdash \sigma_i \styp \ (1 \le i \le n)}
     {\Gamma \vdash (\sigma_1,\dots,\sigma_n) \to \Prop\ \mathsf{kind}}
-\qquad
-\rul{X : K \in \Gamma}{\Gamma \vdash X : K}
 \\[2.2ex]
+\rul{X : K \in \Gamma}{\Gamma \vdash X : K}
+\qquad
 \rul{\Gamma, \tup{x}{:}\tup{\sigma} \vdash \varphi \sprop}
     {\Gamma \vdash \lambda(\tup{x}{:}\tup{\sigma}).\varphi : (\tup{\sigma}) \to \Prop}
 \end{array}
@@ -379,7 +397,7 @@ $\vdash t : \sigma$ (resp.\ $\vdash \varphi \sprop$ and $\vdash \pi :
      \wcns{c}_i : \forall \tup{y}{:}\tup{A}.\ \varphi_1 \Rightarrow \dots
        \Rightarrow \varphi_\ell \Rightarrow I(\tup{t}) \ \in I \\
      \Gamma \vdash a_j : \subst{A_{j}}{\tup{a}_{<j}}{\tup{y}_{<j}}
-       \ (1 \le j \le r) \quad
+       \ (1 \le j \le r) \\
      \Gamma \vdash \pi_l : \subst{\varphi_l}{\tup{a}}{\tup{y}}
        \ (1 \le l \le \ell)
      \end{array}}
@@ -477,9 +495,11 @@ $\vdash t : \sigma$ (resp.\ $\vdash \varphi \sprop$ and $\vdash \pi :
   of $I$; $\tup{y}_i^{\mathrm{rec}} \subseteq \tup{y}_i$ denotes the
   recursive argument positions of $\wcns{c}_i$; and the \emph{guard
   condition} $\mathrm{grd}_k(f; V; b)$ requires every occurrence of $f$
-  in $b$ to occur in a subterm of the form $f\,a_1 \cdots a_n$ with
-  $a_k \in V$.  We further require $f, \tup{x}, \tup{y}_i$ not to be
-  shadowed in $b_i$.}
+  in $b$ to lie at the head of an application spine $f\,a_1 \cdots
+  a_n$ occurring as a subterm of $b$, with $a_k \in V$ (so $f$ may
+  head such a spine but not occur as an argument, of itself or of
+  anything else; \cref{def:discipline} makes the reading formal).  We
+  further require $f, \tup{x}, \tup{y}_i$ not to be shadowed in $b_i$.}
 \label{fig:terms2}
 \end{figure}
 
@@ -671,12 +691,24 @@ position when the inductive is empty or a \emph{singleton}: one
 constructor whose arguments are all propositional, \emph{parameters put
 aside} \cite{Rocq,Letouzey2003}.  Under the monomorphic stratification of
 \cref{sec:calculus-cic}, the parameters of an equality-like family become
-clause variables that occur verbatim among the result indices --- forced
-variables in the sense of Brady et al.\ \cite{BradyEtAl2004} and Gilbert
-et al.\ \cite{GilbertEtAl2019} --- and the remaining CIC constructor
-arguments become the premises $\tup{\varphi}$.  Every CIC singleton
-elimination is therefore an instance of $\tscase{}{}{}{}$.  The converse
-fails: \cref{def:forced-singleton} does not require the forced variables
+clause variables that occur verbatim among the result indices, and the
+remaining CIC constructor arguments become the premises
+$\tup{\varphi}$.  Every CIC singleton elimination is therefore an
+instance of $\tscase{}{}{}{}$.  A taxonomy note: what
+\cref{def:forced-singleton} demands is that the clause variables be
+\emph{verbatim-forced} --- literally among the indices.  The forcing
+analyses of Brady et al.\ \cite{BradyEtAl2004} and Gilbert et al.\
+\cite{GilbertEtAl2019} are more liberal: they also count
+\emph{pattern-forced} arguments, occurring under constructors in an
+index term ($x$ under $\csS$, recoverable by injectivity).
+$\tscase{}{}{}{}$ therefore sits strictly between CIC's parameter
+criterion and the Gilbert et al.\ criterion.  The pattern-forced
+generalisation appears semantically available --- index reflection
+(\cref{lem:index-reflection}) applied to the index datatype recovers
+the argument --- but the solution substitution $\theta$ would no
+longer be a syntactic substitution, and we leave it as future work.
+In the other direction, the converse of the inclusion above fails:
+\cref{def:forced-singleton} does not require the forced variables
 to occur \emph{uniformly} in recursive premises, so it accepts clauses
 that CIC's parameter mechanism cannot express (e.g.\ $\wcns{k} : \forall
 x{:}\nat.\ J(\csS\,x, \csO) \to J(x, \csS\,\csO)$).  The permissiveness
@@ -684,7 +716,12 @@ is deliberate and harmless: soundness is proved against the model
 (\cref{lem:fundamental}), which validates the general rule; only proof
 \emph{reconstruction} of uses of the extra generality requires
 inversion-style reasoning rather than a primitive CIC match
-(\cref{sec:limitations-reconstruction}).  Empty elimination needs no new
+(\cref{sec:limitations-reconstruction}).  We note that the intended
+front end never \emph{produces} that extra generality: it elaborates
+CIC singleton eliminations, whose images satisfy the parameter
+criterion.  The margin is robustness of the calculus, not a feature
+the pipeline exercises, so the corresponding reconstruction
+obligation is expected to be vacuous in practice.  Empty elimination needs no new
 former: for a predicate $J$ declared with zero clauses, $\tind{J}$ with
 motive $\bot$ and no clause obligations yields $\bot$ from $J(\tup{a})$,
 and $\texfalso{}{}$ concludes.
@@ -710,10 +747,13 @@ root rules:
   \\
   \tsplit{\langle \pi_1, \pi_2 \rangle}{p_1\,p_2.t} &\red
      \subst{\subst{t}{\pi_1}{p_1}}{\pi_2}{p_2}
-  & \tscase{J}{\wcns{k}(\tup{a};\tup{\pi})}{\tup{z}.\tau}{\tup{p}.t} &\red
-     \subst{t}{\tup{\pi}}{\tup{p}}
 \end{align*}
-together with the rule for case analysis meeting a constructor,
+together with the singleton-elimination rule
+\[
+  \tscase{J}{\wcns{k}(\tup{a};\tup{\pi})}{\tup{z}.\tau}{\tup{p}.t}
+     \red \subst{t}{\tup{\pi}}{\tup{p}}
+\]
+and the rule for case analysis meeting a constructor,
 \begin{multline*}
   \tcase{\wcns{c}_i(\tup{a};\tup{\pi})}{\tup{z}.z.\tau}{\{\dots\}}
      \red\\
@@ -774,20 +814,70 @@ for proof variables and predicate variables.
 \end{lemma}
 
 \begin{proof}
-Routine simultaneous induction on the second derivation, exactly as in
-\cite{Extraction2026}: $\conv$ is closed under substitution (each root
-rule is, including the new case and $\mathsf{scase}$ rules, whose
-instantiated proofs and branches substitute componentwise), and
-substitution into predicate atoms $\subst{X(\tup{a})}{P}{X} = P \cdot
-\tup{a}$ is given by predicate application, which terminates because
-predicate expressions cannot mention the variable being substituted
-after $\alpha$-renaming.  The new rules (constructor, case,
-$\mathsf{scase}$, $\mathsf{discr}$, $\tind{I}$) are homomorphic in all
-their components; for $\mathsf{discr}$ note that substitution preserves
-the constructor-headedness of both equation sides, and for
-$\tscase{}{}{}{}$ that $\theta$ commutes with the ambient substitution
-because the clause data ($\tup{u}^0$, $\jmath$) are closed declaration
-components while $\tup{u}$ substitutes pointwise.
+By induction on the derivation of the second judgement, simultaneously
+for all judgement forms and all three substitution kinds; write
+$[\cdot]$ for the substitution being pushed ($[a/x]$ in the notation
+of the statement).  Three mechanisms carry the routine cases, and two
+new rules deserve their arguments in full.
+
+\emph{Routine mechanisms.}  (i) Every rule is homomorphic in its
+components, so the induction hypotheses on the premises reassemble the
+rule instance, using the composition identity
+$\tau[a'/y][a/x] = \subst{\tau}{a}{x}[\,\subst{a'}{a}{x}/y]$ (for $y
+\neq x$, $y \notin \fv{a}$, after $\alpha$-renaming) wherever the
+conclusion contains a substituted phrase; in the constructor, case and
+$\tind{I}$ rules the declaration data ($A_{ij}$, $\varphi_{il}$,
+$\tup{t}_i$) mention only the constructor telescope and earlier
+declarations, so they are untouched by $[\cdot]$ and only the
+instantiating terms absorb it, e.g.\
+$(A_{ij}[\tup{a}_{<j}/\tup{y}_{<j}])[a/x] =
+A_{ij}[(\tup{a}_{<j}[a/x])/\tup{y}_{<j}]$.  (ii) $\conv$ is closed
+under substitution: each root rule of \cref{def:source-red} is ---
+for the forded-case rule, both sides substitute componentwise and the
+reflexivity list $\overrightarrow{\mathsf{refl}}
+(\tup{t}_i[\tup{a}/\tup{y}_i])$ becomes the reflexivity list of the
+substituted instances --- so the two conversion rules follow from the
+induction hypothesis.  (iii) Substitution of a predicate expression
+into an atom, $\subst{X(\tup{a})}{P}{X} = P \cdot \tup{a}$ (predicate
+application, $\beta$-reducing the $\lambda$-form), yields a well-formed
+proposition by the kind premise, and the process terminates because
+$P$ cannot mention $X$ after $\alpha$-renaming.
+
+\emph{The $\tscase{}{}{}{}$ case (commutation of $\theta$ with the
+ambient substitution).}  Let the rule be applied at an occurrence
+$J(\tup{u})$, with clause data $\wcns{k} : \forall
+\tup{x}{:}\tup{\tau}.\ \varphi_1 \to \dots \to \varphi_\ell \to
+J(\tup{u}^0)$, solution $\jmath$, and solution substitution $\theta =
+[u_{\jmath(i)}/x_i]_i$.  After the ambient substitution the scrutinee
+proof has type $J(\tup{u}[a/x])$, whose solution substitution is
+$\theta' = [\,\subst{u_{\jmath(i)}}{a}{x}/x_i]_i$ (the clause data
+$\tup{u}^0, \jmath$ are closed declaration components and do not
+change).  For every clause phrase $\xi$ --- a premise $\varphi_l$ or
+the pattern tuple $\tup{u}^0$ --- the free variables of $\xi$ lie
+among $\tup{x}$ (\cref{def:env}), so the composed substitution acts on
+$\xi$ only through the images of $\tup{x}$:
+\[
+  (\theta(\xi))[a/x] \;=\; \xi\bigl[\subst{u_{\jmath(i)}}{a}{x}/x_i
+  \bigr]_i \;=\; \theta'(\xi).
+\]
+Hence $\theta(\tup{\varphi})[a/x] = \theta'(\tup{\varphi})$ and
+$\tau[\theta(\tup{u}^0)/\tup{z}][a/x] =
+\subst{\tau}{a}{x}[\theta'(\tup{u}^0)/\tup{z}]$ (using (i) for the
+motive), and the induction hypotheses re-derive the rule at
+$J(\tup{u}[a/x])$ with solution substitution $\theta'$, producing the
+substituted conclusion type $\subst{\tau}{a}{x}[\tup{u}[a/x]/\tup{z}]
+= (\tau[\tup{u}/\tup{z}])[a/x]$.
+
+\emph{The $\mathsf{discr}$ case.}  From $\Gamma, x{:}\sigma, \Gamma'
+\vdash \pi : \wcns{c}(\tup{a}';\tup{\pi}_1) =_\sigma
+\wcns{d}(\tup{b}';\tup{\pi}_2)$ with $\wcns{c} \neq \wcns{d}$:
+substitution is homomorphic on constructor terms,
+$(\wcns{c}(\tup{a}';\tup{\pi}_1))[a/x] = \wcns{c}(\tup{a}'[a/x];
+\tup{\pi}_1[a/x])$, so both equation sides remain constructor-headed
+with the same distinct head constructors, and the rule re-applies to
+the substituted premise supplied by the induction hypothesis.  (This
+is the only rule whose side condition inspects the \emph{shape} of a
+term, which is why it is singled out.)
 \end{proof}
 
 \subsection{The shallow fragment}

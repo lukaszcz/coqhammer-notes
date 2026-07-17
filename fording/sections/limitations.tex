@@ -74,7 +74,14 @@ axiomatisable over term algebras and induction is a schema
 \cite{KovacsEtAl2017}; both are sound in $\ML$ (acyclicity by
 \cref{cor:discrimination} and rank induction), so \emph{adding}
 premise-selected instances would be sound, but the translation makes no
-completeness claim that would force them.  Completeness fails further
+completeness claim that would force them.  The same holds for letting
+the prover generate induction instances internally, in the
+saturation-with-induction style
+\cite{RegerVoronkov2019,HajduEtAl2022}: the guarded first-order
+induction schema of a declared family is true in $\ML$ --- the
+datatype-induction case of \cref{lem:fundamental} is exactly its
+semantic form --- so such prover-side extensions compose soundly with
+this translation.  Completeness fails further
 along the axes inherited from the companion paper: the semantics is
 classical and proof-irrelevant (\cref{rem:not-claimed}); conversion
 under binders for lifted symbols is not reflected; goals needing
@@ -84,10 +91,26 @@ reconstruction backend or user induction; and expansion variants
 unfold one constructor layer per occurrence, so properties requiring
 unbounded inversion depth need an inductive lemma --- the same
 trade-off Liquid Haskell documents for checker-driven unfolding
-\cite{VazouEtAl2014}.  A completeness theorem for the ground equational
-fragment over purely structural families (where \cref{prop:standard}
-makes $\ML$ standard) should follow from \cref{rem:eq-shape} by
-standard rewriting arguments and is left as future work.
+\cite{VazouEtAl2014}.  A completeness theorem for the \emph{ground
+equational} fragment over purely structural families --- if $\pv{a
+=_\sigma b} = 1$ for closed $a, b$ of purely structural type then
+$\ThE \provesfol \compf(\erase{a}) \feq \compf(\erase{b})$ --- is
+plausibly within reach, but it is not a corollary of what is proved
+here, and we state the missing piece exactly rather than gesture at
+``standard rewriting arguments''.  \Cref{rem:eq-shape} makes the
+emitted equations an orthogonal rewrite system and \cref{prop:standard}
+makes $\ML$ standard on the relevant types; what is missing is a
+simulation-and-standardisation development relating that rewrite
+system to $\lbox$ conversion on compiled images.  The hypothesis
+$\pv{a =_\sigma b} = 1$ says the \emph{erasures} are
+$\lbox$-convertible; this paper proves no normalisation or
+standardisation theorem for $\lbox$ (none is needed anywhere else),
+and conversion steps under the binders of lifted symbols are precisely
+what the emitted equations do not reflect.  For ground terms of
+structural type the under-binder steps should be avoidable along a
+weak-head standard reduction, so we expect the theorem to hold; proving
+that simulation is the actual content of the folklore argument, and we
+leave it as future work.
 
 \subsection{Functional extensionality}
 \label{sec:limitations-funext}
@@ -130,7 +153,21 @@ coinductive families are excluded syntactically, as in the companion
 paper; each constructor of a mutual block fords independently, so we
 expect the extension to be bookkeeping, but coinductive families ---
 whose case-analysis content is a greatest-fixpoint inversion and whose
-equality is bisimilarity --- are a genuine further step.  Enumeration-,
+equality is bisimilarity --- are a genuine further step.  Two further
+restrictions of the declaration format (\cref{def:env}) deserve
+explicit listing.  First, recursive occurrences must be direct:
+argument types of the form $\sigma \to I(\tup{v})$ --- function-space
+recursive arguments, infinitary branching, W-types --- are excluded;
+only first-order recursive positions $I(\tup{v})$ are admitted.
+Second, all propositional premises of a constructor come after all
+informative arguments; a CIC constructor in which the \emph{type} of a
+later informative argument mentions an earlier propositional argument
+(a proof subterm inside an index term of a subsequent argument type)
+has no direct image in the format.  Under proof irrelevance the
+reordering is semantically harmless --- the premise proofs are erased
+and the index terms lose their proof subterms either way
+(\cref{rem:proof-indices}) --- but it is a genuine syntactic
+restriction of the fragment.  Enumeration-,
 subset- and singleton-shaped families receive no special-cased
 treatment in the formal development; the classification exists in
 implementations as a choice of expansion policy, and

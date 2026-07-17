@@ -26,9 +26,9 @@ translation and add the indexed-specific item S6.
   per-family guard predicates, now $(1{+}m)$-ary; their index argument
   places carry \emph{terms}, which is first-order structure the prover
   indexes and unifies natively.  This is the point where the present
-  design parts company with the \fstar{} encoding, the one production
-  system emitting inversion axioms with index equations for type-level
-  families \cite{FStarBook,Aguirre2016}: there, types are terms and
+  design parts company with the \fstar{} encoding --- to our
+  knowledge, the one production system emitting inversion axioms with
+  index equations for type-level families \cite{FStarBook,Aguirre2016}: there, types are terms and
   typing is a fuel-instrumented binary predicate, so inversion must be
   throttled by fuel and triggers to avoid matching loops between
   inversion and elimination axioms; here there is no self-instantiating

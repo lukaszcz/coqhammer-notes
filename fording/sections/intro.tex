@@ -121,7 +121,8 @@ framework, as a specification for implementations
 This paper is self-contained: all definitions and proofs are given in
 full, including the parts shared with the companion paper
 \cite{Extraction2026}, which are re-developed here in their generalized
-form.  Concretely:
+form.  Remaining citations to \cite{Extraction2026} in proofs indicate
+provenance; none replaces an argument.  Concretely:
 
 \begin{enumerate}[leftmargin=2em]
 \item We define $\CICi$ (\cref{sec:calculus}), a stratified, monomorphic,
@@ -180,11 +181,15 @@ form.  Concretely:
 \item We settle the indexed-specific design questions
   (\cref{sec:formulas}), each as a theorem about the model or the theory:
   \begin{itemize}
-  \item the inversion axiom's guard is mandatory in a strong sense ---
-    for every family that specialises an index to a constructor form,
-    the unguarded axiom is \emph{inconsistent} with the discrimination
-    axioms, not merely unsound
-    (\cref{prop:unguarded-inconsistent});
+  \item the inversion axiom's guard is mandatory in the strongest
+    sense: for \emph{every} indexed family, the unguarded axiom
+    together with the family's own injectivity and discrimination
+    axioms collapses the universe to a point, so it is inconsistent
+    the moment any two-constructor datatype is declared; for families
+    that specialise an index to a constructor form ($\vect$, $\Fin$),
+    discrimination alone detonates it
+    (\cref{prop:unguarded-inconsistent}, exact delimitation in
+    \cref{rem:unguarded-general});
   \item the index arguments of guard predicates are mandatory: the
     index-forgetting variant proves a goal that is false in the source
     semantics --- the precise analogue of \fstar{} \#1542
@@ -237,6 +242,28 @@ uniqueness of identity proofs, and \cref{sec:formulas-uip} makes precise
 where the translation spends that strength and what the corresponding
 reconstruction obligations are.  The converse property, completeness, is
 deliberately traded away; \cref{sec:limitations} delimits what is lost.
+
+\paragraph{The end-to-end guarantee, stated once.}
+Soundness begins at $\CICi$.  The front end that carves the fragment
+out of full CIC --- stratification, monomorphisation, elaboration of
+native dependent matches into forded ones, dropping of proof-sorted
+index positions (\cref{sec:calculus-cic}) --- is part of the pipeline,
+not of the theorems, and the forded and native case styles are
+intertranslatable only in CIC extended with UIP \cite{GoguenEtAl2006}.
+The operational reading above is therefore relative to $\CICi$:
+\cref{cor:no-refutable} says that no $\CICi$-refutable goal becomes
+provable.  Composed with the front end, it reads: no goal refutable in
+the user's development acquires a phantom proof, \emph{provided} the
+front end is meaning-preserving --- in particular, reflects
+CIC-refutability into $\CICi$-refutability --- an assumption that
+silently absorbs UIP on the source side, matching the model's
+validation of UIP on the target side (\cref{sec:formulas-uip}); and
+proof reconstruction inside the proof assistant remains the final
+arbiter of every individual proof regardless.  Neither the front end
+nor its meaning preservation is formalised in this paper.  This
+paragraph is the one place where the composed, conditional claim is
+stated; every theorem in the body is unconditional and starts at
+$\CICi$.
 
 \subsection{Relation to the implemented translation}
 \label{sec:intro-impl}

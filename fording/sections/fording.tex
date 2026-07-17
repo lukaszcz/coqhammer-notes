@@ -172,13 +172,16 @@ constructor form'' bounds the cardinality of the whole universe
 \cite[\S 2.3]{MengPaulson2008}, and the monotonicity analysis of
 \cite{BlanchetteEtAl2016} shows such sentences are exactly the ones whose
 guards can never be erased.  For indexed families the situation is
-strictly worse: for every family that specialises an index to a
-constructor form --- vectors, finite sets, and their relatives --- an
-\emph{unguarded} inversion axiom is not merely false in the intended
-model but inconsistent with the discrimination axioms the translation
-must also emit, its own index equations identifying distinct
-constructor forms (\cref{prop:unguarded-inconsistent});
-enumeration-shaped families detonate by cardinality instead
+strictly worse: an \emph{unguarded} inversion axiom is not merely
+false in the intended model --- its index equations force any two
+index tuples of the same element to coincide, which for arbitrary
+tuples collapses the universe to a point, so the axiom is inconsistent
+with the family's own injectivity and discrimination axioms as soon as
+the environment declares \emph{any} two-constructor datatype
+(\cref{prop:unguarded-inconsistent}).  For families that specialise an
+index to a constructor form --- vectors, finite sets, and their
+relatives --- discrimination alone detonates it, and
+enumeration-shaped families detonate by cardinality as well
 (\cref{rem:unguarded-general}).
 
 Second, \emph{index erasure in atoms}: a type-indexed notion encoded by
