@@ -26,38 +26,35 @@
 
 \begin{abstract}
   Hammer-style proof automation for the Calculus of Inductive
-  Constructions (CIC) translates goals and library facts into untyped
-  classical first-order logic (FOL) and runs automated theorem provers
-  on the result.  A companion paper carries this out for a monomorphic
-  fragment with non-indexed inductive datatypes, factoring the
-  translation through program extraction and proving every emitted
-  axiom valid in one proof-irrelevant term model whose domain contains
-  ill-typed ``junk''.  This paper extends the calculus, the
-  translation and the soundness proof to \emph{indexed inductive
-  families}: vectors, finite sets, \textsf{reflect}-style views,
-  equality-like singletons.  The mechanism is McBride's \emph{fording}
-  --- index constraints become equational payload, stated but never
-  solved at translation time.  A family is represented by a
-  $(1{+}m)$-ary guard predicate; its emitted theory is the first-order
-  image of its ford: constructor typing with index conclusions, a
-  guarded inversion axiom whose disjuncts carry constructor payloads
-  and index equations, and unguarded per-constructor match equations.
-  The model interprets a family in stages as a set of (index-tuple,
-  element) pairs, with an \emph{index-reflection} lemma as the
-  semantic content of fording; every emitted axiom holds in the model,
-  so the translation is sound and the emitted theory consistent.  The
-  model then arbitrates design questions documented in implementations
-  of related encodings: omitting the inversion guard collapses the
-  universe and is \emph{inconsistent} for every family once some
-  two-constructor datatype is declared; forgetting the index arguments
-  of guard predicates reproduces the \fstar{} \#1542 unsoundness;
-  match equations need no guards even at statically impossible
-  branches, index-premised variants being sound but strictly weaker;
-  per-occurrence expansion of the ford is sound in both polarities and
-  logically inert; index uniqueness is derivable while type-former
-  injectivity is inexpressible by design; and the unconditional
-  singleton collapse is exactly where the model's uniqueness of
-  identity proofs is spent.
+  Constructions translates goals and library facts into untyped
+  classical first-order logic and runs automated theorem provers on
+  the result.  A companion paper does this for a monomorphic fragment
+  with non-indexed datatypes, factoring the translation through
+  program extraction and proving every axiom valid in one
+  proof-irrelevant term model whose domain contains ill-typed
+  ``junk''.  This paper extends the calculus, translation and
+  soundness proof to \emph{indexed inductive families} --- vectors,
+  finite sets, \textsf{reflect}-style views, equality-like singletons
+  --- by McBride's \emph{fording}: index constraints become equational
+  payload, stated but never solved at translation time.  A family
+  becomes a $(1{+}m)$-ary guard predicate; its emitted theory is the
+  first-order image of its ford: constructor typing with index
+  conclusions, guarded inversion carrying constructor payloads and
+  index equations, and unguarded per-constructor match equations.  The
+  model interprets a family in stages as a set of (index tuple,
+  element) pairs; an \emph{index-reflection} lemma is the semantic
+  content of fording; every emitted axiom holds, so the translation is
+  sound and the emitted theory consistent.  The model arbitrates
+  design questions documented for related encodings: omitting the
+  inversion guard collapses the universe and is \emph{inconsistent}
+  once any two-constructor datatype is declared; index-forgetting
+  guards reproduce the \fstar{} \#1542 unsoundness; match equations
+  need no guards even at statically impossible branches,
+  index-premised variants being strictly weaker; per-occurrence
+  expansion of the ford is sound in both polarities and logically
+  inert; index uniqueness is derivable while type-former injectivity
+  is inexpressible, by design; and the singleton collapse is exactly
+  where the model spends uniqueness of identity proofs.
 \end{abstract}
 
 \tableofcontents

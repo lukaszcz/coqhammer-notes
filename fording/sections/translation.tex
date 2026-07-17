@@ -35,10 +35,25 @@ The signature $\SigFOL$ contains:
 \item countably many \emph{auxiliary} function symbols, produced by the
   compilation procedure below.  As in \cite[\S 4]{Czajka2018} we assume
   injective naming functions $\Lambda(\cdot)$, $\mathrm{X}(\cdot)$,
-  $\Phi(\cdot)$ from $\lbox$ terms (up to renaming of free variables) to
-  auxiliary symbols (hash-consing).
+  $\Phi(\cdot)$, $\Phi^0(\cdot)$ to auxiliary symbols (hash-consing).
+  Their domain is load-bearing, so we fix it exactly: the argument is a
+  \emph{pair} $(h,\ \trestr{\theta}{\fv{h}})$ of a $\lbox$ term and the
+  restriction, to the free variables of $h$, of the template map
+  $\theta$ in force at the lifting site (\cref{def:compC}), taken up to
+  consistent renaming of free variables (the domain of the restriction
+  renamed along).  Two liftings receive the same symbol exactly when
+  their terms \emph{and} their templates agree; since the axioms
+  attached to a lifted symbol are computed from this pair alone
+  (\cref{def:compC,def:compile} consult $\theta$ only at variables free
+  in the lifted term), hash-consed merging is well defined.  Keying on
+  the bare term would identify a lifting whose free variable is a
+  recursion variable with one whose free variable is ordinary, and
+  attach the equations of both readings to a single symbol
+  (\cref{rem:rec-closure}).
 \end{itemize}
-Source term variables double as first-order variables.
+Source term variables double as first-order variables --- with the
+exception of fix-bound recursion variables, which never occur in
+emitted formulas (\cref{lem:sentences}).
 \end{definition}
 
 Two negative observations, both load-bearing.  First, there is no binary
@@ -55,11 +70,18 @@ a feature.
 \subsection{Compilation of erased programs}
 \label{sec:translation-compile}
 
-The compilation of $\lbox$ programs into defining equations is that of
-the companion paper, reproduced here for self-containedness; indexed
-families require no change to it whatsoever, because $\lbox$ is
-unchanged.  It is a recursive procedure that \emph{emits} first-order
-axioms and, for every symbol $f$ it introduces, records a
+The compilation of $\lbox$ programs into defining equations follows
+the companion paper and is given here in full.  Indexed families
+require no change to it whatsoever, because $\lbox$ is unchanged; the
+present formulation is nevertheless not a verbatim reproduction ---
+its treatment of \emph{recursive closures} (the pinning of
+\cref{def:compC}, the template refinement of rule (2), and the naming
+keys of \cref{def:signature}) repairs a defect of the companion's
+clauses, under which a recursion variable could leak into the closure
+of a lifted subterm and end up universally quantified in emitted
+axioms (\cref{rem:rec-closure}); the repair is to be read back into
+the companion.  Compilation is a recursive procedure that \emph{emits}
+first-order axioms and, for every symbol $f$ it introduces, records a
 \emph{witness}: a $\lbox$ term $e_f$ with free variables among the
 closure parameters of $f$, used only by the model construction of
 \cref{sec:semantics}.
@@ -67,7 +89,28 @@ closure parameters of $f$, used only by the model construction of
 Compilation carries a finite map $\theta$ assigning to certain $\lbox$
 variables (fix-bound recursion variables) a \emph{template} $(f, \tup{w},
 m)$: an $(|\tup{w}| + m)$-ary symbol $f$, a list of first-order terms
-$\tup{w}$, and an argument count $m$.
+$\tup{w}$ over ordinary first-order variables (the \emph{closure
+terms}), and an argument count $m$.  Every symbol occurring first in a
+template has an associated \emph{pointer} of arity $|\tup{w}|$: the
+constant $\Ihat{c}^0$ when $f = \Ihat{c}$ is the root symbol of a
+fix-defined constant (it exists, $a_c \geq 1$ for such $c$), and
+$\Phi^0$ of the same key when $f = \Phi(\cdot)$ is a fix-lift.  The
+\emph{pointer value} of a $\theta$-bound variable $g$ with $\theta(g) =
+(f, \tup{w}, m)$ is the first-order term
+\[
+  \pinv{\theta}{g} \;\defeq\; f^0(\tup{w})
+\]
+(the constant $f^0$ itself when $\tup{w}$ is empty).  For a list
+$\tup{w}$ of $\lbox$ variables, the \emph{pinned} list
+$\pincl{\tup{w}}{\theta}$ replaces each $\theta$-bound member $g$ by
+$\pinv{\theta}{g}$ and keeps ordinary variables unchanged.  Pinning is
+the entire treatment of recursion variables at lifting sites: a
+$\theta$-bound variable is never itself a variable of an emitted
+formula (\cref{lem:sentences}).  In compiled \emph{terms} it occurs
+only as the head of an application spine with at least $m$ arguments
+--- the image under erasure of the guard condition $\mathrm{grd}$ of
+\cref{fig:terms2}, whose spine shape survives because the guard
+argument is informative.
 
 \begin{definition}[Term translation $\compf_\theta$]
 \label{def:compC}
@@ -106,26 +149,38 @@ recursion on $e$:
     $\compf_\theta(e) = u \fapp \compf_\theta(e_1) \fapp \cdots \fapp
     \compf_\theta(e_j)$.
   \end{itemize}
-\item Value translations of complex heads $h$ with $\tup{w} = \fv{h}$
-  (ordered):
+\item Value translations of complex heads $h$, with $\tup{w} = \fv{h}$
+  (ordered) and pinned closure $\pincl{\tup{w}}{\theta}$.  Every naming
+  function is applied, here and in \cref{def:compile}, to the key $(h,
+  \trestr{\theta}{\fv{h}})$ of \cref{def:signature}; we suppress the
+  second component.  The recursive $\mathrm{B}$-calls below carry
+  $\trestr{\theta}{\fv{h}}$ --- templates of variables not free in $h$
+  are never consulted in the sub-derivation --- extended at a fix by
+  the new binding; in the displayed calls, $\theta$ stands for this
+  restriction:
   \begin{itemize}
   \item $h = \lambda x.e_0$: let $f = \Lambda(h)$, an $|\tup{w}|$-ary
     symbol with witness $e_f = h$; run
-    $\mathrm{B}_\theta(f(\tup{w});\, h)$; the value is $f(\tup{w})$.
+    $\mathrm{B}_\theta(f(\pincl{\tup{w}}{\theta});\, h)$; the value is
+    $f(\pincl{\tup{w}}{\theta})$.
   \item $h = \mathsf{case}(s;\, \tup{br})$: let $g = \mathrm{X}(\lambda
     z.\mathsf{case}(z; \tup{br}))$ for fresh $z$, of arity $1 +
     |\tup{w}'|$ with $\tup{w}' = \fv{\tup{br}}$, with witness $e_g =
     \lambda z.\mathsf{case}(z; \tup{br})$; run
-    $\mathrm{B}_\theta(g(z, \tup{w}');\, \mathsf{case}(z; \tup{br}))$;
-    the value is $g(\compf_\theta(s), \tup{w}')$.
+    $\mathrm{B}_\theta(g(z, \pincl{\tup{w}'}{\theta});\,
+    \mathsf{case}(z; \tup{br}))$;
+    the value is $g(\compf_\theta(s), \pincl{\tup{w}'}{\theta})$.
   \item $h = \mathsf{fix}\,g_0.\,\lambda z_1 \dots \lambda z_m.\,e_0$
     (maximal prefix): let $f = \Phi(h)$ of arity $|\tup{w}| + m$ with
     witness $e_f = h$, and $f^0 = \Phi^0(h)$ of arity $|\tup{w}|$ with
-    witness $e_{f^0} = h$; emit the pointer axiom $\forall \tup{w}\,
-    \tup{z}.\ f^0(\tup{w}) \fapp z_1 \fapp \cdots \fapp z_m \feq
-    f(\tup{w}, \tup{z})$; run $\mathrm{B}_{\theta'}(f(\tup{w},
-    \tup{z});\, e_0)$ where $\theta' = \theta[g_0 \mapsto (f, \tup{w},
-    m)]$; the value is $f^0(\tup{w})$.
+    witness $e_{f^0} = h$; emit the pointer axiom (over fresh variables
+    $\tup{x}, \tup{z}$) $\forall \tup{x}\,
+    \tup{z}.\ f^0(\tup{x}) \fapp z_1 \fapp \cdots \fapp z_m \feq
+    f(\tup{x}, \tup{z})$; run
+    $\mathrm{B}_{\theta'}(f(\pincl{\tup{w}}{\theta},
+    \tup{z});\, e_0)$ where $\theta' = \theta[g_0 \mapsto (f,
+    \pincl{\tup{w}}{\theta}, m)]$; the value is
+    $f^0(\pincl{\tup{w}}{\theta})$.
   \end{itemize}
 \end{itemize}
 The case analysis is exhaustive, so $\compf_\theta$ is total: every
@@ -152,32 +207,48 @@ rigidity (\cref{lem:rigid}) a constructor term never has a $\Pi$-type
 --- but $\compf$ is also invoked on terms embedded in goals, premises
 and specifications, so relying on unreachability would require
 maintaining a typing invariant across every invocation site.  The
-clause costs one line and makes every totality statement in this
-section (\cref{lem:compile-term}, the totality of $\guardf$ and $\Ff$
-in \cref{def:guard-F}) unconditional.
+clause costs one line and completes the head analysis of
+$\compf_\theta$.  Together with the pinning of recursive closures ---
+which likewise rests on no unreachability belief; the closure
+configurations are reachable from everyday programs
+(\cref{rem:rec-closure}) --- it makes every totality and
+well-formedness statement in this section
+(\cref{lem:compile-term,lem:sentences}, the totality of $\guardf$ and
+$\Ff$ in \cref{def:guard-F}) unconditional.
 \end{remark}
 
 \begin{definition}[Body compilation $\mathrm{B}$]
 \label{def:compile}
 $\mathrm{B}_\theta(L;\, e)$ takes a first-order term $L$ (the
-\emph{left-hand side}, linear in its variables, whose variables include
-$\fv{e}$ minus the $\theta$-bound ones) and a $\lbox$ term $e$, and
-emits axioms; throughout, $\forall.\ \phi$ denotes the universal
-closure of $\phi$ (all free first-order variables quantified):
+\emph{left-hand side}), whose variables include $\fv{e}$ minus the
+$\theta$-bound ones together with all variables of the closure terms
+stored in $\theta$, and a $\lbox$ term $e$, and emits axioms;
+throughout, $\forall.\ \phi$ denotes the universal closure of $\phi$
+(all free first-order variables quantified --- ordinary variables
+only, by \cref{lem:sentences}):
 \begin{enumerate}[leftmargin=2em]
 \item If $e = \lambda x.e'$: run $\mathrm{B}_\theta(L \fapp x;\, e')$.
 \item If $e = \mathsf{case}(x;\, \{\wcns{c}_i(\tup{z}_i) \Rightarrow
   b_i\}_i)$ with $x$ a variable of $L$: for each $i$, with $\tup{z}_i$
   fresh, run
-  $\mathrm{B}_\theta\bigl(
+  $\mathrm{B}_{\theta_i}\bigl(
     \subst{L}{\Ihat{\wcns{c}}_i(\tup{z}_i)}{x};\;
-    \subst{b_i}{\wcns{c}_i(\tup{z}_i)}{x}\bigr)$.
+    \subst{b_i}{\wcns{c}_i(\tup{z}_i)}{x}\bigr)$,
+  where $\theta_i$ applies the same substitution
+  $[\Ihat{\wcns{c}}_i(\tup{z}_i)/x]$ to every closure term stored in
+  $\theta$.  The template map is refined \emph{together with} $L$: a
+  stored closure term may mention $x$ (the closure of an enclosing
+  fix-lift, or of a pointer value pinned into $L$), and the
+  sub-derivation's emissions consult the stored templates, which must
+  continue to denote the values of the corresponding subterms of the
+  refined left-hand side (\cref{rem:rec-closure}).
 \item If $e = \mathsf{case}(s;\, \tup{br})$ with $s$ not a variable of
   $L$: let $g = \mathrm{X}(\lambda z.\mathsf{case}(z;\tup{br}))$ with
   closure $\tup{w}' = \fv{\tup{br}}$ and witness as in \cref{def:compC};
-  emit $\forall.\ L \feq g(\compf_\theta(s), \tup{w}')$, and run
-  $\mathrm{B}_\theta(g(z, \tup{w}');\, \mathsf{case}(z; \tup{br}))$ for
-  fresh $z$.
+  emit $\forall.\ L \feq g(\compf_\theta(s), \pincl{\tup{w}'}{\theta})$,
+  and run $\mathrm{B}_\theta(g(z, \pincl{\tup{w}'}{\theta});\,
+  \mathsf{case}(z; \tup{br}))$ for fresh $z$, with $\theta$ restricted
+  as in \cref{def:compC}.
 \item If $e = \mathsf{fix}\,g_0.e'$: compute the value translation $u =
   f^0(\tup{w})$ of $e$ as in \cref{def:compC} (which also compiles $e$);
   emit $\forall.\ L \feq u$.
@@ -189,7 +260,9 @@ initialised on $e = \erase{t}$:
 \item if $e = \mathsf{fix}\,g_0.\lambda z_1 \dots \lambda z_m.e_0$
   (maximal prefix): set $a_c \defeq m$ and run
   $\mathrm{B}_{[g_0 \mapsto (\Ihat{c},\, (),\, m)]}(\Ihat{c}(\tup{z});\,
-  e_0)$;
+  e_0)$ --- the pointer value of $g_0$ is the constant $\Ihat{c}^0$,
+  which exists since $m \geq 1$ (the guard argument of a fix is
+  informative);
 \item otherwise, with $e = \lambda z_1 \dots \lambda z_m.e_0$ (maximal
   prefix, possibly $m = 0$): set $a_c \defeq m$ and run
   $\mathrm{B}_{\emptyset}(\Ihat{c}(\tup{z});\, e_0)$.
@@ -208,53 +281,187 @@ set of axioms for a given environment and goal.
 
 \begin{proof}
 As in \cite{Extraction2026}: order calls by the pair (number of
-case/$\lambda$/fix nodes, node count) lexicographically.  Rule (2)
-consumes the outer case node and passes to a branch with a
-variable-for-pattern replacement that creates no case, $\lambda$ or fix
-nodes; rule (3) replaces a non-variable scrutinee by a variable; rules
-(1), (4), (5) and all $\compf$ recursions strictly decrease the pair.
+case/$\lambda$/fix nodes, node count) lexicographically, measured on
+the $\lbox$ argument.  Rule (2) consumes the outer case node and
+passes to a branch with a variable-for-pattern replacement that
+creates no case, $\lambda$ or fix nodes (the refinement of $L$ and of
+the stored templates concerns first-order data, outside the measure);
+rule (3) replaces a non-variable scrutinee by a variable; rules (1),
+(4), (5) and all $\compf$ recursions strictly decrease the pair.
 Finiteness follows since each emitted axiom is attached to a symbol,
-each symbol to a $\lbox$ term in the finite compilation tree, and
-hash-consing merges repeated liftings.
+each symbol to a key in the finite compilation tree, and hash-consing
+merges liftings with equal keys.
 \end{proof}
+
+\begin{lemma}[Emitted axioms are sentences over ordinary variables]
+\label{lem:sentences}
+Every axiom emitted by \cref{def:compC,def:compile} is the universal
+closure of a formula over ordinary first-order variables:
+$\theta$-bound variables occur in no emitted formula.
+\end{lemma}
+
+\begin{proof}
+By induction on the tree of procedure calls, with the invariant that
+the left-hand side $L$ and all closure terms stored in $\theta$ are
+first-order terms over ordinary variables.  The invariant holds at
+roots (the root template's closure list is empty) and is preserved:
+rule (1) appends a fresh ordinary variable; rule (2) substitutes a
+constructor pattern over fresh ordinary variables into $L$ and into
+$\theta$; the lift clauses of \cref{def:compC} store and use
+\emph{pinned} closures, in which every $\theta$-bound member has been
+replaced by its pointer value --- a term over the stored closure of
+its template, ordinary by the invariant --- and the pointer axioms
+range over fresh ordinary variables.  Emitted right-hand sides are
+images of $\compf_\theta$, which replaces every occurrence of a
+$\theta$-bound variable through the template clause ($\theta$-bound
+variables occur in compiled terms only as spine heads, as noted above
+\cref{def:compC}) by an application of the template symbol to stored
+closure terms.  So both sides of every emitted equation lie over
+ordinary variables, and $\forall.$ binds exactly those.
+\end{proof}
+
+\begin{remark}[Recursive closures: reachable, pinned, keyed]
+\label{rem:rec-closure}
+Pinning, the template refinement of rule (2), and the naming keys of
+\cref{def:signature} are the three coordinated parts of one
+discipline: the value of a recursion variable at a lifting site is
+first-order data, not a quantifiable variable.  None of it may rest on
+unreachability claims --- the configurations are exercised by everyday
+programs.  Two instances over the running environment ($\nat$, $\bool$,
+$A \defeq \nat$, $\vect$, and $\mathsf{iszero} \defeq \lambda
+m{:}\nat.\ \mathsf{case}(m;\ \{\csO \Rightarrow \cstrue \mid \csS(p)
+\Rightarrow \csfalse\})$).
+
+First, \emph{recursion under a computed case}.  The definition
+\begin{multline*}
+  c \defeq \tfix\,f{:}(\Pi n{:}\nat.\ \vect(n) \to \nat).\
+  \lambda n\,v.\ \mathsf{case}\bigl(v;\ \{\csvnil \Rightarrow \csO
+  \mid {}\\
+  \csvcons(k,a,w) \Rightarrow
+  \mathsf{case}(\mathsf{iszero}\ k;\ \{\cstrue \Rightarrow f\,k\,w
+  \mid \csfalse \Rightarrow a\})\}\bigr)
+\end{multline*}
+--- ``recurse if a computed test succeeds'' --- is well typed, guarded
+and shallow.  Its $\csvcons$ branch reaches rule (3) with $f \in
+\fv{\tup{br}}$, so the case-lift $g$ carries the recursion variable in
+its closure; with the pinned closure $(\Ihat{c}^0, k, w, a)$ the
+emissions are
+\begin{gather*}
+  \forall n\,k\,a\,w.\ \Ihat{c}(n, \Ihat{\csvcons}(k,a,w)) \feq
+    g\bigl(\Ihat{\mathsf{iszero}}(k), \Ihat{c}^0, k, w, a\bigr),\\
+  \forall k\,w\,a.\ g(\Ihat{\cstrue}, \Ihat{c}^0, k, w, a) \feq
+    \Ihat{c}(k, w), \qquad
+  \forall k\,w\,a.\ g(\Ihat{\csfalse}, \Ihat{c}^0, k, w, a) \feq a,
+\end{gather*}
+valid in $\ML$ (\cref{lem:compile-sound}): the closure place of $f$
+holds the \emph{term} $\Ihat{c}^0$, whose denotation is the class of
+$c$ --- exactly the value the witness of $g$ substitutes there.  Had
+the closure been the raw free-variable list, that place would have
+been universally quantified, and the middle equation would be
+\emph{false} in $\ML$: instantiating the $f$-place at the junk class
+$\cls{\bx}$ and $w$ at $\cls{\csvnil}$, the left side denotes the
+stuck class $\cls{\bx\,\hat{e}_k\,\csvnil}$ while the right side
+denotes $\cls{c\,\hat{e}_k\,\csvnil} = \cls{\csO}$, distinct normal
+forms (\cref{thm:confluence}).  Worse, a naming key that does not see
+$\theta$ identifies the lifted term with an $\alpha$-copy in which the
+recursion variable is an \emph{ordinary} variable, attaching to one
+symbol the equations of both readings; with a few further harmless
+definitions the emitted theory then derives $\Ihat{\csO} \feq
+\Ihat{\csS}(\Ihat{\csO})$, hence $\bot$.  Pinning removes the
+quantified place; the keys remove the collision.
+
+Second, \emph{template refinement}.  In
+\begin{multline*}
+  c' \defeq \lambda b{:}\bool.\ \tfix\,f{:}(\Pi n{:}\nat.\ \vect(n)
+  \to \nat).\ \lambda n\,v.\ \mathsf{case}\bigl(v;\ \{\csvnil
+  \Rightarrow \csO \mid {}\\
+  \csvcons(k,a,w) \Rightarrow \mathsf{case}(b;\
+  \{\cstrue \Rightarrow f\,k\,w \mid \csfalse \Rightarrow a\})\}\bigr)
+\end{multline*}
+the inner fix-lift $\Phi$ has closure $(b)$ and template $(\Phi, (b),
+2)$, and the branch case on $b$ --- a variable of the left-hand side
+--- is refined by rule (2), whose substitution acts on the stored
+template as well; the $\cstrue$ leaf therefore emits $\forall
+n\,k\,a\,w.\ \Phi(\Ihat{\cstrue}, n, \Ihat{\csvcons}(k,a,w)) \feq
+\Phi(\Ihat{\cstrue}, k, w)$ --- the recursion correctly specialised to
+the refined closure.  An unrefined template would emit $\dots \feq
+\Phi(b, k, w)$ with $b$ universally quantified but absent from the
+left-hand side, false in $\ML$ at junk values of $b$ by the same
+witness computation as above.  Recursive closures under $\lambda$ ---
+passing the recursive call to a functional argument, as in
+$\csvcons(k,a,w) \Rightarrow u\,(\lambda x{:}\nat.\ f\,k\,w\,u)$ ---
+route $f$ through a $\lambda$-lift's closure, and pinning and keying
+act identically.  The discipline formalises what practical
+$\lambda$-lifters, the implemented translation included, have always
+done: the symbol introduced for a fixpoint is substituted for its
+recursion variable before closures are computed.
+\end{remark}
 
 \begin{remark}[Shape of the equations]
 \label{rem:eq-shape}
 All axioms emitted by compilation are universally quantified equations
-$L \feq R$ whose left-hand sides are \emph{linear} terms of the form
+$L \feq R$ whose left-hand sides have the form
 \[
   f(\tup{\pi}) \fapp \pi'_1 \fapp \cdots \fapp \pi'_k \qquad (k \geq 0),
 \]
 where $f$ is a compiled symbol and each of $\tup{\pi}, \pi'_1, \dots,
-\pi'_k$ is a variable or a constructor pattern.  Note that constructor
-patterns occur in $\fapp$-positions too: rule (2) of \cref{def:compile}
-may refine a variable that rule (1) appended --- a branch body that is
-a $\lambda$-abstraction followed by a case on the new variable ---
-producing left-hand sides such as $f(\Ihat{\csO}) \fapp
-\Ihat{\wcns{c}}(\tup{z})$.  The left-hand sides are pairwise
-non-overlapping: the equations emitted for one head symbol are the
-leaves of a \emph{refinement tree} in which rule (1) wraps the current
-left-hand side $L$ in one $\fapp$-application of a fresh variable,
-rule (2) splits one variable of $L$ into all constructors of the
-scrutinised datatype, and rules (3)--(5) emit and stop.  Two distinct
-leaves diverge at a rule-(2) split of some variable $x$ of a common
-intermediate left-hand side $L_0$; in the two final left-hand sides,
-$L_0$ persists as the subterm at a fixed depth on the left
-$\fapp$-spine (later steps only wrap it in further $\fapp$-applications
-or instantiate its variables), and the position of $x$ carries an
-instance of $\Ihat{\wcns{c}}(\cdots)$ in one and of
-$\Ihat{\wcns{d}}(\cdots)$ in the other with $\wcns{c} \neq \wcns{d}$,
-so no unifier exists between either final left-hand side and the other
-or a left-spine subterm of the other.  Left-hand sides with distinct
-head symbols cannot unify at all (the head symbol sits at the bottom of
-the left spine), and each pointer axiom is the sole equation of its
-head $f^0$, with an all-variable left-hand side that cannot unify with
-a proper left-spine subterm of a renamed copy of itself
-($\fapp$-depths differ).  Left-linear and non-overlapping, the
-equations oriented left to right form an orthogonal rewrite system
-\cite{BaaderNipkow1998}.  Nothing about indexed families disturbs
-this: the patterns are patterns of \emph{informative} constructor
-arguments, and index information never reaches $\lbox$.
+\pi'_k$ is generated by the grammar
+\[
+  \pi \;::=\; x \;\mid\; \Ihat{\wcns{c}}(\tup{\pi}) \;\mid\;
+  p(\tup{\pi})
+\]
+--- a variable, a constructor pattern, or a \emph{pinned closure
+term} headed by a pointer symbol $p$ (rule (2) may instantiate
+variables inside pinned terms, which is how constructor patterns enter
+them).  Constructor patterns occur in $\fapp$-positions too: rule (2)
+of \cref{def:compile} may refine a variable that rule (1) appended ---
+a branch body that is a $\lambda$-abstraction followed by a case on
+the new variable --- producing left-hand sides such as $f(\Ihat{\csO})
+\fapp \Ihat{\wcns{c}}(\tup{z})$.
+
+The left-hand sides are pairwise non-overlapping.  The equations
+emitted for one head symbol are the leaves of a \emph{refinement tree}
+in which rule (1) wraps the current left-hand side $L$ in one
+$\fapp$-application of a fresh variable, rule (2) splits one variable
+of $L$ into all constructors of the scrutinised datatype
+(simultaneously at every occurrence, pinned subterms included), and
+rules (3)--(5) emit and stop.  Two distinct leaves diverge at a
+rule-(2) split of some variable $x$ of a common intermediate left-hand
+side $L_0$; in the two final left-hand sides, $L_0$ persists as the
+subterm at a fixed depth on the left $\fapp$-spine (later steps only
+wrap it in further $\fapp$-applications or instantiate its variables),
+and any fixed occurrence of $x$ in $L_0$ --- a position that stays
+rigid in the persisted instance, whether at an argument place or
+inside a pinned term, since constructor and pointer symbols have fixed
+arities --- carries an instance of $\Ihat{\wcns{c}}(\cdots)$ in one
+leaf and of $\Ihat{\wcns{d}}(\cdots)$ in the other with $\wcns{c} \neq
+\wcns{d}$, so no unifier exists between either final left-hand side
+and the other or a left-spine subterm of the other.  Left-hand sides
+with distinct head symbols cannot unify at all (the head symbol sits
+at the bottom of the left spine), and pinned subterms create no new
+overlaps: no left-hand side has a pointer symbol at its spine bottom
+--- each pointer axiom's left-hand side is an $\fapp$-spine over
+$f^0(\tup{x})$ with at least one extension argument --- so the
+$p$-headed subterms sitting at argument places of left-hand sides
+unify with no left-hand side and no left-spine subterm of one, while
+each pointer axiom remains the sole equation of its head $f^0$, with
+an all-variable left-hand side that cannot unify with a proper
+left-spine subterm of a renamed copy of itself ($\fapp$-depths
+differ).
+
+One property is weaker than in the companion paper: left-linearity
+may fail, since a variable may occur both inside a pinned closure
+term and at another position of $L$ (the closure of an enclosing
+fix-lift and the closure of a lift within its body may share a
+variable).  On the fragment without recursive closures --- no pinned
+terms, in particular whenever no fix body lifts a complex subterm
+mentioning its recursion variable --- the left-hand sides are linear
+and the oriented equations form an orthogonal rewrite system
+\cite{BaaderNipkow1998}; in general they form a non-overlapping one
+whose duplicated variables are confined to pinned positions.  Nothing
+about indexed families disturbs any of this: the patterns are
+patterns of \emph{informative} constructor arguments, and index
+information never reaches $\lbox$.
 \end{remark}
 
 \begin{example}[Compilation over families]

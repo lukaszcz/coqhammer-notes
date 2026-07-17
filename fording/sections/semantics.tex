@@ -343,20 +343,29 @@ first-order assignments.
 
 The two lemmas of this subsection are the companion paper's, re-proved
 here in full --- including the cases for the two head clauses added in
-\cref{def:compC} --- both because the soundness proof cites their
-content and because their \emph{independence} of the indexed extension
-is itself the point: compilation concerns only the program half, which
-is index-blind.
+\cref{def:compC} and the pinned treatment of recursive closures
+(\cref{rem:rec-closure}) --- both because the soundness proof cites
+their content and because their \emph{independence} of the indexed
+extension is itself the point: compilation concerns only the program
+half, which is index-blind.
 
 \begin{definition}[Coherent template maps]
 \label{def:coherent}
 For a template map $\theta$ and a substitution $\sigma_\theta$ assigning
 closed $\lbox$ terms to $\dom{\theta}$, say $(\theta, \sigma_\theta)$ is
 \emph{coherent} for an assignment $\rho$ if for every $g$ with
-$\theta(g) = (f, \tup{w}, m)$ and all $d_1, \dots, d_m \in \Dom$ with
-representatives $e_i$:
-$f^{\ML}(\den{\tup{w}}{\rho}, \tup{d}) =
-\cls{\sigma_\theta(g)\;e_1 \cdots e_m}$.
+$\theta(g) = (f, \tup{w}, m)$, the variables of the closure terms
+$\tup{w}$ are assigned by $\rho$ and:
+\begin{enumerate}[leftmargin=2em]
+\item $\den{\pinv{\theta}{g}}{\rho} = \cls{\sigma_\theta(g)}$ --- the
+  pointer value denotes the class of the assigned closed term;
+\item $f^{\ML}(\den{\tup{w}}{\rho}, \tup{d}) =
+  \cls{\sigma_\theta(g)\;e_1 \cdots e_m}$ for all $d_1, \dots, d_m \in
+  \Dom$ with representatives $e_i$.
+\end{enumerate}
+Clause (1) is what the lift clauses consume --- a pinned closure place
+must denote the recursion's value; clause (2) is what the template
+clause of $\compf_\theta$ consumes.
 \end{definition}
 
 \begin{lemma}[Adequacy of $\compf$]
@@ -410,23 +419,29 @@ representatives.
   $\den{\Ihat{\wcns{c}}(\compf_\theta(\tup{e}'))}{\rho} =
   \cls{\wcns{c}(\tup{e}'^{\rho,\sigma_\theta})}$, and the
   $\fapp$-chain appends $\hat{e}_1, \dots, \hat{e}_j$.
-\item Complex heads, via their value translations.  $\lambda$-lift $h$
-  with value $f(\tup{w})$: by \cref{def:model}, $f^{\ML}
-  (\den{\tup{w}}{\rho}) = \cls{\subst{h}{\tup{\hat{w}}}{\tup{w}}} =
-  \cls{h^{\rho,\sigma_\theta}}$, the witness being $h$ itself and the
-  closure parameters receiving the values $\rho$ assigns them.
-  Case-lift
-  $h = \mathsf{case}(s; \tup{br})$ with value $g(\compf_\theta(s),
-  \tup{w}')$: $g^{\ML}(\cls{\hat{s}}, \den{\tup{w}'}{\rho}) =
-  \cls{(\lambda z.\mathsf{case}(z; \tup{br}))
-  [\tup{\hat{w}}'/\tup{w}']\;\hat{s}}$, which $\beta$-reduces in one
-  step to $\cls{\mathsf{case}(\hat{s};
-  \tup{br}[\tup{\hat{w}}'/\tup{w}'])} = \cls{h^{\rho,\sigma_\theta}}$,
-  using the induction hypothesis for $\hat{s}$.  Fix-lift with value
-  $f^0(\tup{w})$: $(f^0)^{\ML}(\den{\tup{w}}{\rho}) =
-  \cls{\subst{h}{\tup{\hat{w}}}{\tup{w}}} = \cls{h^{\rho,
-  \sigma_\theta}}$ via the witness $e_{f^0} = h$.  In each case the
-  $\fapp$-chain then appends $\hat{e}_1, \dots, \hat{e}_j$.
+\item Complex heads, via their value translations.  In each case the
+  denotation of the pinned closure supplies, at an ordinary member $x$,
+  the value $\rho(x)$, and at a pinned member $\pinv{\theta}{g}$, the
+  class $\cls{\sigma_\theta(g)}$ --- coherence clause (1) --- so
+  substituting representatives of these values for the free variables
+  of the witness effects exactly the substitution $(\cdot)^{\rho,
+  \sigma_\theta}$; this is where pinning earns its keep, an assignment
+  $\rho$ assigning nothing to a $\theta$-bound variable.
+  $\lambda$-lift $h$ with value $f(\pincl{\tup{w}}{\theta})$: by
+  \cref{def:model}, $f^{\ML}(\den{{\pincl{\tup{w}}{\theta}}}{\rho}) =
+  \cls{h^{\rho,\sigma_\theta}}$, the witness being $h$ itself.
+  Case-lift $h = \mathsf{case}(s; \tup{br})$ with value
+  $g(\compf_\theta(s), \pincl{\tup{w}'}{\theta})$:
+  $g^{\ML}(\cls{\hat{s}}, \den{{\pincl{\tup{w}'}{\theta}}}{\rho}) =
+  \cls{(\lambda z.\mathsf{case}(z; \tup{br}))^{\rho,\sigma_\theta}\;
+  \hat{s}}$, which $\beta$-reduces in one step to
+  $\cls{\mathsf{case}(\hat{s}; \tup{br}^{\rho,\sigma_\theta})} =
+  \cls{h^{\rho,\sigma_\theta}}$, using the induction hypothesis for
+  $\hat{s}$.  Fix-lift with value $f^0(\pincl{\tup{w}}{\theta})$:
+  $(f^0)^{\ML}(\den{{\pincl{\tup{w}}{\theta}}}{\rho}) =
+  \cls{h^{\rho,\sigma_\theta}}$ via the witness $e_{f^0} = h$.  In
+  each case the $\fapp$-chain then appends $\hat{e}_1, \dots,
+  \hat{e}_j$.
 \end{itemize}
 The final claim is the special case $e = \erase{t}$ with $\theta =
 \emptyset$: free variables of $\erase{t}$ are free term variables of
@@ -441,10 +456,12 @@ or on a term embedded in the goal or in a declaration, and let
 $\mathrm{B}_\theta(L; e)$ range over the body-compilation calls it
 performs.  Then:
 \begin{enumerate}[leftmargin=2em]
-\item for every such call there is a substitution $\sigma_\theta$ such
-  that for every assignment $\rho$ of the variables of $L$, the pair
+\item for every such call and every assignment $\rho$ of the variables
+  of $L$ there is a substitution $\sigma_\theta$ such that the pair
   $(\theta, \sigma_\theta)$ is coherent for $\rho$ and $\den{L}{\rho} =
-  \cls{e^{\rho, \sigma_\theta}}$;
+  \cls{e^{\rho, \sigma_\theta}}$ ($\sigma_\theta$ is chosen per
+  assignment: the value of a recursion variable depends on the closure
+  values);
 \item every axiom emitted by the procedure holds in $\ML$ --- under
   \emph{every} assignment of its universally quantified variables, junk
   included.
@@ -455,26 +472,53 @@ performs.  Then:
 By induction on the tree of procedure calls; part (1) is the invariant
 that makes part (2) a local computation at each emitting step.
 
+\emph{Coherence is established uniformly.}  Wherever a pair $(\theta,
+\sigma_\theta)$ is needed for an assignment $\rho$ below, define
+$\sigma_\theta(g)$, for each $g$ with $\theta(g) = (f, \tup{w}, m)$,
+as a closed representative of $\den{\pinv{\theta}{g}}{\rho} =
+(f^0)^{\ML}(\den{\tup{w}}{\rho})$ --- defined because the variables of
+the stored closure terms are variables of the current left-hand side
+(they occur in it, at its template application or pinned places, and
+rule (2) refines stored templates together with $L$).  Clause (1) of
+\cref{def:coherent} then holds by construction, and clause (2)
+follows because $f$ and $f^0$ carry the \emph{same} witness --- the
+constant $c$ for the root template ($\Ihat{c}$, $\Ihat{c}^0$), the
+fix term $h$ for a fix-lift ($\Phi(h)$, $\Phi^0(h)$) --- so by
+\cref{def:model} both $f^{\ML}(\den{\tup{w}}{\rho}, \tup{d})$ and
+$\cls{\sigma_\theta(g)\,e_1 \cdots e_m}$ are the class of the same
+witness instance applied to the same representatives.  What remains
+per rule is the left-hand-side invariant $\den{L}{\rho} =
+\cls{e^{\rho,\sigma_\theta}}$ (a statement about classes, indifferent
+to the choice of representatives).
+
 \emph{Roots.}  For $c \defeq t : \tau$ with $\erase{t} = \lambda
 \tup{z}.e_0$ (maximal prefix): $\theta = \emptyset$, and for any
 $\rho$ with representatives $\tup{e}$ of $\rho(\tup{z})$,
 $\den{\Ihat{c}(\tup{z})}{\rho} = \cls{c\,\tup{e}}$
 (\cref{def:model}) $= \cls{\erase{t}\,\tup{e}}$ (one $\delta$-step)
 $= \cls{e_0^\rho}$ ($|\tup{z}|$ $\beta$-steps).  For $\erase{t} =
-\mathsf{fix}\,g_0.\lambda\tup{z}.e_0$: set $\sigma_\theta(g_0) \defeq
-\erase{t}$; coherence of $(\theta, \sigma_\theta)$ is the computation
-$\Ihat{c}^{\ML}(\tup{d}) = \cls{c\,\tup{e}} =
-\cls{\erase{t}\,\tup{e}} = \cls{\sigma_\theta(g_0)\,\tup{e}}$, and the
-invariant for the initial call $\mathrm{B}(\Ihat{c}(\tup{z}); e_0)$
-follows by one further $\mu$-step and the $\beta$-steps.  For a
-$\lambda$-lift ($\mathrm{B}_\theta(f(\tup{w}); h)$) the invariant is
-the interpretation of $f$ through its witness; for a case-lift
-($\mathrm{B}_\theta(g(z, \tup{w}'); \mathsf{case}(z;\tup{br}))$) it is
-the witness interpretation followed by one $\beta$-step ($e_g$ is the
-$\lambda$-wrapped case); for a fix-lift, extend $\sigma_\theta$ by
-mapping $g_0$ to the \emph{closed instance} of the witness at
-representatives of $\den{\tup{w}}{\rho}$ --- coherence for the new
-binding is then the same computation as at the root, one level down.
+\mathsf{fix}\,g_0.\lambda\tup{z}.e_0$: here $\sigma_\theta(g_0)$ is a
+representative of $(\Ihat{c}^0)^{\ML} = \cls{c}$ --- take
+$\erase{t}$, one $\delta$-step away --- and the invariant for the
+initial call $\mathrm{B}(\Ihat{c}(\tup{z}); e_0)$ is the computation
+$\den{\Ihat{c}(\tup{z})}{\rho} = \cls{\erase{t}\,\tup{e}} =
+\cls{e_0[\erase{t}/g_0, \tup{e}/\tup{z}]} =
+\cls{e_0^{\rho,\sigma_\theta}}$ (one $\delta$-, one $\mu$- and
+$|\tup{z}|$ $\beta$-steps).  For a $\lambda$-lift
+($\mathrm{B}_\theta(f(\pincl{\tup{w}}{\theta}); h)$) the invariant at
+any assignment $\rho$ of the new left-hand side's variables is the
+interpretation of $f$ through its witness, the pinned places
+denoting $\cls{\sigma_\theta(g)}$ by coherence clause (1); for a
+case-lift ($\mathrm{B}_\theta(g(z, \pincl{\tup{w}'}{\theta});
+\mathsf{case}(z;\tup{br}))$) it is the witness interpretation followed
+by one $\beta$-step ($e_g$ is the $\lambda$-wrapped case); for a
+fix-lift, $\sigma_{\theta'}(g_0)$ is by the uniform recipe a
+representative of $(f^0)^{\ML}(\den{{\pincl{\tup{w}}{\theta}}}{\rho})$,
+i.e.\ the \emph{closed instance} of the witness $h$ at
+representatives of the pinned closure values, and the invariant for
+$\mathrm{B}_{\theta'}(f(\pincl{\tup{w}}{\theta}, \tup{z}); e_0)$ is
+the root computation one level down: one $\mu$-step and $m$
+$\beta$-steps from the witness instance.
 
 \emph{Rule (1)} ($L \mapsto L \fapp x$, $e = \lambda x.e'$): an
 assignment of the extended left-hand side restricts to one of $L$; the
@@ -488,9 +532,14 @@ $\subst{L}{\Ihat{\wcns{c}}_i(\tup{z}_i)}{x}$ induces the assignment
 $\rho$ of $L$ that agrees with $\rho'$ elsewhere and maps $x$ to
 $\Ihat{\wcns{c}}_i^{\ML}(\rho'(\tup{z}_i)) =
 \cls{\wcns{c}_i(\tup{e})}$; the two left-hand sides then denote the
-same element, and on the right, a head $\iota$-step converts the
-representative of $\mathsf{case}(x;\dots)^{\rho,\sigma_\theta}$ into
-that of $(\subst{b_i}{\wcns{c}_i(\tup{z}_i)}{x})^{\rho',
+same element, and likewise the refined templates: $\den{\subst{u}
+{\Ihat{\wcns{c}}_i(\tup{z}_i)}{x}}{\rho'} = \den{u}{\rho}$ for every
+stored closure term $u$ by the first-order substitution lemma, so the
+uniform coherence data for $\rho'$ (over $\theta_i$) and for $\rho$
+(over $\theta$) coincide and the invariant transfers.  On the right, a
+head $\iota$-step converts the representative of
+$\mathsf{case}(x;\dots)^{\rho,\sigma_\theta}$ into that of
+$(\subst{b_i}{\wcns{c}_i(\tup{z}_i)}{x})^{\rho',
 \sigma_\theta}$.  Note that the $\iota$-step of $\lbox$ fires on
 \emph{any} constructor form, with no index side condition --- this is
 why the emitted equations hold at all elements, wrong-index
@@ -498,19 +547,25 @@ instantiations included, which \cref{prop:match-equations} isolates.
 
 \emph{Rule (3)}: by the invariant, the left-hand side of the emitted
 axiom denotes $\cls{\mathsf{case}(s;\tup{br})^{\rho,\sigma_\theta}}$;
-by \cref{lem:comp-adequacy} and one $\beta$-step through the witness
-of $g$, so does the right-hand side $g(\compf_\theta(s), \tup{w}')$;
-and the invariant for the recursive call on $g(z, \tup{w}')$ is the
+by \cref{lem:comp-adequacy} --- applicable since $(\theta,
+\sigma_\theta)$ is coherent for $\rho$ --- and one $\beta$-step
+through the witness of $g$, so does the right-hand side
+$g(\compf_\theta(s), \pincl{\tup{w}'}{\theta})$; and the invariant for
+the recursive call on $g(z, \pincl{\tup{w}'}{\theta})$ is the
 case-lift root computation above.  \emph{Rule (4)}: both sides denote
 $\cls{e^{\rho,\sigma_\theta}}$, the left by the invariant and the
-right through the fix-lift witness of $f^0$.  \emph{Rule (5)}: the
-invariant identifies the left-hand side's denotation with
+right through the fix-lift witness of $f^0$ with the pinned places
+supplied by coherence clause (1).  \emph{Rule (5)}: the invariant
+identifies the left-hand side's denotation with
 $\cls{e^{\rho,\sigma_\theta}}$, and \cref{lem:comp-adequacy}
 identifies the right-hand side's with the same class.  \emph{Pointer
 axioms}: for a constant, both sides of $\Ihat{c}^0 \fapp z_1 \fapp
 \cdots \fapp z_{a_c} \feq \Ihat{c}(\tup{z})$ denote
-$\cls{c\,\tup{e}}$; for a fix-lift, both sides denote the witness
-instance applied to the extension arguments.
+$\cls{c\,\tup{e}}$; for a fix-lift, the axiom ranges over fresh
+variables at the closure places, and at \emph{every} value of those
+--- pinned or junk --- both sides denote the same witness instance
+applied to the extension arguments, $f$ and $f^0$ sharing their
+witness.
 \end{proof}
 
 \subsection{Coincidence: the translation reflects the semantics}

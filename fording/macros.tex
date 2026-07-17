@@ -104,6 +104,11 @@
 \newcommand{\rul}[2]{\dfrac{\begin{array}{@{}c@{}}#1\end{array}}{\begin{array}{@{}c@{}}#2\end{array}}}
 \newcommand{\rname}[1]{\textsc{\scriptsize #1}}
 
+% ---------- Recursive-closure pinning ----------
+\newcommand{\pinv}[2]{\ensuremath{\mathrm{val}_{#1}(#2)}}   % pointer value of a theta-bound variable
+\newcommand{\pincl}[2]{\ensuremath{#1{}^{#2}}}              % pinned closure list ({}: prime-safe)
+\newcommand{\trestr}[2]{\ensuremath{#1{\restriction}#2}}    % restriction of a template map
+
 % ---------- Misc ----------
 \newcommand{\fstar}{\ensuremath{\mathrm{F}^{\star}}}
 \newcommand{\subst}[3]{\ensuremath{#1[#2/#3]}}

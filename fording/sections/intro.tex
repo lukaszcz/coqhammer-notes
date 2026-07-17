@@ -153,7 +153,10 @@ provenance; none replaces an argument.  Concretely:
   first-order image of its ford: constructor typing with index conclusions,
   and a guarded \emph{inversion} axiom whose disjuncts carry constructor
   payloads \emph{and index equations}.  Pattern-matching definitions
-  compile, unchanged, to unguarded per-constructor equations.  We prove
+  compile, unchanged, to unguarded per-constructor equations; the
+  compilation layer itself is the companion's, with a repair to its
+  treatment of recursive closures (\cref{rem:rec-closure}) that is to
+  be mirrored there.  We prove
   the forced-argument simplification (index equations solvable for a bare
   variable are redundant) as a first-order equivalence
   (\cref{lem:n-one}).
