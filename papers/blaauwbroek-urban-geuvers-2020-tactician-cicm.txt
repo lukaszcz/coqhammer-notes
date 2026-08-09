@@ -1,0 +1,908 @@
+                                                       The Tactician (extended version)?
+                                         A Seamless, Interactive Tactic Learner and Prover for Coq
+
+                                                    Lasse Blaauwbroek1,2 , Josef Urban1 , and Herman Geuvers2
+                                                         1
+                                                             Czech Technical University, Prague, Czech Republic
+                                                             2
+                                                              Radboud University, Nijmegen, The Netherlands
+                                                  lasse@blaauwbroek.eu, josef.urban@gmail.com, herman@cs.ru.nl
+arXiv:2008.00120v1 [cs.AI] 31 Jul 2020
+
+
+
+
+                                                 Abstract. We present Tactician, a tactic learner and prover for the
+                                                 Coq Proof Assistant. Tactician helps users make tactical proof decisions
+                                                 while they retain control over the general proof strategy. To this end,
+                                                 Tactician learns from previously written tactic scripts and gives users
+                                                 either suggestions about the next tactic to be executed or altogether
+                                                 takes over the burden of proof synthesis. Tactician’s goal is to provide
+                                                 users with a seamless, interactive, and intuitive experience together with
+                                                 robust and adaptive proof automation. In this paper, we give an overview
+                                                 of Tactician from the user’s point of view, regarding both day-to-day
+                                                 usage and issues of package dependency management while learning in
+                                                 the large. Finally, we give a peek into Tactician’s implementation as a
+                                                 Coq plugin and machine learning platform.
+
+                                                 Keywords: Interactive Theorem Proving · Tactical Learning · Machine
+                                                 Learning · Coq Proof Assistant · Proof Synthesis · System Overview
+
+
+                                         1     Introduction
+                                         The Coq Proof Assistant [31] is an Interactive Theorem Prover in which one
+                                         proves lemmas using tactic scripts. Individual tactics in these scripts represent
+                                         actions that transform the proof state of the lemma currently being proved. A
+                                         wide range of tactics exist, with a wide range of sophistication. Basic tactics
+                                         such as apply lem and rewrite lem use an existing lemma lem to perform one
+                                         specific inference or rewriting step while tactics like ring and tauto implement
+                                         entire decision procedures that are guaranteed to succeed within specific domains.
+                                         Finally, open-ended search procedures are implemented by tactics like auto and
+                                         firstorder. They can be used in almost every domain but usually only work on
+                                         simple proof states or need to be calibrated carefully. Users are also encouraged to
+                                         define new tactics that represent basic steps, decision procedures, or specialized
+                                         search procedures within their specific mathematical domain.
+                                             When proving a lemma, the user’s challenge is to observe the current proof
+                                         state and select the appropriate tactic and its arguments to be used. Often the
+                                         ?
+                                             This work was supported by the European Regional Development Fund under the
+                                             project AI&Reasoning (reg. no. CZ.02.1.01/0.0/0.0/15 003/0000466) and by the
+                                             AI4REASON ERC Consolidator grant nr. 649043.
+2                               L. Blaauwbroek et al.
+
+user makes this decision based on experience with previous proofs. If the current
+proof state is similar to a previously encountered situation, then one can expect
+that an effective tactic in that situation might also be effective now. Hence, the
+user is continuously matching patterns of proof states in their mind and selects
+the correct tactic based on these matches.
+    That is not the only task the user performs, however. When working on a
+mathematical development, the user generally has two roles: (1) As a strategist,
+the user comes up with appropriate lemmas and sometimes decides on the main
+structure of complicated proofs. (2) As a tactician, the user performs the long
+and somewhat mindless process of mental pattern matching on proof states,
+applying corresponding tactics until the lemma is proved. Many of the steps in
+the tactician’s role will be considered as “obvious” by a mathematician. Our
+system is meant to replicate the pattern matching process performed in this role,
+alleviating the user from this burden. Hence, we have aptly named it Tactician.
+    To perform its job, Tactician can learn from existing proofs, by looking at
+how tactics modify the proof state. Then, when proving a new lemma, the user
+can ask the system to recommend previously used tactics based on the current
+proof state and even to complete the whole proof using a search procedure based
+on these tactic recommendations.
+    In our previous publication, the underlying machine learning and proof search
+techniques employed by Tactician and how suitable data is extracted from Coq
+are described [2]. It also contains an evaluation of Tactician’s current proof
+automation performance on Coq’s standard library. We will not repeat these
+details here. Instead, we will focus on the operational aspects and description
+of Tactician when used as a working and research tool. Section 2 gives a mostly
+non-technical overview of the system suitable for casual Coq users. That includes
+Tactician’s design principles, its mode of operation, a concrete example and
+a discussion on using Tactician in large projects. Section 3 briefly discusses
+some of Tactician’s technical implementation issues, and Section 4 describes how
+Tactician can be used as a machine learning platform. Finally, Section 6 compares
+Tactician to related work. Installation instructions of Tactician can be found at
+the project’s website http://coq-tactician.github.io. This pre-print is an
+extended version of our CICM paper with the same title [3].
+
+2     System Overview
+In this section, we give a mostly non-technical overview of Tactician suitable
+for casual Coq users. Section 2.1 states the guiding design principles of the
+project, and Section 2.2 describes the resulting user workflow. On the practical
+side, Section 2.3 gives a simple, concrete example of Tactician’s usage, while
+Section 2.4 discusses how to employ Tactician in large projects.
+
+2.1   Design Principles
+For our system, we start with the principal goal of learning from previous proofs
+to aid the user with proving new lemmas. In Coq, there are essentially two notions
+                                            The Tactician (extended version)       3
+
+of proof: (1) proof terms expressed in the Gallina language (Coq’s version of the
+Calculus of Inductive Constructions [24]); (2) tactic proof scripts written by the
+user that can then generate a Gallina term. In principle, it is possible to use
+machine learning on both notions of proof. We have chosen to learn from tactic
+proof scripts for two reasons:
+
+ 1. Tactics scripts are a higher-level and forgiving environment, which is more
+    suitable for machine learning. A Gallina proof term must be generated
+    extremely precisely while a tactic script often still works after minor local
+    mutations have occurred. Gallina terms are also usually much bigger than
+    their corresponding tactic script because individual tactics can represent
+    large steps in a proof.
+ 2. We acknowledge that automation systems within a proof assistant often still
+    need input from the user to fully prove a lemma. Working on the tactic level
+    allows the user to introduce domain-specific information to aid the system.
+    For example, one can write new tactics that represent decision procedures and
+    heuristics that solve problems Tactician could not otherwise solve. One can
+    teach Tactician about such new tactics merely by using them in hand-written
+    proofs a couple of times, after which the system will automatically start to
+    use them.
+
+    Apart from the principal goal described above, the most important objective
+of Tactician is to be usable and remain usable by actual Coq users. Hence, we
+prioritize the system’s “look and feel” over its hard performance numbers. To
+achieve this usability, Tactician needs to be pleasant to all parties involved, which
+we express in four basic “friendliness” tenets.
+
+User Friendly If the system is to be used by actual Coq users, it should function
+   as seamlessly as possible. After installation, it should be ready to go with
+   minimal configuration and without needing to spend countless hours training
+   a sophisticated machine learning model. Instead, there should be a model
+   that can learn on the fly, with a future possibility to add a more sophisticated
+   model that can be trained in batch once a development has been finished.
+   Finally, all interaction with the system should happen within the standard
+   Coq environment, regardless of which editor is used and without the need to
+   execute custom scripts.
+Installation Friendly Ease of installation is essential to reach solid user adop-
+   tion. To facilitate this, the system should be implemented in Ocaml (Coq’s
+   implementation language), with no dependencies on machine learning toolkits
+   written in other languages like Python or Matlab. Compilation and installa-
+   tion will then be just as easy as with a regular Coq release.
+Integration Friendly The system should not be a fork of the main Coq code-
+   base that has to be maintained separately. A fork would deter users from
+   installing it and risk falling behind the upstream code. Instead, it should
+   function as a plugin that can be compiled separately and then loaded into
+   Coq by the user.
+4                                 L. Blaauwbroek et al.
+
+Maintenance Friendly We intend for Tactician not to become abandonware
+  after main development has ceased, and at least remain compatible with the
+  newest release of Coq. As a first step, the plugin should be entered into the
+  Coq Package Index [30], enabling continuous integration with future versions
+  of Coq. Additionally, assuming that Tactician becomes wildly popular, we
+  eventually intend for it to be absorbed into the main Coq codebase.
+
+2.2   Mode of Operation
+Analogously to Coq’s mode of operation, Tactician can function both in interactive
+mode and in compilation mode.
+
+Interactive Mode We illustrate the interactive mode of operation of Tactician
+using the schematic in Figure 1. When the user starts a new Coq development
+file—say X.v—the first thing Tactician does is create an (in-memory) empty
+tactic database X corresponding to this file. The user then starts to prove lemmas
+as usual. Behind the scenes, every executed tactic, e.g. tactica1 , is saved into the
+database accompanied by the proof states before and after tactic execution, in
+this case, hΓa1 ` σ1 , tactica1 , Γa2 ` σ2 i. The difference between these two states
+represents the action performed by the tactic, while the state before the tactic
+represents the context in which it was useful. By recording many such triples
+for a tactic, we create a dataset representing an approximation of that tactic’s
+semantic meaning. The database is kept synchronized with the user’s movement
+within the document throughout the entire interactive session.
+    After proving a few lemmas by hand, the user can start to reap the fruits
+of the database. For this, the tactics suggest and search are available. We
+illustrate their use in the schematic when “Lemma z : ω” is being proven. The
+user first executes two normal tactics. After that, Coq’s proof state window
+displays a state for which the user is unsure what tactic to use. Here Tactician’s
+tactics come in.
+suggest This tactic can be executed to ask Tactician for a list of recommenda-
+   tions. The current proof state A : γ1 , B : γ2 , . . . , Z : γn ` ω3 is fed into the
+   pattern matching engine, which will perform a comparison with the states
+   in the tactic database. From this, an ordered list of recommendations is
+   generated and displayed in Coq’s messages window, where the user can select
+   a tactic to execute.
+search Alternatively, the system can be asked to search for a complete proof.
+   We start with the current proof state, which we rename to Φ1 ` ρ1 for clarity.
+   Then a search tree is formed by repeatedly running suggest on the proof
+   state and executing the suggested tactics. This tree can be traversed in
+   various ways, finishing only when a complete proof has been found.
+   If a proof is found, two things happen. (1) The Gallina proof term that is
+   found is immediately submitted to Coq’s proof engine, after which the proof
+   can be closed with Qed. (2) Tactician generates a reconstruction tactic search
+   failing ht12 , t32 , ...i which is displayed to the user (see the bottom of the
+                                                       The Tactician (extended version)                   5
+
+                                   Coq Document X.v                 Tactic Database X
+
+                                     Lemma a : σ
+                                       tactica1 .                    hΓa1 ` σ1 , tactica1 , Γa2 ` σ2 i
+                                       tactica2 .                    hΓa2 ` σ2 , tactica2 , Γa3 ` σ3 i
+
+                                       tactican .                    hΓan ` σn , tactican , · ` · i
+                                       Qed.
+
+
+                                     Lemma b : τ
+                                       tacticb1 .                    hΓb1 ` τ1 , tacticb1 , Γb2 ` τ2 i
+                                       tacticb2 .                    hΓb2 ` τ2 , tacticb2 , Γb3 ` τ3 i
+Proof State
+                                       tacticbn .                    hΓbn ` τn , tacticbn , · ` · i
+  A : γ1
+                                       Qed.
+  B : γ2
+
+  Z : γn
+  ω3                                 Lemma z : ω
+                                       tacticz1 .                    hΓz1 ` ω1 , tacticz1 , Γz2 ` ω2 i
+Messages                               tacticz2 .                    hΓz2 ` ω2 , tacticz2 , Γz2 ` ω3 i
+                                       suggest.
+  Suggestions:
+                                       search.
+  tacticp6 .
+                                       Qed.
+  tacticu12 .
+
+  tacticf 2 .                                                              Pattern Matching
+                                 A : γ1 , B : γ2 , . . . , Z : γn ` ω 3
+
+
+
+                                              Φ1 ` ρ1
+                                              suggest
+                                          t11 ,t12 ,. . . ,t
+                                                          ,t1n
+                                                             1n
+
+
+
+
+     Φ2 ` ρ2                                  Φ3 ` ρ2                                Φm ` ρm
+     suggest                                  suggest                                  suggest
+ t21 ,t22 ,. . . ,t
+                 ,t2n
+                    2n                    t31 ,t32 ,. . . ,t
+                                                          ,t3n
+                                                             3n                   tm1 ,tm2 ,. . . ,t
+                                                                                                  ,tmn
+                                                                                                     mn
+
+
+
+
+                                                 ·`·
+
+
+                     Reconstruction tactic: search failing ht12 , t32 , . . .i.
+
+Fig. 1. A schematic overview of Tactician in its interactive mode of operation.
+6                                    L. Blaauwbroek et al.
+
+      figure). The purpose of this tactic is to provide a modification resilient proof
+      cache that also functions when Tactician is not installed. Its semantics is to
+      first try to use the previously found list of tactics ht12 , t32 , ...i to complete the
+      proof immediately. “Failing” that (presumably due to changes in definitions
+      or lemmas), a new search is initiated to recover the proof. To use the cache,
+      the user should copy it and replace the original search invocation with it in
+      the source file.
+
+
+
+                                 Database X                    Database Y
+                                                                Inherits Database X
+
+
+    Document X.v           rebuild                  include    Document Y.v
+                              coqc X.v           X.vo           Require X.
+                             compilation      binary file
+
+
+    Fig. 2. A schematic overview of Tactician in its compilation mode of operation.
+
+
+Compilation Mode This mode is visualized in Figure 2. After the file X.v has
+been finished, one might want to depend on it in other files. This requires the file
+to be compiled into a binary X.vo file. The compilation is performed using the
+command coqc X.v. Tactician is integrated into this process. During compilation,
+the tactic database is rebuilt in the same way as in interactive mode and then
+included in the .vo file. When development X.v is then Required by another
+development file Y.v, the tactic database of X.v is automatically inherited.
+
+2.3     A Concrete Example
+We now give a simple example use-case based on lists. Starting with an empty
+file, Tactician is immediately ready for action. We proceed as usual by giving a
+standard inductive definition of lists of numbers with their corresponding notation
+and a function for concatenation.
+Inductive list :=
+| nil : list
+| cons : nat -> list -> list.
+Notation "[]"      := nil.
+Notation "x :: ls" := (cons x ls).
+
+Fixpoint concat ls1 ls2 :=
+match ls1 with
+| []       => ls2
+| x::ls1 ' => x::(ls1 ' ++ ls2 )
+end where "ls1 ++ ls2 " := (concat ls1 ls2 ).
+                                           The Tactician (extended version)       7
+
+We wish to prove some standard properties of concatenation. The first is a lemma
+stating that the empty list [] is the right identity of concatenation (the left
+identity is trivial).
+Lemma concat_nil_r : ∀ ls, ls ++ [] = ls.
+
+With Tactician installed, we immediately have access to the new tactics suggest
+and search. Neither tactic will produce a result when used now since the system
+has not had a chance to learn from proofs yet. Therefore, we will have to prove
+this lemma by hand.
+Proof.
+intros. induction ls.
+- simpl. reflexivity.
+- simpl. f_equal. apply IHls.
+Qed.
+
+The system has immediately learned from this proof (it was even learning during
+the proof) and is now ready to help us with a proof of the associativity of
+concatenation.
+Lemma concat_assoc :
+  ∀ ls1 ls2 ls3 , (ls ++ ls2 ) ++ ls3 = ls ++ (ls2 ++ ls3 ).
+
+Now, if we execute suggest, it outputs the ordered list intros, simpl, f equal,
+reflexivity. Indeed, using intros as our next tactic is not unreasonable. We
+can repeatedly ask suggest for a recommendation after every tactic we input,
+which sometimes gives us good tactics and sometimes bad tactics. However,
+we can also eliminate the middle-man and execute the search tactic, which
+immediately finds a proof.
+Proof. search. Qed.
+
+To cache the proof that is found for the future, we can copy-paste the reconstruc-
+tion tactic that Tactician prints into the source file. This example shows how the
+system can quickly learn from very little data and with minimal effort from the
+user. Of course, this also scales to much bigger developments.
+    We continue our example for more advanced Coq users to showcase how
+Tactician can learn to use custom domain-specific tactics. We begin by defining
+an inductive property encoding that one list is a non-contiguous sublist of another.
+Inductive sublist : list -> list -> Prop :=
+| sl_nil : sublist [] []
+| sl_cons1 ls1 ls2 n : sublist ls1 ls2 -> sublist ls1 (n::ls2 )
+| sl_cons2 ls1 ls2 n : sublist ls1 ls2 -> sublist (n::ls1 ) (n::ls2 ).
+
+We now wish to prove that some lists have the sublist property. For example,
+sublist (9::3::[]) (4::7::9::3::[]). Deciding this is not entirely trivial,
+because it is not possible to judge from the head of the list whether to apply
+sl cons1 or sl cons2 . Instead of manually writing these proofs, we create a
+domain-specific, heuristic proving tactic that automatically tries to find a proof.
+8                                 L. Blaauwbroek et al.
+
+Ltac solve_sublist := solve [match goal with
+| |- sublist [] [] => apply sl_nil
+| |- sublist (_::_) [] => fail
+| |- sublist _ _ =>
+       (apply sl_cons1 + apply sl_cons2 ); solve_sublist
+| |- _ => solve [auto]
+end].
+
+This tactic looks at the current proof state and checks that the goal is of the
+form sublist ls1 ls2 . If the lists are empty, it can be finished using sl nil.
+If ls2 is empty but ls1 nonempty, the postfix is unprovable, and the tactic
+fails. In all other cases, we initiate a backtracking search where we try to apply
+either sl cons1 or sl cons2 and recurse. Finally, we add a simple catch-all clause
+that tries to prove any side-conditions using Coq’s built-in auto. We now teach
+Tactician about the existence of our previous lemmas and the domain-specific
+tactic by defining some simple examples. Finally, we ask Tactician to solve a
+more complicated, compound problem.
+Lemma ex1 : sublist (9::3::[]) (4::7::9::3::[]).
+Proof. solve_sublist. Qed.
+
+Lemma ex2 : ∀ ls, 1::2::ls ++ [] = 1::2::ls.
+Proof. intro. rewrite concat_nil_r. reflexivity. Qed.
+
+Lemma dec2 : ∀ ls1 ls2 , sublist ls1 ls2 ->
+  sublist (7::9::13::ls1 ) (8::5::7::[] ++ 9::13::ls2 ++ []).
+Proof. search. Qed.
+
+The proof found by Tactician is rewrite concat nil r;intros;solve sublist.
+It has automatically figured out that it needs to introduce the hypothesis,
+normalize the list and then run the domain-specific prover. This example is
+somewhat contrived but should illustrate how the user can easily teach Tactician
+domain-specific knowledge.
+
+
+2.4   Learning and Proving in the Large
+
+The examples above are fun to play with and useful for demonstration purposes.
+However, when using Tactician to develop real projects, three main issues need
+to be taken care of, namely (1) instrumenting dependencies, (2) instrumenting
+the standard library and, (3) reproducible builds. Below, we describe how to use
+Tactician in complex projects and, in particular, how these issues are solved.
+    Tactician itself is a collection of easily installed Opam [12] packages distributed
+through the Coq Package Index [30]. The package coq-tactician provides the
+main functionality. It needs to be installed to run the examples of Section 2.3.
+These examples have no dependencies and make minimal use of Coq’s standard
+library. All learning is done within one file, making them a simple use-case.
+Things become more complicated when one starts to use the standard library and
+libraries defined in external dependencies. Although Tactician will keep working
+                                           The Tactician (extended version)       9
+
+normally in those situations, by default, it does not learn from proofs in these
+libraries. Hence, Tactician’s ability to synthesize proofs for lemmas concerning
+the domain of those libraries will be severely limited.
+    The main question to remedy this situation is where Tactician should get its
+learning data from. As explained in Section 2.2, Tactician saves the tactic database
+of a library in the compiled .vo binaries. This database becomes available as
+soon as the compiled library is loaded. However, this only works if the library was
+compiled with Tactician enabled, which is the case neither for Coq’s standard
+library nor most external packages. Hence, we need to instrument these libraries
+by recompiling them while Tactician is loaded. Loading Tactician amounts to
+finding a way of convincing Coq to pre-load the library Tactician.Ltac1.Record
+before starting the compilation process.
+
+External Dependency Instrumentation An external dependency can be any
+collection of Coq source files together with an arbitrary build system. Injecting
+the loading of Tactician.Ltac1.Record into the build process automatically
+is not possible in general. However, we do provide a simple solution for the
+most common situation. Coq provides package developers with a utility called
+coq makefile that automatically generates a Makefile to build and install their
+files. This build system is usually packaged up with Opam to be released on the
+Coq Package Index. Although this package index does not require packages to
+use coq makefile, most do this in practice.
+     Makefiles generated by coq makefile are highly customizable through envi-
+ronment variables. Tactician provides command-line utilities called tactician
+enable and tactician disable that configure Opam to automatically inject
+Tactician through these environment variables. When building packages without
+Opam, the user can modify the environment by running eval $(tactician
+inject) before building. This solution will suffice to instrument most packages
+created using coq makefile, as long as authors do not customize the resulting
+build file too heavily. We will add support for Coq’s new Dune build system [16]
+when it has stabilized. For more stubborn packages, rather aggressive methods
+of injecting Tactician are also possible but, in general, packages that circum-
+vent instrumentation are always possible. Therefore, we do not provide built-in
+solutions for those cases.
+
+Standard Library Instrumentation In order to instrument Coq’s standard
+library, it also needs to be recompiled with Tactician.Ltac1.Record pre-loaded.
+We provide the Opam package coq-tactician-stdlib for this purpose. This
+package does not contain any code, but simply takes the source files of the
+installed standard library and recompiles them. It then promptly commits the
+Cardinal Sin of Package Management by overwriting the original binary .vo files
+of the standard library. We defend this choice by noting that (1) the original files
+will be backed up and restored when coq-tactician-stdlib is removed and
+(2) the alternative of installing the recompiled standard library in a secondary
+location is even worse. This choice would cause a rift in the users local ecosystem
+10                               L. Blaauwbroek et al.
+
+of packages, with some packages relying on the original standard library and some
+on the recompiled one. Coq will refuse to load two packages from the rivaling
+ecosystems citing “incompatible assumptions over the standard library,” forever
+setting them apart.
+    Even with our choice of overwriting the standard library, an ecosystem rift
+still occurs if packages depending on Coq already pre-existed. To resolve this,
+Tactician ships with the command-line utility tactician recompile that helps
+the user find and recompile these packages.
+
+
+Tactician Usage within Packages In order to use Tactician’s suggest and
+search tactics, the library Tactician.Ltac1.Tactics needs to be loaded. How-
+ever, we strongly advise against loading this library directly, for two reasons. (1)
+If a development X that uses Tactician is submitted to the Coq Package Index as
+coq-x, an explicit dependency on coq-tactician is needed. This dependency
+can be undesirable due to users potentially being unwilling to install Tactician.
+(2) It would undermine the build reproducibility of the package. Even though
+coq-tactician would be installed as a dependency when coq-x is installed,
+there is no way to ensure that Tactician has instrumented the other dependencies
+of the package. Hence, it is likely that Tactician will be operating with a smaller
+tactic database, reducing its ability to prove lemmas automatically.
+     Instead, the package coq-x should depend on coq-tactician-dummy. This
+package is extremely simple, containing one 30-line library called Tactician.
+Ltac1Dummy. It provides alternative versions of Tactician tactics that act as
+dummies of the real version. Tactics suggest and search will not perform any
+action. However, tactic search failing h...i, described in Section 2.2, will
+still be able to complete a proof using its cache (but without the ability to search
+for new proofs in case of failure). A released package can thus only employ cached
+searches. This way, any build will be reproducible.
+     During development, the real version of Tactician should be loaded to gain
+its full power. Instead of loading it explicitly through a Require in source files,
+we recommend that users load it through the coqrc file. Coq will automatically
+process any vernacular defined in this file at startup. The command-line utility
+tactician enable will assist in adding the correct vernacular to the coqrc file.
+
+
+
+3    Technical Implementation
+
+In this section, we provide a peek behind the curtains of Tactician’s technical
+implementation and how it is integrated with Coq. A previous publication already
+covers the following aspects of Tactician [2]: (1) The machine learning models
+used to suggest tactics; (2) an explanation of how data extracted from Coq is
+decomposed and transformed for these models; and (3) the search procedure to
+synthesize new proofs. These details are therefore omitted here.
+                                            The Tactician (extended version)       11
+
+3.1   Intercepting Tactics
+
+Tactician is implemented as a plugin that provides a new proof mode (tactic
+language) to Coq. This proof mode contains precisely the same syntactical
+elements as the Ltac1 tactic language [9]. The purpose of the proof mode is to
+intercept and decompose executed tactics and save them in Tactician’s database.
+After interception, the tactics are redirected back to the regular Ltac1 engine.
+By loading the library Tactician.Ltac1.Record, this proof mode is activated
+instead of the regular Ltac1 language.
+    Note that Ltac1 is the most popular but by no means the only tactic language
+for Coq [17,23,13,25]. All these languages are compiled into a proof monad
+implemented on the OCaml level [20]. It would be preferable to instrument the
+proof monad directly as this would enable us to record tactics from all languages
+at once. It appears that this is impossible, though, because the structure of the
+monadic interface does not allow us to recover high-level tactical units such as
+decision procedures, even when implemented as the most general Free Monad.
+As such, Tactician only supports Ltac1 at the moment. In the future, we intent
+to provide improved support for SSreflect [13] and support for recording the new
+Ltac2 language [25].
+
+
+3.2   State Synchronization
+
+When recording tactics in interactive mode, it is important to synchronize the
+tactic database with the undo/redo actions of the user, both from a theoretical
+and practical perspective. In theory, if a user undoes a proof step, this represents a
+mistake made by the user, meaning that the recorded information in the database
+is also a mistake. In practice, keeping such information will lead to problems
+in compilation mode because the database will be smaller due to the lack of
+undo/redo actions. Therefore searches that succeeded in interactive mode may
+not succeed in compilation mode. Below, we explain how Coq and Tactician deal
+with state synchronization.
+    Internally, Coq ships with a state manager that keeps track of all state
+information generated when vernacular commands are executed. This information
+includes, for example, definitions, proofs, and custom tactic definitions. This
+data is automatically synchronized with the user’s interactive movement through
+the document, and saved to the binary .vo file during compilation. All data
+structures registered with the state manager are expected to be persistent (in the
+functional programming sense [10]). The copy-on-write semantics of such data
+structures allow the state manager to easily keep a history of previous versions
+and revert to them on demand.
+    For Tactician, registering data structures with the state manager to ensure
+proper synchronization is awkward, because the state manager assumes that
+tactics have no side-effects outside of modifications to the proof state. Hence, any
+data registered with the state manager is discarded as soon as the current proof
+has been finished. Tactician solves this by tricking Coq into thinking that tactics
+are side-effecting vernacular commands, convincing it to re-execute all tactics at
+12                               L. Blaauwbroek et al.
+
+Qed time to properly register the side-effects. However, as a consequence, these
+tactics will modify the proof state a second time, at a time when this is not
+intended. This is a likely source of future bugs for which a permanent solution is
+yet to be found.
+
+
+4    Tactician as a Machine Learning Platform
+
+Apart from serving as a tool for end-users, Tactician also functions as a machine
+learning platform. A simple OCaml interface to add a new learning model to
+Tactician is provided. The learning task of the model is to predict a list of
+tactics for a given proof state. When registering a new model, Tactician will
+automatically take advantage of it during proof search. Our interface hides Coq’s
+internal complexities while being as general as possible. We encourage everyone
+to implement their favorite learning technique and try to beat the built-in model.
+Tactician’s performance can easily be benchmarked on the standard library and
+other packages. The signature of a machine learning model is as follows:
+type sentence = Node of string * sentence list
+type proof_state =
+{ hypotheses : (id * sentence) list
+; goal       : sentence }
+
+type tactic
+val tactic_sentence : tactic -> sentence
+val local_variables : tactic -> id list
+val substitute      : tactic -> id_map -> tactic
+
+module type TacticianModelType = sig
+  type t
+  val create : unit -> t
+  val add : t -> before:proof_state -> tactic -> after:proof_state -> t
+  val predict : t -> proof_state -> (float * tactic) list
+end
+val register_learner : string -> (module TacticianLearnerType) -> unit
+
+    A sentence is a very general tree data type able to encode all of Coq’s internal
+syntax trees, such as those of terms and tactics. Node names of syntax trees are
+converted into strings. This way, most semantic information is preserved using
+a much simpler data type that is suitable for most machine learning techniques.
+Proof states are encoded as a list of named hypothesis sentences and a goal
+sentence. In this case, sentences represent a Gallina term. We abstract from some
+of Coq’s proof state complexities such as the shelf and the unification map.
+    Tactician represents tactics as an abstract type that can be inspected as
+a sentence using tactic sentence. Since the goal of this interface is to predict
+tactics but not synthesize tactics, it is not possible to modify them (this would
+seriously complicate the interface). There is one exception. We provide a way
+to extract a list of variables that refer to the local context of a proof. The local
+                                           The Tactician (extended version)    13
+
+variables of a tactic can also be updated using a simultaneous substitution. Such
+substitutions will allow for a limited form of parameter prediction.
+    We think that local variable prediction is the only kind of parameter pre-
+diction that makes sense in Tactician’s context. The only other major classes
+of parameters are global lemma names and complete Gallina terms. Predicting
+complete terms is known to be very difficult and would unnecessarily complicate
+the interface. Predicting names of global lemmas is possible, but does not appear
+to be very useful because lemma names are almost always directly associated
+with basic tactics like apply lem or rewrite lem. Predicting parameters for
+these tactics is counter-productive because their semantics are mostly dependent
+on the definition of the lemma. Hence, it is better to view the incarnations of
+such tactics with different lemmas as arguments as completely separate tactics.
+    Finally, implementing a learning model entails implementing the module type
+TacticianModelType and registering it with Tactician. This module requires
+an implementation of a database type t. For reasons explained in Section 3.2,
+this database needs to be persistent. Tactician will add tactics to the database,
+together with the proof state before and after the tactic was applied. The
+machine learning task of the model is to predict a weighted list of tactics that
+are likely applicable to a previously unseen proof state.
+    The current interface only allows for models that support online learning
+because database entries are added one by one in interactive mode. We justify this
+by the user-friendliness requirements from Section 2.1. However, we realize that
+together with the persistence requirement, this places considerable limitations on
+the kind of learning models that can be employed. In the future, we intent to
+support a secondary interface that can be used to create offline models employing
+batch learning on large Coq packages in its entirety.
+
+
+5     Case Study
+
+The overall performance of our tactical search on the full Coq Standard Library is
+reported in a previous publication [2], which also reports performance on various
+parts of the library. The best-performing version of our learning model can prove
+34.0% of the library lemmas when using a 40s time limit. Six different versions
+together prove 39.3%. The union with all CoqHammer methods achieves 56.7%.3
+     Here we show an example of a nontrivial proof found by Tactician. The system
+was asked to automatically find the proof of the following lemma from the library
+file Structures/GenericMinMax.v,4 where facts about general definitions of min
+and max are proved.
+
+Lemma max_min_antimono f :
+ Proper (eq==>eq) f -> Proper (le==>flip le) f ->
+ forall x y, max (f x) (f y) == f (min x y).
+
+3
+    CoqHammer’s eight methods prove together 40.8%, with the best proving 28.8%.
+4
+    https://coq.inria.fr/library/Coq.Structures.GenericMinMax.html
+14                               L. Blaauwbroek et al.
+
+Tactician’s learning model evaluated the following two lemmas as similar to what
+has to be proven:
+Lemma min_mono f :
+   (Proper (eq ==> eq) f) -> (Proper (le ==> le) f) ->
+   forall x y, min (f x) (f y) == f (min x y).
+ intros Eqf Lef x y.
+ destruct (min_spec x y) as [(H,E)|(H,E)]; rewrite E;
+  destruct (min_spec (f x) (f y)) as [(H',E')|(H',E')]; auto.
+ - assert (f x <= f y) by (apply Lef; order). order.
+ - assert (f y <= f x) by (apply Lef; order). order.
+Qed.
+
+Lemma min_max_modular n m p :
+   min n (max m (min n p)) == max (min n m) (min n p).
+ intros. rewrite <- min_max_distr.
+ destruct (min_spec n p) as [(C,E)|(C,E)]; rewrite E; auto with *.
+ destruct (max_spec m n) as [(C',E')|(C',E')]; rewrite E'.
+ - rewrite 2 min_l; try order. rewrite max_le_iff; right; order.
+ - rewrite 2 min_l; try order. rewrite max_le_iff; auto.
+Qed.
+
+The trace through the proof search tree that resulted in a proof is as follows:
+
+max_min_antimono      .0.0.0.5.5.2.1.0.5.1.5.1
+
+This trace represents, for every choice point in the search tree, which of suggest’s
+ranked suggestion was used to reach the proof. The proof search went into depth
+12 and the first three tactics used in the final proof are those with the highest
+score as recommended by the learning model, which most likely followed the
+proof of min mono. However, after that, it had to diverge from that proof, using
+only the sixth-best ranked tactic twice in a row. This nontrivial search continued
+for the next seven tactical steps, combining mostly tactics used in the two
+lemmas and some other tactics. The search finally yielded the following proof of
+max min antimono.
+intros Eqf Lef x y. destruct (min_spec x y) as [(H, E)|(H, E)]. rewrite E.
+destruct (max_spec (f x) (f y)) as [(H', E')| (H', E')].
+assert (f y <= f x) by (apply Lef; order). order. auto. rewrite E.
+destruct (max_spec (f x) (f y)) as [(H', E')| (H', E')]. auto.
+assert (f x <= f y) by (apply Lef; order). order.
+
+Note that the original proof of the lemma is quite similar, but shorter and without
+some redundant steps. Redundant steps are known to happen in systems like
+Tactician, such as the TacticToe [11] system for HOL4 [29].
+intros Eqf Lef x y. destruct (min_spec x y) as [(H,E)|(H,E)]; rewrite E;
+destruct (max_spec (f x) (f y)) as [(H',E')|(H',E')]; auto.
+- assert (f y <= f x) by (apply Lef; order). order.
+- assert (f x <= f y) by (apply Lef; order). order.
+                                           The Tactician (extended version)       15
+
+6   Related Work
+
+There exist quite a few machine learning systems for Coq and other interactive
+theorem provers. The most significant distinguishing factor of Tactician to other
+systems for Coq is its user-friendliness. There are several other systems that
+are interesting, but rather challenging to install and use for end-users. They
+often depend on external tools such as machine learning toolkits and automatic
+theorem provers. Some systems need a long time to train their machine learning
+models—preferably on dedicated hardware. Those are often not geared towards
+end-users at all but rather towards the Artificial Intelligence community.
+    Tactician takes its main inspiration from the TacticToe [11] system for
+HOL4 [29] which learns tactics expressed in the Standard ML language. Us-
+ing this knowledge, it can then automatically search for proofs by predicting
+tactics and their arguments. Our work is similar both in doing a learning-guided
+tactic search and by its complete integration in the underlying proof assistant
+without relying on external machine learning libraries and specialized hardware.
+    Below is a short list of machine learning systems for the Coq theorem prover.
+
+ML4PG provides tactic suggestions by clustering together various statistics ex-
+   tracted from interactive proofs [21]. It is integrated with the Proof General [1]
+   proof editor and requires connections to Matlab or Weka.
+SEPIA provides proof search using tactic predictions and is also integrated
+   with Proof General [14]. Note, however, that its proof search is only based
+   on tactic traces and does not make predictions based on the proof state.
+Gamepad is a framework that integrates with the Coq codebase and allows
+   machine learning to be performed in Python [15]. It uses recurrent neural
+   networks to make tactic prediction and to evaluate the quality of a proof
+   state. The system is able to synthesize proofs in the domain of algebraic
+   rewriting. Gamepad is not geared towards end-users.
+CoqGym extracts tactic and proof state information on a large scale and uses it
+   to construct a deep learning model capable of generating full tactic scripts [32].
+   CoqGym’s evaluation is using a time limit of 600s, which is impractically
+   high for Coq practitioners. Still, it is significantly weaker than CoqHammer.
+   A probable cause is the slowness of deep neural networks which is common
+   to most proving experiments geared towards the deep learning community.
+Proverbot9001 is a proof search system for Coq based on a neural architec-
+   ture [27]. The system is evaluated on the verified CompCert compiler [22]. It
+   is reported that Proverbot9001’s architecture is a significant improvement
+   over CoqGym.
+CoqHammer is a machine learning and proving tool in the general ham-
+   mers [5,18,4,19] category designed for Coq [7]. Hammers capitalize on the
+   capabilities of automatic theorem provers [28,8,26] to assist ITP’s. To this
+   end, learning-based premise selection is used to translate an ITP problem
+   to the ATP’s target language (typically First Order Logic). A proof found
+   by the ATP can then be reconstructed in the proof assistant. CoqHammer
+   is a maintained system that is well-integrated into Coq and only requires a
+16                                L. Blaauwbroek et al.
+
+     connection to an ATP. It has similar performance as Tactician but proves
+     different lemmas, making these systems complementary [2].
+
+
+7    Further Work and Conclusion
+We have presented Tactician, a seamless and interactive tactic learner and prover
+for Coq. The machine learning perspective has been described in a previous
+publication [2]. We showed how Tactician is an easy-to-use tool that can be
+employed by the user with minimal installation effort. A clear approach to using
+the system in large developments has also been outlined. With its current machine
+learning capabilities, we expect Tactician to help the user with its proving efforts
+significantly. Finally, we presented a powerful machine learning interface that
+will allow researchers to bring their advanced learning models to Coq users
+while being isolated from Coq’s internal complexities. We expect this to be of
+considerable utility to both the artificial intelligence community and Coq users.
+     There are many future research directions. There is a never-ending quest
+to improve the built-in learning model. With better features and stronger (but
+still fast) learners such as boosted trees (used in ENIGMA-NG [6]) we hope to
+push Tactician’s performance over the standard library towards 50%. Apart from
+this, we expect to improve support for SSreflect and to introduce support for
+the new Ltac2 language. In the future, the machine learning interface will be
+expanded to allow for batch learning. Additionally, we would like to incorporate
+the tactic history (memory) of the current lemma into the learning model, similar
+to SEPIA. Short-term memory will allow Tactician to modify its suggestions
+based on the tactics that were previously executed in the current proof.
+
+
+References
+ 1. David Aspinall. Proof General: A generic tool for proof development. In Susanne
+    Graf and Michael I. Schwartzbach, editors, Tools and Algorithms for Construction
+    and Analysis of Systems, 6th International Conference, TACAS 2000, Held as
+    Part of the European Joint Conferences on the Theory and Practice of Software,
+    ETAPS 2000, Berlin, Germany, March 25 - April 2, 2000, Proceedings, volume
+    1785 of Lecture Notes in Computer Science, pages 38–42. Springer, 2000. doi:
+    10.1007/3-540-46419-0\_3.
+ 2. Lasse Blaauwbroek, Josef Urban, and Herman Geuvers. Tactic learning and proving
+    for the Coq proof assistant. In Elvira Albert and Laura Kovács, editors, LPAR 2020:
+    23rd International Conference on Logic for Programming, Artificial Intelligence
+    and Reasoning, Alicante, Spain, May 22-27, 2020, volume 73 of EPiC Series in
+    Computing, pages 138–150. EasyChair, 2020. doi:10.29007/wg1q.
+ 3. Lasse Blaauwbroek, Josef Urban, and Herman Geuvers. The Tactician - A
+    seamless, interactive tactic learner and prover for Coq. In CICM, volume
+    12236 of Lecture Notes in Computer Science, pages 271–277. Springer, 2020.
+    doi:10.1007/978-3-030-53518-6\_17.
+ 4. Jasmin Christian Blanchette, David Greenaway, Cezary Kaliszyk, Daniel Kühlwein,
+    and Josef Urban. A learning-based fact selector for Isabelle/HOL. J. Autom.
+    Reasoning, 57(3):219–244, 2016. doi:10.1007/s10817-016-9362-8.
+                                           The Tactician (extended version)      17
+
+ 5. Jasmin Christian Blanchette, Cezary Kaliszyk, Lawrence C. Paulson, and Josef
+    Urban. Hammering towards QED. J. Formalized Reasoning, 9(1):101–148, 2016.
+    doi:10.6092/issn.1972-5787/4593.
+ 6. Karel Chvalovský, Jan Jakubuv, Martin Suda, and Josef Urban. ENIGMA-
+    NG: efficient neural and gradient-boosted inference guidance for E. In Pascal
+    Fontaine, editor, Automated Deduction - CADE 27 - 27th International Confer-
+    ence on Automated Deduction, Natal, Brazil, August 27-30, 2019, Proceedings,
+    volume 11716 of Lecture Notes in Computer Science, pages 197–215. Springer, 2019.
+    doi:10.1007/978-3-030-29436-6\_12.
+ 7. Lukasz Czajka and Cezary Kaliszyk. Hammer for Coq: Automation for depen-
+    dent type theory. J. Autom. Reasoning, 61(1-4):423–453, 2018. doi:10.1007/
+    s10817-018-9458-4.
+ 8. Leonardo Mendonça de Moura and Nikolaj Bjørner. Z3: An efficient SMT solver.
+    In C. R. Ramakrishnan and Jakob Rehof, editors, Tools and Algorithms for the
+    Construction and Analysis of Systems, 14th International Conference, TACAS
+    2008, Held as Part of the Joint European Conferences on Theory and Practice of
+    Software, ETAPS 2008, Budapest, Hungary, March 29-April 6, 2008. Proceedings,
+    volume 4963 of Lecture Notes in Computer Science, pages 337–340. Springer, 2008.
+    doi:10.1007/978-3-540-78800-3_24.
+ 9. David Delahaye. A tactic language for the system Coq. In Michel Parigot and
+    Andrei Voronkov, editors, Logic for Programming and Automated Reasoning, 7th
+    International Conference, LPAR 2000, Reunion Island, France, November 11-12,
+    2000, Proceedings, volume 1955 of Lecture Notes in Computer Science, pages 85–95.
+    Springer, 2000. doi:10.1007/3-540-44404-1\_7.
+10. James R. Driscoll, Neil Sarnak, Daniel Dominic Sleator, and Robert Endre Tarjan.
+    Making data structures persistent. J. Comput. Syst. Sci., 38(1):86–124, 1989.
+    doi:10.1016/0022-0000(89)90034-2.
+11. Thibault Gauthier, Cezary Kaliszyk, and Josef Urban. TacticToe: Learning to
+    reason with HOL4 tactics. In Thomas Eiter and David Sands, editors, LPAR-21,
+    21st International Conference on Logic for Programming, Artificial Intelligence
+    and Reasoning, Maun, Botswana, May 7-12, 2017, volume 46 of EPiC Series in
+    Computing, pages 125–143. EasyChair, 2017. doi:10.29007/ntlb.
+12. Thomas Gazagnaire, Fabrice Le Fessant, Yaron Minsky, Anil Madhavapeddy, and
+    Frederic Tuong. Ocaml package manager. URL: https://opam.ocaml.org.
+13. Georges Gonthier and Assia Mahboubi. An introduction to small scale reflection in
+    Coq. J. Formalized Reasoning, 3(2):95–152, 2010. doi:10.6092/issn.1972-5787/
+    1979.
+14. Thomas Gransden, Neil Walkinshaw, and Rajeev Raman. SEPIA: search for
+    proofs using inferred automata. In Amy P. Felty and Aart Middeldorp, edi-
+    tors, Automated Deduction - CADE-25 - 25th International Conference on Au-
+    tomated Deduction, Berlin, Germany, August 1-7, 2015, Proceedings, volume
+    9195 of Lecture Notes in Computer Science, pages 246–255. Springer, 2015.
+    doi:10.1007/978-3-319-21401-6\_16.
+15. Daniel Huang, Prafulla Dhariwal, Dawn Song, and Ilya Sutskever. GamePad: A
+    learning environment for theorem proving. In 7th International Conference on
+    Learning Representations, ICLR 2019, New Orleans, LA, USA, May 6-9, 2019.
+    OpenReview.net, 2019. URL: https://openreview.net/forum?id=r1xwKoR9Y7.
+16. Jane Street. Dune: A composable build system for OCaml. URL: https://dune.
+    build.
+18                                L. Blaauwbroek et al.
+
+17. Jan-Oliver Kaiser, Beta Ziliani, Robbert Krebbers, Yann Régis-Gianas, and Derek
+    Dreyer. Mtac2: typed tactics for backward reasoning in Coq. Proc. ACM Program.
+    Lang., 2(ICFP):78:1–78:31, 2018. doi:10.1145/3236773.
+18. Cezary Kaliszyk and Josef Urban. Learning-assisted automated reasoning
+    with Flyspeck. J. Autom. Reasoning, 53(2):173–213, 2014. doi:10.1007/
+    s10817-014-9303-3.
+19. Cezary Kaliszyk and Josef Urban. MizAR 40 for Mizar 40. J. Autom. Reasoning,
+    55(3):245–256, 2015. doi:10.1007/s10817-015-9330-8.
+20. Florent Kirchner and César A. Muñoz. The proof monad. J. Log. Algebraic Methods
+    Program., 79(3-5):264–277, 2010. doi:10.1016/j.jlap.2010.03.002.
+21. Ekaterina Komendantskaya, Jónathan Heras, and Gudmund Grov. Machine learning
+    in Proof General: Interfacing interfaces. In Cezary Kaliszyk and Christoph Lüth,
+    editors, Proceedings 10th International Workshop On User Interfaces for Theorem
+    Provers, UITP 2012, Bremen, Germany, July 11th, 2012, volume 118 of EPTCS,
+    pages 15–41, 2012. doi:10.4204/EPTCS.118.2.
+22. Xavier Leroy. Formal verification of a realistic compiler. Commun. ACM, 52(7):107–
+    115, 2009. doi:10.1145/1538788.1538814.
+23. Gregory Malecha and Jesper Bengtson. Extensible and efficient automation
+    through reflective tactics. In Peter Thiemann, editor, Programming Languages
+    and Systems - 25th European Symposium on Programming, ESOP 2016, Held
+    as Part of the European Joint Conferences on Theory and Practice of Software,
+    ETAPS 2016, Eindhoven, The Netherlands, April 2-8, 2016, Proceedings, vol-
+    ume 9632 of Lecture Notes in Computer Science, pages 532–559. Springer, 2016.
+    doi:10.1007/978-3-662-49498-1\_21.
+24. Christine Paulin-Mohring. Inductive definitions in the system Coq - rules and
+    properties. In Marc Bezem and Jan Friso Groote, editors, Typed Lambda Calculi and
+    Applications, International Conference on Typed Lambda Calculi and Applications,
+    TLCA ’93, Utrecht, The Netherlands, March 16-18, 1993, Proceedings, volume
+    664 of Lecture Notes in Computer Science, pages 328–345. Springer, 1993. doi:
+    10.1007/BFb0037116.
+25. Pierre-Marie Pédrot. Ltac2: Tactical warfare. In CoqPL, 2019. URL: https:
+    //popl19.sigplan.org/details/CoqPL-2019/8/Ltac2-Tactical-Warfare.
+26. Alexandre Riazanov and Andrei Voronkov. Vampire. In Harald Ganzinger, editor,
+    Automated Deduction - CADE-16, 16th International Conference on Automated
+    Deduction, Trento, Italy, July 7-10, 1999, Proceedings, volume 1632 of Lecture Notes
+    in Computer Science, pages 292–296. Springer, 1999. doi:10.1007/3-540-48660-7\
+    _26.
+27. Alex Sanchez-Stern, Yousef Alhessi, Lawrence K. Saul, and Sorin Lerner. Gener-
+    ating correctness proofs with neural networks. In Koushik Sen and Mayur Naik,
+    editors, Proceedings of the 4th ACM SIGPLAN International Workshop on Machine
+    Learning and Programming Languages, MAPL@PLDI 2020, London, UK, June 15,
+    2020, pages 1–10. ACM, 2020. doi:10.1145/3394450.3397466.
+28. Stephan Schulz. System description: E 1.8. In Kenneth L. McMillan, Aart Middel-
+    dorp, and Andrei Voronkov, editors, Logic for Programming, Artificial Intelligence,
+    and Reasoning - 19th International Conference, LPAR-19, Stellenbosch, South
+    Africa, December 14-19, 2013. Proceedings, volume 8312 of Lecture Notes in Com-
+    puter Science, pages 735–743. Springer, 2013. doi:10.1007/978-3-642-45221-5\
+    _49.
+29. Konrad Slind and Michael Norrish. A brief overview of HOL4. In Otmane Aı̈t
+    Mohamed, César A. Muñoz, and Sofiène Tahar, editors, Theorem Proving in Higher
+                                            The Tactician (extended version)       19
+
+    Order Logics, 21st International Conference, TPHOLs 2008, Montreal, Canada,
+    August 18-21, 2008. Proceedings, volume 5170 of Lecture Notes in Computer Science,
+    pages 28–32. Springer, 2008. doi:10.1007/978-3-540-71067-7\_6.
+30. The Coq Development Team. Coq package index. URL: https://coq.inria.fr/
+    opam/www.
+31. The Coq Development Team. The Coq proof assistant, version 8.11.0, Oct 2019.
+    doi:10.5281/zenodo.3476303.
+32. Kaiyu Yang and Jia Deng. Learning to prove theorems via interacting with proof
+    assistants. In Kamalika Chaudhuri and Ruslan Salakhutdinov, editors, Proceedings
+    of the 36th International Conference on Machine Learning, ICML 2019, 9-15 June
+    2019, Long Beach, California, USA, volume 97 of Proceedings of Machine Learning
+    Research, pages 6984–6994. PMLR, 2019. URL: http://proceedings.mlr.press/
+    v97/yang19a.html.
+
