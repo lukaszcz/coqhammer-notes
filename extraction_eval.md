@@ -1,19 +1,19 @@
 # Extraction evaluation notes
 
-## Phase 6 Stage 1 screening (TASK_22, 2026-07-09)
+## Phase 6 Stage 1 screening (2026-07-09)
 
-Raw checkpoint data lives under
-`/home/dev/coqhammer/worktrees/extraction/eval/results/stage1/`; the committed
-summary artifacts are in
-`/home/dev/coqhammer/worktrees/extraction/eval/artifacts/task22-stage1/`.
+Raw checkpoint data lived under the since-removed `extraction` worktree
+(`eval/results/stage1/`); the committed summary artifacts were tracked as
+`eval/artifacts/extraction-screening/` (their Stage-1 contents survive in git
+history — the files at that path now hold the later indexed-families sweep).
 
-Scope: committed Stage-1 corpora from TASK_21 (`stdlib-regression`,
+Scope: the committed Stage-1 corpora (`stdlib-regression`,
 `dependent-slice`, `external-equations` samples), premise counts 64/256/1024,
 provers E and Vampire, baseline merge-base plus all-on and five leave-one-out
 configurations, each with declaration-level refinement skips off/on.
 
 Baseline sanity gate: **passed**. The baseline install was the merge-base build;
-it generated all three corpora and reproduced the TASK_21 dry-run shape on the
+it generated all three corpora and reproduced the corpus-preparation dry-run shape on the
 overlap (stdlib smoke remains solved by E at the small premise setting). Stage-1
 baseline totals were 29/66 ATP successes (43.9%): stdlib 17/18, dependent slice
 12/36, external 0/12. No harness debugging was needed before running the
@@ -28,7 +28,7 @@ as an inconsistency.
 
 Winner: **`stage1-loo-erasure-guards-decl-skips`** (all refactor options on,
 declaration-level skips on, `opt_erasure_guards=false`): 56/66 ATP successes
-(84.8%). This is the Stage-1 candidate for TASK_23 confirmation.
+(84.8%). This is the Stage-1 candidate for Stage-2 confirmation.
 
 Flagged options / regressions:
 
@@ -45,7 +45,7 @@ Flagged options / regressions:
   dependent/external wins; do not disable it for defaults.
 - `opt_prop_case_erasure=false` is neutral with declaration skips (50/66, same as
   all-on-decl-skips) but slightly better without skips. Keep it under watch in
-  TASK_23 rather than treating it as a default flip.
+  Stage-2 confirmation rather than treating it as a default flip.
 - `opt_wf_recursion_eqs=false` loses external/WF successes (44/66 with skips vs
   56/66 winner), so keep WF equations on.
 
@@ -59,20 +59,20 @@ Equational/computational subsets:
 - Arithmetic (`stdlib_nat_add_0_r`): baseline 6/6, winner 6/6.
 - Lists (`stdlib_list_map_cons`): baseline 5/6, winner 6/6.
 - Bool computation (`stdlib_bool_negb_involutive`): baseline 6/6, winner 3/6;
-  this is the only stdlib-smoke regression and should be checked in TASK_23's
-  confirmation grid.
+  this is the only stdlib-smoke regression and should be checked in the
+  Stage-2 confirmation grid.
 - External Program/WF smoke: baseline 0/12, winner 12/12.
 
 Problem-size/definition metrics are in `summary.tsv`; at the overall level the
 winner averages 217 constants with `$_def_*` equations per row and about 862856
 TPTP bytes/problem-row, with zero consistency hits.
 
-## Phase 6 Stage 2 confirmation and final default decision (TASK_23, 2026-07-09)
+## Phase 6 Stage 2 confirmation and final default decision (2026-07-09)
 
-Raw checkpoint data lives under
-`/home/dev/coqhammer/worktrees/extraction/eval/results/stage2/`; the committed
-summary artifacts are in
-`/home/dev/coqhammer/worktrees/extraction/eval/artifacts/task23-stage2/`.
+Raw checkpoint data lived under the since-removed `extraction` worktree
+(`eval/results/stage2/`); the committed summary artifacts were tracked as
+`eval/artifacts/extraction-confirmation/` (their Stage-2 contents survive in
+git history — the files at that path now hold the later full-grid rerun).
 
 Scope: the Stage-1 winner versus the merge-base baseline over the committed
 Phase-6 corpora (`stdlib-regression`, `dependent-slice`, `external-equations`),
@@ -115,7 +115,7 @@ Per-corpus ATP rates:
 | dependent slice | 79/240 (32.9%) | 191/240 (79.6%) |
 | external Program/WF sample | 0/80 (0.0%) | 74/80 (92.5%) |
 
-Metrics required by PLAN §12.3:
+Pre-registered metrics:
 
 - ATP success rate per prover: recorded above and in `summary.tsv`; every prover
   improves over baseline.
@@ -123,8 +123,9 @@ Metrics required by PLAN §12.3:
   final defaults.  Newly found final-default ATP successes absent from baseline:
   191; reconstructed: 191 (100.0%).
 - `eq_rect` watch: `dep_eq_rect_refl` moves from 0 ATP successes to 37, and all
-  37 reconstruct.  There is no ATP-up/reconstruction-down gap, so D3 does not
-  trigger `opt_erasure_guards := true`.
+  37 reconstruct.  There is no ATP-up/reconstruction-down gap, so the
+  pre-registered fallback of flipping `opt_erasure_guards := true` is not
+  triggered.
 - Constants with `$_def_*` equations: unique def-bearing constants in generated
   problems go from 1113 (baseline) to 1117 (final defaults); winner-only examples
   are `Corelib.BinNums.PosDef.Pos.add_carry`, `Corelib.Init.Wf.Acc_rect`,
@@ -137,7 +138,7 @@ Metrics required by PLAN §12.3:
   scans of every Stage-2 generated problem in these corpora with E and Vampire
   produced 0 `SZS status Theorem` hits (440 scanned problem/prover inputs).
 
-Verdict against PLAN §12.4:
+Verdict against the pre-registered acceptance criteria:
 
 1. Overall ATP success rate ≥ baseline: **PASS** (`87.5%` vs `44.5%`, +43.0 pp).
    The equational/computational stdlib subset also does not regress (`100.0%` vs
@@ -167,13 +168,14 @@ Final default decision in `src/plugin/coq_transl_opts.ml`:
 - `opt_wf_recursion_eqs = true`: confirmed; the Program/WF sample improves
   sharply and the false-goal scans stay clean.
 
-Merge posture (D6): land this work on `rocq-9.2`; forward-port to `master` after
+Merge posture: land this work on `rocq-9.2`; forward-port to `master` after
 that.  A `rocq-9.1` backport remains optional and should be a separate user
-release decision.  No merge or port was performed as part of TASK_23.
+release decision.  No merge or port was performed as part of this evaluation.
 
-## 2026-08-23--28 — TASK_10 indexed-family extraction evaluation
+## 2026-08-23--28 — Indexed-family extraction evaluation
 
-This is the post-TASK_09 evaluation at candidate commit
+This is the evaluation after the indexed-family fixtures and screening axes
+landed, at candidate commit
 `5cb0bfd36c7f14149ee2fd9f09d188a8c69b1a6a`.  Its pre-candidate baseline is the
 merge base `790aaa110b601313c85430432b1bf02361cc6e16`.  It supersedes the small
 three-corpus Stage-2 measurements above for deciding whether the new indexed
@@ -192,9 +194,9 @@ package contents and the workspace prefix remained the same.
 The baseline was run first in an ignored detached worktree at `790aaa1`, before
 any candidate grid.  The large per-attempt/per-goal baseline and candidate
 snapshots are ignored, workspace-local audit material under
-`eval/results/task10-evidence/`; they are not repository-preserved evidence.
+`eval/results/indexed-families-evidence/`; they are not repository-preserved evidence.
 The tracked compact record is
-`eval/artifacts/task10-comparison/{report.md,common-key-stats.tsv,provenance.env}`.
+`eval/artifacts/indexed-families-comparison/{report.md,common-key-stats.tsv,provenance.env}`.
 It preserves chronology, source-snapshot and generated-artifact digests,
 common-key statistics, and the claims below without the 45 MiB attempt tables.
 The candidate screening and confirmation summaries cited here are also tracked
@@ -210,7 +212,7 @@ provenance.  The ATP totals were asserted equal to each run's generated
 `summary.tsv`.
 
 The only baseline/candidate corpus-content difference is intentional: baseline
-`dependent-slice` predates the seven TASK_09 fixtures.  The other six corpus
+`dependent-slice` predates the seven new indexed-family fixtures.  The other six corpus
 digests match exactly, as do Equations examples and all scripts/timeouts.  All
 baseline comparisons below therefore use the 276,560 common attempt keys and
 6,914 common goal names unless explicitly labelled “new fixture”.
@@ -291,8 +293,8 @@ exactly the successful leave-erasure-guards-out + declaration-skips cell and is
 both the attempt-level and goal-level screening winner.  Its extra solved goal
 over guarded all-on is `dep_eq_rect_refl`.
 
-A D3 audit after this evaluation found that the two leave-indexed-families-out
-labels were incomplete ablations: with guards on and indexed families off, the
+An audit of the option boundary after this evaluation found that the two
+leave-indexed-families-out labels were incomplete ablations: with guards on and indexed families off, the
 forded singleton premise was still active.  Commit `62fc070` fixed the option
 boundary and added a build-time semantic assertion.  Both affected labels were
 then rerun through the same screening harness, sample corpora, premise counts,
@@ -306,8 +308,8 @@ still validates the controlled contribution above: +1 attempt, no union-level
 goal, and +0.538% high-premise bytes versus all-on + declaration skips.  Current
 defaults are outside the changed `guards=true,indexed=false` case and remain
 unchanged.  Compact evidence is tracked in
-`eval/artifacts/task10-d3-followup/`; the original 15-label artifact was not
-overwritten.
+`eval/artifacts/indexed-families-ablation/`; the original 15-label artifact was
+not overwritten.
 
 All eight screening hit incidences were the same canary,
 `dep_ibval_bound`, reported once by E and once by Vampire in each of four
@@ -327,7 +329,7 @@ are both safer and faster.
 refinement declaration skips enabled.  This choice is principled rather than a
 single-ATP tie break: it leads both screening metrics, has zero consistency
 hits, preserves the `eq_rect` gain, and emits smaller formulas than guarded
-all-on.  No defaults were changed by TASK_10.
+all-on.  No defaults were changed by this evaluation.
 
 The complete selected grid covers `stdlib-regression`, `dependent-stdlib`,
 `stdpp`, `color-vector`, `dependent-slice`, `equations-examples`, and
@@ -426,8 +428,9 @@ exchange for the indexed-family coverage and clean consistency grid, or request
 a focused follow-up on the Z3/large-premise losses before integration.  Turning
 indexed families off is not recommended as a default response: it lost one
 screening ATP attempt, did not gain a screening goal, and does not isolate the
-other translation changes between baseline and candidate.  TASK_10 itself made no default change.  The landing workflow, rather than this
-evaluation record, owns any `PROGRESS` update, merge, commit, or port.
+other translation changes between baseline and candidate.  This evaluation
+itself made no default change.  The landing workflow, rather than this
+evaluation record, owns any progress-tracker update, merge, commit, or port.
 
 Final verification after restoring the measured-hit harness fix:
 `bash eval/tests/test_grid_engine.sh` and `just check` both pass.

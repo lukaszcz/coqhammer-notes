@@ -155,14 +155,14 @@ in `ce1eec4` and `5cb0bfd`; the measured outcome was recorded in `368a1c9`.
   level. Separately, on common ATP attempts, 516 became successful and 814 were
   lost, net -298 (`-0.108` percentage points). Owner acceptance of this small
   regression remains pending, with a focused Z3/large-premise follow-up as the
-  alternative. The exact TASK_10 rerun after the D3 fix completed both affected
-  leave-indexed-out labels at 79/108 ATP attempts, 14/18 goals and 0/36
+  alternative. The exact screening rerun after the option-boundary fix from D3
+  (`62fc070`) completed both affected leave-indexed-out labels at 79/108 ATP attempts, 14/18 goals and 0/36
   consistency hits. Their per-cell formula-size aggregates are identical to the
   original incomplete-ablation rows. Against clean all-on + declaration skips,
   the revised complete ablation therefore validates an indexed-family
   contribution of +1 ATP attempt, no union-level goal and +0.538% high-premise
   bytes. Current defaults are unchanged; compact evidence is in
-  `eval/artifacts/task10-d3-followup/`.
+  `eval/artifacts/indexed-families-ablation/`.
 - **D6 (documentation).** This section records the verified pre-work baseline,
   landed decisions and evaluation outcome. The paper in `notes/fording/` is not
   changed.
