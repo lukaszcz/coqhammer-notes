@@ -291,6 +291,24 @@ exactly the successful leave-erasure-guards-out + declaration-skips cell and is
 both the attempt-level and goal-level screening winner.  Its extra solved goal
 over guarded all-on is `dep_eq_rect_refl`.
 
+A D3 audit after this evaluation found that the two leave-indexed-families-out
+labels were incomplete ablations: with guards on and indexed families off, the
+forded singleton premise was still active.  Commit `62fc070` fixed the option
+boundary and added a build-time semantic assertion.  Both affected labels were
+then rerun through the same screening harness, sample corpora, premise counts,
+provers and timeouts.  Each completed all 108 ATP outputs and 36 consistency
+outputs with manifests recording `opt_erasure_guards=true` and
+`opt_indexed_families=false`.  The corrected rows happen to be numerically and
+formula-size identical to the originals: both are 79/108 attempts, 14/18 goals,
+0/36 consistency hits, with high-premise means 1,810,443.500 bytes without
+skips and 1,810,233.194 with skips.  Thus the revised, now complete ablation
+still validates the controlled contribution above: +1 attempt, no union-level
+goal, and +0.538% high-premise bytes versus all-on + declaration skips.  Current
+defaults are outside the changed `guards=true,indexed=false` case and remain
+unchanged.  Compact evidence is tracked in
+`eval/artifacts/task10-d3-followup/`; the original 15-label artifact was not
+overwritten.
+
 All eight screening hit incidences were the same canary,
 `dep_ibval_bound`, reported once by E and once by Vampire in each of four
 no-declaration-skip configurations (all-on and leave out Prop erasure, guards,
