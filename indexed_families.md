@@ -95,104 +95,77 @@ with explicit ill-typed junk elements used by the soundness paper in
    threshold-noisy stdlib cells) — hence everything lands behind a new
    compile-time option screened as its own ablation axis (§7).
 
-## 1. Status quo: what the translation does with indexed families today
+## 1. Verified status before this work and landed decisions
 
-Probes (`Hammer_transl`, this branch, defaults `split_case=on`,
-`prop_case_erasure=on`, `erasure_guards=off`, `refinement_types=on`,
-`decl_skips=on`, `wf_recursion_eqs=on`).
+The original July 2026 probes in this section became stale after extraction
+commit `6029473`. Immediately before the fording work, at base commit
+`790aaa1`, fresh `Hammer_transl` probes and code inspection gave this table:
 
-### 1.1 Indexed Prop family — declaration-level inversion has the equations
+| Construct | Before this work | Evidence |
+|---|---|---|
+| user match on `eq` (`cast A B e x`) | `$_def_cast: (A = B) → cast(A,B,x) = x` — premised collapse; premise = scrutinee type, regardless of `opt_erasure_guards` | `compile_case`'s `CPropSingleton` branch; probe |
+| user match on other Prop singletons (`eq_true`-like `istrue`, `JMeq`, user `eqi`, `okp n (S n)`, Type-indexed `isT`) | premised by the atom (`istrue(b) →`, `eqi(A,x,y) →`, `okp(n,m) →`, `isT(T) →`), not by the index equation | same branch; probes |
+| stdlib transports `eq_rect`…`eq_ind_r` | occurrences inlined to the carried value when `opt_erasure_guards=false`; their definitions emitted by special `emit_transport_definition`, premised only with guards on; Prop-typed `eq_ind`/`eq_ind_r` got tautological `$Proof = $Proof` definitions | `erase_transport_head`, `emit_transport_definition`; probe and translation-shape test |
+| `$_def_f$c` split equations on indexed scrutinees | an index premise was always emitted: `S n = S n' → vhead(A,n,vcons(A,n',a,v)) = a`; the impossible `S n = O → vhead(A,n,vnil A) = tt` branch was emitted too | `prepare_branch`; probe |
+| scrutinee type not exposable as the matched inductive | the whole case was refused (`refuse_case`) because its index premise could not be computed | `compile_case`; `dstack_size` test |
+| Prop-valued matches (`$lower`/`$upper`) | per-branch index equations appeared inside the bounds | `constructor_index_premise`; code inspection |
+| classifier | singleton rules ran first, so `eq` and all-propositional indexed Prop singletons already classified `MPropSingleton`; only indexed `CEnum`/`CSubset` shapes were then gated to `MRegular`. The `Acc` exemption was dead: `$_inversion_Acc` quantified `A R x` with no index equation because `x` is a non-uniform parameter, and `params_num` counting non-uniform parameters was verified on `nu`. The `ex` special case was dead too: its witness is informative, so the generic rules already yielded `MRegular` | `classify_shape`; probes |
+| `reflect`/`breflect` occurrences | only a `$HasType(r, reflect P b)` atom; `$_typeof_brtobool`, `br_true` and `refl_elim` showed no inline expansion. `$_inversion_breflect` carried payloads and index equations, but remained `$HasType`-mediated | probes; translation-shape test |
+| indexed subset `ibounded` | `CRegular`: `n = n' → ibval(n, IBounded(n',k)) = k`; parametric `bounded` collapsed to `bval(n,b) = b` | probe |
+| evaluation history | the gate followed a Stage-2 inconsistency: an index-blind enum expansion of `reflect` derived `$false`; adding the missing index equations is the repair | `notes/extraction_eval.md`, “indexed enum/subset mitigation” |
+| NbE in `guard_leaf` | `simpl (reify (eval ty))` retained stuck fixpoint constants; `Nat.add` and `Nat.eqb` survived in payloads | probe |
+| mathcomp corpus | none; `_CoqProject.mathcomp` built only `theories/Tactics/Mathcomp.v` | tracked project files |
 
-```coq
-Inductive levp : nat -> Prop :=
-| levp_O : levp 0
-| levp_SS : forall n, levp n -> levp (S n).
-```
+The implementation now represents those constraints. Forded constructor metadata
+and index accessors landed in `2b1bef2`; residual-shape classification in
+`1419a55`; unconditional split equations in `1148bd1`; rigid-clash pruning and
+forded singleton guards in `456bdfd`; indexed enum/subset guard expansion in
+`9c3a52b`; shape assertions in `0aa7dd9`; and removal of the special transport
+definition path in `7520074`. Consistency canaries and evaluation coverage landed
+in `ce1eec4` and `5cb0bfd`; the measured outcome was recorded in `368a1c9`.
 
-```
-$_inversion_levp: ∀x. HasType(x, nat) → levp(x) →
-  (x = O) ∨ (∃n. HasType(n, nat) ∧ levp(n) ∧ x = S n)
-```
+### 1.1 Decisions and conventions
 
-The index equations are all there — the classic inversion principle, which
-is fording read as a theorem (research report: an inversion principle *is*
-the FOL image of the forded family). Adequate, but declaration-level and
-guard-relativized; usable only when the premise atoms are already in play.
-
-### 1.2 Indexed enum (`reflect`-shaped) — everything present, but
-`$HasType`-mediated
-
-```coq
-Inductive breflect (P : Prop) : bool -> Set :=
-| BReflectT : P -> breflect P true
-| BReflectF : ~ P -> breflect P false.
-```
-
-```
-$_inversion_breflect: ∀P b X. HasType(P, Prop) →
-  ((b = true) ∨ (b = false)) →
-  HasType(X, breflect(P, b)) →
-    (P ∧ b = true ∧ X = BReflectT(P)) ∨ (¬P ∧ b = false ∧ X = BReflectF(P))
-```
-
-Payloads *and* index equations, already correct — but mediated by a
-`HasType` atom, which is exactly the encoding style the extraction branch
-exists to replace with inline per-occurrence expansion (cf.
-`notes/dependent_types.md` §2: "never as `HasType` atoms plus unfolding
-axioms"). A binder `r : breflect P b` inside a translated formula
-contributes only `HasType(r, breflect(P,b))`; the inversion content is one
-resolution step away *if* the axiom was premise-selected and the prover
-connects them. The typing axiom for a function over `breflect` shows the
-loss: `$_typeof_breflect_to_bool` says only `result = true ∨ result =
-false`, with no link between result, tag, payload and index.
-
-### 1.3 The flagship gap — a user-written match on `eq` gets nothing
-
-```coq
-Definition cast (A B : Type) (e : A = B) (x : A) : B :=
-  match e in (_ = T) return T with eq_refl => x end.
-```
-
-Output: **only** an opaque `$_typeof_cast` axiom. No definitional equation
-whatsoever — `cast A A eq_refl x = x` is underivable. The reason: the
-scrutinee type is Prop-sorted, `opt_prop_case_erasure` consults the
-classifier, and `classify_shape` (`coq_erasure.ml:207–210`) sends every
-indexed family except `Acc` to `MRegular`, so the singleton-collapse path
-never fires; the emit-leaf fallback for Prop scrutinees produces nothing
-definitional. Meanwhile the six transport *constants* (`eq_rect`, `eq_ind_r`,
-…) are special-cased by `erase_transport_head` (`coq_transl.ml:232`) — the
-same construct gets erased or ignored depending on whether the user spelled
-it with a stdlib constant. This asymmetry is the clearest symptom that the
-current design handles an enumeration of cases, not the construct.
-
-### 1.4 Informative indexed matches — unconditional equations, junk included
-
-```coq
-Definition vhead (A : Type) (n : nat) (v : vec A (S n)) : A :=
-  match v in vec _ m return (match m with 0 => unit | S _ => A end) with
-  | vnil _ => tt | vcons _ _ a _ => a end.
-```
-
-```
-$_def_vhead$vcons: ∀A n m a v. vhead(A, n, vcons(A, m, a, v)) = a
-$_def_vhead$vnil:  ∀A n.      vhead(A, n, vnil(A)) = tt
-```
-
-Both equations are junk-model-sound (`vhead` is total on junk), but note:
-(a) no index premise `n = m` on the `vcons` equation — harmless here, and
-`compile_case`'s *lifted*-case path does emit such premises
-(`constructor_index_premise`, `coq_transl.ml:1030`, used at 1181), so the
-two paths are inconsistent about it; (b) the `vnil` equation is a rewrite
-rule for a *statically impossible* branch (`vnil : vec A 0` vs scrutinee at
-`S n`) — pure noise handed to the superposition prover.
-
-### 1.5 Summary of the gate
-
-`classify_shape`'s indexed refusal is deliberate and its comment is correct
-*for the current machinery*: the shallow expansion "records constructor
-payloads but not result-index constraints", so classifying indexed families
-would be unsound-or-weak. The fix is not to weaken the gate but to make the
-premise of the comment false: represent the constraints.
+- **D1 (UIP dial).** Prop-singleton collapse is controlled uniformly by
+  `opt_erasure_guards`: off (the default) means unconditional collapse; on uses
+  the forded index equations and falls back to the proposition only when the
+  occurrence indices cannot be read. The redundant transport-definition special
+  path is removed.
+- **D2 (split equations).** Per-constructor equations are unconditional. Index
+  premises and `refuse_case` are removed; the separately optioned
+  `opt_rigid_clash_pruning` suppresses branches only when it detects rigid
+  constructor clashes between exposed indices.
+- **D3 (options).** Two new compile-time options: `opt_indexed_families` (classifier
+  gate removal + index-equation guard expansion + forded singleton premise) and
+  `opt_rigid_clash_pruning` (default `true`); both become screening axes. The
+  landed singleton discrepancy was fixed in `62fc070`: with guards enabled and
+  indexed families disabled, singleton collapse now restores the legacy source-
+  proposition premise, and configuration builds assert that semantic boundary.
+  The option now controls all three parts of its stated axis.
+- **D4 (declaration skips).** `skip_refinement_decl_axioms` treats indexed
+  `CSubset` families exactly like non-indexed ones. Indexed `CEnum`
+  declaration-level axioms remain.
+- **D5 (evaluation).** The existing grid, new `dependent-slice` fixtures and new
+  consistency canaries were used; mathcomp remains separate. The current defaults
+  won screening (86/108 ATP attempts, 15/18 goals), with 0/36 consistency hits in
+  that screening cell. The selected full confirmation was separately clean over
+  its full consistency scope (0/14,800). The recommendation in `368a1c9` is to
+  retain the current defaults rather than add aggressive `CEnum` declaration
+  skips. On common old goals the candidate gained 7 and lost 11 at goal-union
+  level. Separately, on common ATP attempts, 516 became successful and 814 were
+  lost, net -298 (`-0.108` percentage points). Owner acceptance of this small
+  regression remains pending, with a focused Z3/large-premise follow-up as the
+  alternative. The exact TASK_10 rerun after the D3 fix completed both affected
+  leave-indexed-out labels at 79/108 ATP attempts, 14/18 goals and 0/36
+  consistency hits. Their per-cell formula-size aggregates are identical to the
+  original incomplete-ablation rows. Against clean all-on + declaration skips,
+  the revised complete ablation therefore validates an indexed-family
+  contribution of +1 ATP attempt, no union-level goal and +0.538% high-premise
+  bytes. Current defaults are unchanged; compact evidence is in
+  `eval/artifacts/task10-d3-followup/`.
+- **D6 (documentation).** This section records the verified pre-work baseline,
+  landed decisions and evaluation outcome. The paper in `notes/fording/` is not
+  changed.
 
 ## 2. The design in one sentence
 
@@ -220,12 +193,11 @@ normalized by, in order:
   `a_k := u_j` throughout and drop the equation. This is McBride's
   simplification-by-coalescence (§3.5.1) and the mirror of forced-argument
   analysis (Brady–McBride–McKinna 2004; Equations Reloaded §4.3): equations
-  for *forced* arguments are redundant. It is what makes `Acc` need no
-  exception: `Acc_intro : (∀y. R y x → Acc R y) → Acc R x` has result index
-  `x` = its own bound variable, so `eqns` normalizes to nothing and the
-  singleton collapse is unconditional exactly as today. (The well-founded
-  unfolding guardrail at `coq_transl.ml:995–1004` is orthogonal and
-  unchanged.)
+  for *forced* arguments are redundant. `Acc` does not exercise N1 at all:
+  its `x` is a non-uniform parameter, not an index, so it has no index equation
+  and fording adds no index/singleton premise. Thus no `Acc` classifier exception
+  is needed. The independent well-founded-recursion guard is unchanged and leaves
+  exactly one `Acc` premise in the `Acc_rect` definition.
 - **N2 (proof canonicalization).** Prop-sorted subterms of the remaining
   `t_j` are replaced by `$Proof`, as everywhere else in the translation.
   Soundness is the proof-irrelevance of the model: all proofs denote one
