@@ -14,7 +14,10 @@ Sources, all read for this note: `src/plugin/coq_transl.ml`,
 `tests/plugin/check-extraction-transl.sh` (branch `fording`, Rocq 9.2).
 Sibling notes: `notes/dependent_types.md`, `notes/extraction.md`,
 `notes/indexed_families.md`, `notes/type_guards.md`, `notes/gaps.md`.
-Nothing here was verified by running the translation; see §12.*
+Nothing here was verified by running the translation; see §12.
+Updated 2026-11-20: §5(a)/(d) corrected against `Hammer_transl` output, and
+§9.5 (index unification at occurrences) and §9.6 (rejected alternatives)
+added.*
 
 ## TL;DR
 
@@ -45,6 +48,13 @@ Nothing here was verified by running the translation; see §12.*
 6. Suggested sequencing: Stage 1 (non-recursive families, all constructors) →
    Stage 2 (one-layer expansion for recursive families) → measure → Stage 3
    (selectors) only if the measurements demand it. §11.
+7. Fording and rigid-clash pruning should become one procedure: first-order
+   unification of a constructor's result-index patterns against the
+   occurrence's actual indices, with outcomes *solved*, *clash* and *stuck*.
+   On the guard side it removes impossible disjuncts and solved existentials,
+   which shrinks exactly the clauses §9.4 worries about; it introduces no
+   symbols. §9.5. Encodings that would generalize further but break
+   shallowness are recorded as rejected in §9.6.
 
 Two defects found while writing this note, both independent of the proposal and
 worth fixing regardless: a duplicated informative-index-position test whose two
@@ -166,12 +176,18 @@ constructor enters `Defhash` as `(cname, Const cname, ty, sort)`
 `add_def_eq_axiom` returns immediately on `Const(c) when c = name`
 (`coq_transl.ml:3186`).
 
+Fording is an occurrence-level operation: it needs actual indices to solve
+fields with. The declaration-level axioms below see only the index formals, so
+they quantify over **all** informative fields of `c`, solved or not. Write
+`inf₀(c)` for that list; `inf(c) ⊆ inf₀(c)` is what remains after fording at a
+particular occurrence.
+
 **(a) Constructor typing**, one per constructor: this is just `G` applied to
 `c`'s own type, unfolded by the rules of §3.
 
-    ∀ p̄ inf(c).  ⋀ⱼ G(aⱼ, Aⱼ)                    [informative fields]
-               →  ⋀ⱼ ⟨Aⱼ⟩                        [propositional fields]
-               →  $HasType( c(p̄, inf(c)), I(p̄, ⟦t̄ᶜ⟧) )
+    ∀ p̄ inf₀(c).  ⋀ⱼ G(aⱼ, Aⱼ)                   [informative fields]
+                →  ⋀ⱼ ⟨Aⱼ⟩                       [propositional fields]
+                →  $HasType( c(p̄, inf₀(c)), I(p̄, ⟦t̄ᶜ⟧) )
 
 The **introduction** direction: to build a value you must discharge the
 specification.
@@ -199,15 +215,28 @@ interchangeable. They are replaced by a neutral marker rather than by a
 under `opt_precise_inversion`, default on):
 
     ∀ p̄ ī w.  $HasType(w, I(p̄,ī))  →
-        ⋁_c  ∃ inf(c).  ⋀ { i_r = ⟦t_rᶜ⟧ : r an informative index position }
-                      ∧ ⋀ { ⟨Aⱼ⟩ : aⱼ a propositional field }
-                      ∧ w = c(p̄, inf(c))
+        ⋁_c  ∃ inf₀(c).  ⋀ { G(aⱼ, Aⱼ) : aⱼ an informative field }
+                       ∧ ⋀ { ⟨Aⱼ⟩ : aⱼ a propositional field }
+                       ∧ ⋀ { i_r = ⟦t_rᶜ⟧ : r an informative index position }
+                       ∧ w = c(p̄, inf₀(c))
 
-The **elimination** direction. The propositional fields appear as conjuncts
-because `convert`'s `Quant` case turns an existential over a propositional
-binder into a conjunction, substituting `$Proof` for the binder in the body
-(`:2295`); the constructor spine then drops that `$Proof` by §2, so (a) and (d)
-agree on arity.
+The **elimination** direction. Both kinds of field appear as conjuncts through
+`convert`'s `Quant` case (`:2145`): an existential over an informative binder
+becomes `∃aⱼ. G(aⱼ, Aⱼ) ∧ …`, and one over a propositional binder becomes a
+conjunction with `⟨Aⱼ⟩`, substituting `$Proof` for the binder in the body; the
+constructor spine then drops that `$Proof` by §2, so (a) and (d) agree on
+arity. A field that fording would solve at an occurrence is still quantified
+here, with the index equation `i_r = a_j` among the conjuncts.
+
+*Checked with `Hammer_transl` (2026-11-20).* For
+`tag : ∀ n : nat, bool → n < 5 → tagged n` the axiom is
+
+    ∀i X. nat(i) → HasType(X, tagged(i)) →
+        ∃n. nat(n) ∧ ∃b. (b = true ∨ b = false) ∧ n < 5 ∧ i = n ∧ X = tag(n, b)
+
+with the `bool` field's guard already expanded by the `CEnum` rule of §6. For
+`vcons : A → ∀ n, vec A n → vec A (S n)` the `vcons` disjunct carries
+`HasType(h, A)`, `nat(n)`, `HasType(t, vec(A, n))` and `i = S n`.
 
 Nothing propositional is lost across (a)-(d). Both directions are conditioned
 on premise selection having retained every constructor: `add_inversion_axioms`
@@ -304,7 +333,10 @@ Per-occurrence expansion buys something real, with no new symbols.
 
 Replace the two special cases and the opaque fallback by a single expansion,
 which is `notes/indexed_families.md` §2.3's schema with the informative fields'
-own guards made explicit:
+own guards made explicit. It is the body of axiom (d) instantiated at the
+occurrence (`ī := ū`) and forded there, so that only `inf(c)` remains
+quantified -- no content beyond what (d) already states, only a cheaper place
+to state it (§8):
 
     G(w, I p̄ ū)  =  ⋁_c ∃ inf(c).  w = c(p̄, inf(c))
                                  ∧ ⋀ⱼ G(aⱼ, Aⱼ)      [informative fields]
@@ -407,6 +439,127 @@ implementation rather than a follow-up:
     enabling: (d) is still needed for occurrences the expansion declines
     (§9.2's recursive stop, and partial applications).
 
+A third mitigation, index unification, removes disjuncts and quantifiers
+outright and is independent of the other two; §9.5.
+
+### 9.5 Index unification at occurrences
+
+Two rules currently read a constructor's result-index patterns `t̄ᶜ` against an
+occurrence's actual indices `ū`:
+
+  * **fording** (`ford_indices`, `coq_erasure.ml:239`) solves a field only when
+    `t_rᶜ` is *literally* that field;
+  * **rigid-clash pruning** (`rigid_clash`, `coq_transl.ml:927`) drops a case
+    branch when `u_r` and `t_rᶜ` have distinct constructor heads somewhere
+    along a spine of equal heads.
+
+Both are fragments of one procedure: first-order unification of the equations
+`{ u_r ≐ t_rᶜ : r informative }`. The unknowns are `c`'s informative fields;
+the occurrence side `ū` contains none of them, since it is rigid in the
+caller's context. The rules, applied to a selected equation `u ≐ t`:
+
+  * **delete** -- `u` and `t` syntactically equal: drop the equation.
+  * **solve** -- `t` is an unknown `aⱼ` not yet solved: record `aⱼ := u` and
+    substitute it into the remaining equations, the field types and the
+    payloads. `u` contains no unknowns, so there is no occurs check. This is
+    today's fording rule, unchanged.
+  * **decompose** -- both sides have the same constructor head `d`: replace the
+    equation by one equation per argument position of `d` that survives
+    erasure and is not a parameter of `d`'s inductive. These are exactly the
+    positions axiom (b) relates.
+  * **clash** -- distinct constructor heads: the constructor `c` cannot produce
+    a value of `I p̄ ū`.
+  * **stuck** -- anything else (a variable or a non-constructor head on the
+    occurrence side, against a pattern that is not an unknown): keep `u = t`,
+    under the substitution so far, as a residual index equation.
+
+A field that occurs twice in `t̄ᶜ` is solved at its first occurrence; the
+second then yields an equation between two occurrence-side terms, which the
+same rules delete, prune or keep. The occurrence side is head-normalized with
+`budgeted_whnf` (`coq_erasure.ml:287`), as `rigid_clash` does today. A head the
+budget does not expose is not a constructor, so the equation is stuck, which
+is always the safe outcome.
+
+**Every rule must be an equivalence in the junk model, not an implication.**
+A guard occurs in both polarities (§9.3), so a rule that merely weakened it
+would make a premise-position guard, and hence the axiom containing it, too
+strong. Delete and solve are equivalences outright, because they substitute
+an equal term. Clash holds by discrimination (c), and decompose by injectivity
+(b), restricted to the positions (b) states: parameters and proof positions
+are never decomposed. A collapsed `CSubset` constructor has no symbol left in
+the output and so is not a rigid head; it neither clashes nor decomposes. This
+is the soundness condition. It also keeps the rules aligned with axioms (b)
+and (c), which a prover would otherwise use to derive the same consequences
+at search time.
+
+**Guard side** (§9.1, and today's `CEnum`/`CSubset` expansion). For each
+constructor:
+
+  * *clash* drops the disjunct. `guard_leaf` (`coq_transl.ml:2411`) prunes
+    nothing today. An `ev 3` hypothesis expanded under §9.1 would keep
+    disjuncts with `3 = 0` and `3 = S (S n)` conjuncts, for the prover to
+    refute with (c) and (b) at every use.
+  * *solve* removes the field's existential and substitutes `u` for it. With
+    occurrence index `S k` against pattern `S n`, decompose and solve give
+    `n := k`, where today the guard keeps `∃n. S k = S n ∧ …`.
+  * *stuck* equations are the residual index equations, as now.
+
+Unification therefore shrinks exactly the clauses §9.4 prices, most strongly
+at the ground and constructor-headed indices that are common in hypotheses.
+It adds no symbol and no axiom.
+
+**Case side.** Clash is today's branch pruning. A clash found only after a
+solve -- a non-linear pattern, or a solved field occurring in a later index --
+extends it. Solutions beyond today's bare-variable fording need *not* be
+applied to branch equations. A branch equation quantified over a field is
+valid for junk too (§7), and strictly more general than its instance at the
+solution. Instantiating is required only where the field leaves the
+constructor term, i.e. for `CSubset` carrier collapse, and there fording
+already applies.
+
+**Declaration side.** With formal indices every equation is stuck or a
+bare-variable solve against a formal. Today (d) leaves even the latter as
+`∃aⱼ. … ∧ i_r = aⱼ` (the `tagged` example of §5). Adopting the solve there is
+an equivalent simplification, to be measured like any other clause-shape
+change. Whether or not it is adopted, (d) should compute its informative mask
+through the same procedure, which closes §10.3.
+
+**Implementation.** One function in `Coq_erasure` returning
+`Solved σ | Clash | Stuck of residual equations`, called by the
+classification, by `guard_leaf`, by `prepare_case_branch`/`branch_clashes`
+and by `mk_inversion_conjs`. `ford_indices` and `rigid_clash` become its
+special cases. The guard and case paths must agree on solved positions, the
+hazard `ford_indices`' doc comment describes; with one implementation this
+holds structurally.
+
+### 9.6 Rejected alternatives
+
+Encodings that would generalize further, each recorded with the reason it
+breaks the shallow-translation policy (`notes/dependent_types.md` §4,
+principle 4; `notes/extraction/sections/shallow.tex`, S2-S4), so that they are
+not proposed again:
+
+  * **A named inhabitation predicate per family**, `T_I(p̄, ī, x)`, defined by
+    introduction and complete-inversion axioms, with per-occurrence inlining
+    kept as an optional heuristic. This is the `HasType`-plus-unfolding
+    encoding: the specification would sit behind an instantiation step at
+    every use. §9.1 states the same content at the occurrence.
+  * **Accessor symbols for forced fields** (Brady-style forcing with
+    `n := pred(ī)`). This adds new symbols with defining equations the prover
+    must rewrite with, i.e. the selector encoding of §9.3. §9.5 recovers the
+    constructor-headed case with no new symbols. When the index is a variable,
+    the field simply stays existential.
+  * **Uniform constructor arity with `$Proof` placeholders**, to make
+    informativeness masks independent of parameter instantiation. This
+    contradicts S4 (proofs never become terms) and the pruning golden test
+    (`check-extraction-transl.sh:132`). The mask disagreement it would address
+    is §10.3, whose local fix is simpler.
+  * **Type-level functions as predicate definitions** (`T_F(c(…), x) ↔
+    G(x, branch type)`). This makes each type-level function an inhabitation
+    predicate with unfolding axioms, the same objection as the first bullet.
+    Type-level computation stays with translation-time head normalization
+    under `opt_whnf_budget`.
+
 ## 10. Obligations and open items
 
 ### 10.1 Positive-position domain closure
@@ -483,6 +636,12 @@ restated on that half alone.
   * **Stage 3 -- selectors.** Only if measurement shows Skolem-symbol
     proliferation is costing more than the sharing would save. §9.3 expects it
     will not.
+  * **Independent of Stages 1-3 -- index unification (§9.5).** First as a
+    behaviour-preserving refactor: `ford_indices` and `rigid_clash` re-expressed
+    through the one procedure, and `mk_inversion_conjs` reading its mask (§10.3).
+    The golden assertions must be unchanged, and that is the check. Then guard-side
+    clash and solve on today's `CEnum`/`CSubset` guards, measurable before
+    Stage 1, and carried into Stages 1-2 as part of the expansion.
 
 Per the standing methodology: a compile-time `opt_*` flag wired into
 `eval/rebuild-config.sh`, its own leave-one-out screening axis, golden
@@ -507,3 +666,24 @@ carried over from `notes/gaps.md`, not measured here. §10.3's divergence is
 argued from the code and not exhibited on an actual declaration. The claim in
 §9.3 that selectors are unnecessary is an argument about polarity, not a
 measurement, and is the part of this note most likely to be wrong.
+
+*2026-11-20.* The one empirical check so far is `Hammer_transl` on three small
+declarations: `tagged`, `vec`, and a single-constructor type with two `nat`
+fields and an `n < m` proof field. It confirmed the shape of axiom (d) now
+given in §5. Data fields carry their guards, proof fields their propositions,
+and solvable fields stay quantified with an index equation. That corrected the
+earlier statement of (d), which listed neither the field guards nor the
+unforded quantification.
+
+Caveat on provenance: the plugin that ran was the one installed in the default
+opam switch on 2026-08-08, i.e. from the #231 merge (`6029473`), not from
+`rocq-9.2` HEAD. The code that produces (d) is textually identical between the
+two: `mk_inversion_conjs`/`mk_inversion`/`mk_prop_inversion`,
+`add_inversion_axioms0`, `add_inversion_axioms`, and `convert`'s `Quant` case,
+diffed `6029473..27b80e8`. The `bool` field's expanded guard comes from
+`guard_leaf`, which #234 did change, so that detail of the `tagged` output
+should be re-checked on HEAD.
+
+§9.5's claims -- that `guard_leaf` prunes no clashing disjunct, and the
+model-equivalence of its rules -- are argued from the code and from (b)/(c),
+not exhibited.
