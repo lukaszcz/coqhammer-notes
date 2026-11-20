@@ -2,10 +2,9 @@
 
 *Design note, 2026-08-31. Written as the question left open by
 `notes/indexed_families.md` §2.3 and `notes/gaps.md`: the translation expands
-exactly two shapes of inductive occurrence (`CSubset`, `CEnum`) into formulas a
-prover can use directly, and leaves every other inductive as an opaque typing
-atom. What does the general case actually get, why are those two special, and
-what would it take to make the specification of an arbitrary dependent
+refinements and enums (`CSubset`, `CEnum`) into formulas a prover can use
+directly, maps empty guards to false, and uses a membership atom for regular
+data families. What does the general case actually get, and what would it take to make the specification of an arbitrary dependent
 inductive ATP-usable? §§1-7 below are a self-contained description of what the
 code does today, written so that the proposal in §§8-11 has no undefined terms.
 Sources, all read for this note: `src/plugin/coq_transl.ml`,
@@ -14,52 +13,29 @@ Sources, all read for this note: `src/plugin/coq_transl.ml`,
 `tests/plugin/check-extraction-transl.sh` (branch `fording`, Rocq 9.2).
 Sibling notes: `notes/dependent_types.md`, `notes/extraction.md`,
 `notes/indexed_families.md`, `notes/type_guards.md`, `notes/gaps.md`.
-Nothing here was verified by running the translation; see §12.
-Updated 2026-11-20: §5(a)/(d) corrected against `Hammer_transl` output, and
-§9.5 (index unification at occurrences) and §9.6 (rejected alternatives)
-added.*
+Updated 2026-11-20 against the Rocq 9.2 worktree at `27b80e8`. §§8–11 specify
+how to share inversion in the emitted ATP problem. §12 gives the scope of the
+measurements.* [Adversarial review and probe details](reviews/spec-extraction-adversarial-review.md)
 
 ## TL;DR
 
-1. The specification of a dependent inductive -- the content of its
-   propositional constructor arguments -- is **never dropped**. It is emitted
-   at declaration level, split across the constructor typing axioms
-   (introduction) and the inversion axiom (elimination). §5.
-2. It is **not ATP-usable in general**. At an occurrence `w : I p̄ ū` the
-   translation emits the opaque atom `$HasType(w, I(p̄,ū))`; reaching the
-   specification costs a resolution step against a generic inversion axiom
-   plus reasoning under its Skolem functions. §6, §8.
-3. The two expanded shapes are not ad-hoc. They are the two cases in which the
-   body of the inversion axiom simplifies enough to be inlined at the
-   occurrence: `CEnum` is "the existential binds nothing", `CSubset` is "the
-   existential is solved by its own equation, and the constructor symbol
-   disappears with it". §6.
-4. **The general rule already exists** as `notes/indexed_families.md` §2.3's
-   guard schema; what is missing is a termination discipline. Today's
-   termination is structural, resting entirely on the side conditions of those
-   two shapes -- there is no expansion-depth guard anywhere in the plugin
-   (§9.2, verified). Adding an explicit one-constructor-layer bound is what
-   makes the general rule well-defined.
-5. Doing so is **in policy**: it needs no new symbols and no bridge axioms, only
-   a generalized `guard_leaf`. Projection/selector symbols, which an earlier
-   sketch of this proposal assumed were required, are probably **not** needed:
-   specification extraction is a positive-position phenomenon, and there plain
-   existentials Skolemize to constants. §9.3.
-6. Suggested sequencing: Stage 1 (non-recursive families, all constructors) →
-   Stage 2 (one-layer expansion for recursive families) → measure → Stage 3
-   (selectors) only if the measurements demand it. §11.
-7. Fording and rigid-clash pruning should become one procedure: first-order
-   unification of a constructor's result-index patterns against the
-   occurrence's actual indices, with outcomes *solved*, *clash* and *stuck*.
-   On the guard side it removes impossible disjuncts and solved existentials,
-   which shrinks exactly the clauses §9.4 worries about; it introduces no
-   symbols. §9.5. Encodings that would generalize further but break
-   shallowness are recorded as rejected in §9.6.
-
-Two defects found while writing this note, both independent of the proposal and
-worth fixing regardless: a duplicated informative-index-position test whose two
-implementations read different inputs (§10.3), and a stale premise in
-`notes/gaps.md` §7 (§10.4).
+1. For a regular data family, use the existing membership atom at each guard
+   and emit the complete, guarded inversion axiom once per family per selected
+   problem. The axiom binds each constructor's data fields together with
+   their types, index equations and dependent proof payloads (§§5, 8).
+2. Specialize where the indices or the goal give a concrete saving. An
+   index-only fact can be stated directly. A payload `P(x,y)` about hidden
+   data needs the same witnesses that construct the inhabitant (§9.1).
+3. A single small local consequence can be worthwhile. When the same
+   specialization is useful at several guards, keep their membership atoms
+   and share one quantified rule for that index shape. Wide or unreduced
+   cases use the generic axiom. This policy introduces no new membership
+   predicate or selector (§§9.3–9.4).
+4. Specialization preserves the constructor's erased representation, and
+   checked index matching retains every unsolved equation. Bound expansion
+   through proof payloads as well as data fields (§§9.2, 9.5).
+5. Test the size of the printed and clausified problems, ATP success, and
+   reconstruction with the originating local hypothesis available (§§10–12).
 
 ---
 
@@ -165,8 +141,10 @@ occurrence of it is replaced by the index `i_r`. Every remaining informative
 position `r` contributes a **residual equation** `i_r = ⟦t_rᶜ⟧`.
 
 The informative fields that are neither propositional nor solved are the
-**residual informative fields**, written `inf(c)`. These are exactly the
-arguments that survive into the target term `c(p̄, inf(c))`.
+**residual informative fields**, written `inf(c)`. These fields still need
+witnesses. A solved data field stays in its original slot in a represented
+constructor's term, filled by its solution. Proof erasure and the separate
+`CSubset` carrier representation (§6) determine the target spine.
 
 ## 5. What is emitted for the declaration
 
@@ -182,8 +160,9 @@ they quantify over **all** informative fields of `c`, solved or not. Write
 `inf₀(c)` for that list; `inf(c) ⊆ inf₀(c)` is what remains after fording at a
 particular occurrence.
 
-**(a) Constructor typing**, one per constructor: this is just `G` applied to
-`c`'s own type, unfolded by the rules of §3.
+**(a) Constructor typing** applies `G` to `c`'s own type. The schema below
+shows its unfolded form for a regular data family, with parameters assumed
+well typed.
 
     ∀ p̄ inf₀(c).  ⋀ⱼ G(aⱼ, Aⱼ)                   [informative fields]
                 →  ⋀ⱼ ⟨Aⱼ⟩                       [propositional fields]
@@ -214,13 +193,14 @@ interchangeable. They are replaced by a neutral marker rather than by a
 `mk_inversion`, `:754`; index equations from `mk_inversion_conjs`, `:730`,
 under `opt_precise_inversion`, default on):
 
-    ∀ p̄ ī w.  $HasType(w, I(p̄,ī))  →
+    ∀ p̄ ī w.  D(p̄,ī) ∧ $HasType(w, I(p̄,ī))  →
         ⋁_c  ∃ inf₀(c).  ⋀ { G(aⱼ, Aⱼ) : aⱼ an informative field }
                        ∧ ⋀ { ⟨Aⱼ⟩ : aⱼ a propositional field }
                        ∧ ⋀ { i_r = ⟦t_rᶜ⟧ : r an informative index position }
                        ∧ w = c(p̄, inf₀(c))
 
-The **elimination** direction. Both kinds of field appear as conjuncts through
+Here `D(p̄,ī)` abbreviates the applicable guards on parameters and indices.
+This is the **elimination** direction. Both kinds of field appear as conjuncts through
 `convert`'s `Quant` case (`:2145`): an existential over an informative binder
 becomes `∃aⱼ. G(aⱼ, Aⱼ) ∧ …`, and one over a propositional binder becomes a
 conjunction with `⟨Aⱼ⟩`, substituting `$Proof` for the binder in the body; the
@@ -228,19 +208,23 @@ constructor spine then drops that `$Proof` by §2, so (a) and (d) agree on
 arity. A field that fording would solve at an occurrence is still quantified
 here, with the index equation `i_r = a_j` among the conjuncts.
 
-*Checked with `Hammer_transl` (2026-11-20).* For
-`tag : ∀ n : nat, bool → n < 5 → tagged n` the axiom is
+For a regular example on `27b80e8`, take
+`pack : ∀ n, nat → nat → P n → packet n`. The dumped inversion is, with
+grouped quantifiers and abbreviated names,
 
-    ∀i X. nat(i) → HasType(X, tagged(i)) →
-        ∃n. nat(n) ∧ ∃b. (b = true ∨ b = false) ∧ n < 5 ∧ i = n ∧ X = tag(n, b)
+    ∀ i h. Nat(i) → M(h,i) →
+      ∃ n x y. Nat(n) ∧ Nat(x) ∧ Nat(y) ∧ P(n) ∧ i=n ∧ h=pack(n,x,y).
 
-with the `bool` field's guard already expanded by the `CEnum` rule of §6. For
-`vcons : A → ∀ n, vec A n → vec A (S n)` the `vcons` disjunct carries
-`HasType(h, A)`, `nat(n)`, `HasType(t, vec(A, n))` and `i = S n`.
+Here `M(h,i)` abbreviates the existing membership of `packet i`. Substituting
+`n := i` simplifies the shared axiom itself. In contrast, the earlier probe
+`tag : ∀ n, bool → n < 5 → tagged n` is already a subset on this revision.
+Its guard for `h : tagged 3` is `(h=true ∨ h=false) ∧ 3<5` up to trivial
+conjuncts. It has no declaration-level inversion axiom.
 
-Nothing propositional is lost across (a)-(d). Both directions are conditioned
-on premise selection having retained every constructor: `add_inversion_axioms`
-and `add_injection_axioms` both bail out otherwise (`:3382`, `:3227`).
+Exhaustiveness requires every constructor telescope. If one is unavailable,
+omit the inverse and any specialization requiring that exhaustive analysis.
+Typing and injection depend on the individual constructor, and discrimination
+depends on the pair.
 
 ## 6. What is emitted at an occurrence
 
@@ -252,39 +236,38 @@ In general this is the opaque atom
 `guard_leaf`'s `classify_leaf` returns `None` for the general case and falls
 through to `fallback ()` (`coq_transl.ml:2495`, `:2413`).
 
-Two shapes are expanded instead. They are exactly the cases in which the body
-of axiom (d) simplifies enough to be inlined:
+Three cases admit a direct guard. An empty data type has guard `$False`.
+For a `CEnum`, every constructor has `inf(c) = ∅`. The guard is a
+disjunction of tag equalities, translated payloads and residual index
+equations. The tag contains the solved data arguments at their occurrence
+values. The outer constructor case introduces no existential data binders,
+although a payload can contain its own quantifiers.
 
-**Every constructor has `inf(c) = ∅`** (`CEnum`). The existential binds
-nothing, so the disjunction is quantifier-free and ground:
+A validated `CSubset` has one constructor, one residual carrier and at least
+one proof field. Constructor conversion represents the value by its carrier.
+For the ordinary subset this gives
 
-    G(w, I p̄ ū)  =  ⋁_c ( w = c(p̄) ∧ ⋀ ⟨Aⱼ⟩ ∧ ⋀ i_r = ⟦t_rᶜ⟧ [ū/ī] )
+    G(w, {a : A | P a}) = G(w, A) ∧ ⟨P w⟩.
 
-**One constructor; `inf(c)` a single field `a`; at least one propositional
-field; and `a`'s type does not reach `I` through any constructor telescope**
-(`CSubset`; the last condition is `carrier_reaches_inductive`,
-`coq_erasure.ml:460`, transitive through the inductive dependency graph). Then
-the equation `w = c(a)` orients as `a := w`, deleting both the quantifier and
-the constructor symbol -- `w` *is* the field:
-
-    G(w, {a : A | P a})  =  G(w, A) ∧ ⟨P w⟩
-
-Because the constructor symbol then denotes nothing, axioms (a), (b) and (d)
-are suppressed for such a declaration (`skip_refinement_decl_axioms`,
-`coq_transl.ml:3219`).
-
-The non-reachability condition is load-bearing twice: it is Letouzey's
-non-recursive-carrier condition for extraction soundness, *and* it is what makes
-the recursive call `G(w, A)` in the expansion terminate. §9.2 returns to this.
+This equality relies on that representation choice in term and match
+translation. An ordinary constructor equation `w = c(a)` alone does not
+license `a := w`. The classifier checks carrier reachability and dependencies
+among fields. For declaration-independent collapse,
+`skip_refinement_decl_axioms` skips injection and inversion. Constructor
+typing has its own path. The carrier check covers only part of the recursion
+involved in expanding a guard (§9.2).
 
 ## 7. What is emitted for a match
 
-A `match` is lifted to a fresh function symbol `f` applied to the free
-variables in scope, and defined by one equation per constructor:
+On the ordinary data-returning split-equation path, a `match` is lifted to
+a fresh function symbol `f` applied to the free variables in scope. Each
+surviving constructor contributes an equation of the form below.
 
     ∀ (vars before) inf(c) (vars after).
-        f( …, c(p̄, inf(c)), … )  =  ⟦ branch_c [ propositional fields := $Proof ] ⟧
+        f( …, ⟦c p̄ āσ⟧, … )  =  ⟦ branch_c[σ] ⟧
 
+Here `σ` fills solved slots with the occurrence indices and erases proof
+arguments, using the same spine on both sides
 (`prepare_case_branch` and the fold at `coq_transl.ml:2075`; the substitution is
 `subst_proof_args`, `:1475`.) A branch is omitted when some informative index
 position has actual and pattern rigidly incompatible -- distinct constructors at
@@ -300,147 +283,199 @@ scrutinee.
 
 ---
 
-## 8. The gap
+## 8. What gets duplicated
 
-Compare the two forms available for a hypothesis `h`:
+For a regular family `I`, write `M(h,i)` for the existing membership atom
+and `E(h,i)` for the disjunction in §5(d), specialized at `i`. Both are
+notation in this note. For example, with one constructor and a proof payload
+depending on both fields, its case might be
 
-    general:   $HasType(h, I(p̄,ū))
-    CSubset:   G(h, A) ∧ ⟨P h⟩
+    E(h,i) ≡ ∃ x y. G(x,A) ∧ G(y,B(x)) ∧ i=f(x,y) ∧ h=c(x,y) ∧ P(x,y).
 
-Both assert the same thing. The second states the specification **as a formula
-about `h` itself**, immediately available. The first states it nowhere; to
-obtain `P` a prover must resolve `$HasType(h, I(p̄,ū))` against the antecedent
-of the generic axiom (d), instantiating `p̄`, `ī`, `w`, and then reason about
-the Skolem terms of its existential -- which, because that existential lies
-under the axiom's universals, are Skolem *functions* rather than constants.
+Suppose two hypotheses inhabit the same fiber. Inlining writes `E(h₁,i)` and
+`E(h₂,i)`. Each copy contains the entire telescope, constructor equality and
+payload. With eight viable constructors it writes the eight-way choice twice.
+An *occurrence* here is a request to generate a type guard, for example the
+typing of a local hypothesis or the domain of a quantified lemma. Simply
+using the term `h₁` twice in a goal does not request two guards.
 
-This is the whole gap, and it is a matter of prover search, not of missing
-content. The specification is present (§5); it is behind an instantiation step.
+Write `D` for the index guard and suppress the family parameters. The shared
+encoding of this context has three ground facts and one quantified axiom.
 
-Note that the earlier framing "per-occurrence expansion is clause-for-clause
-the same as the instantiated inversion axiom" is **wrong**, and the reason
-matters for the design. A local hypothesis reaches the translation as a
-constant with an *asserted* typing axiom `$_typeof_h : G(h, I p̄ ū)`. Asserted
-means positive: expanding it there puts `⋁_c ∃ inf(c). …` in a positive
-position with no enclosing universals, so clausification Skolemizes the
-existentials into **constants** and the disjunction becomes ground facts. That
-is strictly cheaper than instantiating (d) and working under Skolem functions.
-Per-occurrence expansion buys something real, with no new symbols.
+    D(i)
+    M(h₁,i)
+    M(h₂,i)
+    ∀ j w. D(j) ∧ M(w,j) → E(w,j).
 
-## 9. How the translation should support this in general
+Emit the last formula once. The ATP can instantiate it at either inhabitant.
+Each instantiation has its own witnesses, and all occurrences of `x,y` *within*
+a constructor case refer to the same pair. Sharing witnesses across distinct
+inhabitants would incorrectly identify their fields. The input contains a single constructor analysis, which the prover can
+clausify once. Search may still instantiate the rule many times.
 
-### 9.1 One rule
+## 9. How to specialize shared inversion
 
-Replace the two special cases and the opaque fallback by a single expansion,
-which is `notes/indexed_families.md` §2.3's schema with the informative fields'
-own guards made explicit. It is the body of axiom (d) instantiated at the
-occurrence (`ī := ū`) and forded there, so that only `inf(c)` remains
-quantified -- no content beyond what (d) already states, only a cheaper place
-to state it (§8):
+### 9.1 The full dependent specification
 
-    G(w, I p̄ ū)  =  ⋁_c ∃ inf(c).  w = c(p̄, inf(c))
-                                 ∧ ⋀ⱼ G(aⱼ, Aⱼ)      [informative fields]
-                                 ∧ ⋀ⱼ ⟨Aⱼ⟩           [propositional fields]
-                                 ∧ ⋀_r i_r = ⟦t_rᶜ⟧ [ū/ī]
+For a saturated occurrence, match each constructor's result indices against
+the actual indices (§9.5). For each viable constructor `c`, let `σ` contain
+the solved fields and proof erasures, and bind the residual informative fields
+in telescope order. Its branch is the conjunction of
 
-Both current shapes are simplifications of this, not separate concepts:
+* the equality of `w` with the translated **full** constructor spine under `σ`,
+* each informative field's guard at its instantiated, possibly dependent type,
+* each translated proof payload under the same substitution and binders, and
+* the residual index equations.
 
-  * `inf(c) = ∅` for every `c` ⟹ the existential binds nothing, and the rule
-    reduces to today's `CEnum` expansion;
-  * one constructor with `inf(c) = {a}` ⟹ the equation `w = c(a)` orients as
-    `a := w`, deleting the quantifier and the constructor symbol, and the rule
-    reduces to today's `CSubset` expansion.
+Existentially close each branch and disjoin the branches. This gives the
+specialized body of inversion. In §8, the guard for `y` depends on `x`, and
+the index, constructor and `P(x,y)` must all refer to those same witnesses.
+Separate claims that some pair satisfies `P` and some pair constructs `h`
+would lose the correlation needed to prove `P(left(h),right(h))`.
 
-Consequently `ind_class` should **shrink**, not grow: `CEnum` and `CSubset`
-stop being classifications and become rewrite rules applied to one formula.
-`CEmpty` is the further degenerate case of an empty disjunction (`$False`), and
-`CPropSingleton` remains what it is -- a statement about match collapse, not
-about guards. This is the "no options for dominated variants" discipline
-applied to the classifier itself: one mechanism with simplification rules,
-rather than three shapes with three code paths.
+A consequence mentioning only the indices is a useful special case. In the
+`packet` example, matching gives `P(i)` directly. If different viable
+branches give `L(i)` and `R(i)`, their common consequence is the disjunction
+`L(i) ∨ R(i)`. A fact asserted on its own must follow in every viable case.
+With existing source projections that compute on the constructor, a
+field-dependent consequence may also have a short form about `h`. Otherwise
+the existential specification is available through the shared rule. Each
+shortcut supplements membership and retains the premises under which it holds.
 
-### 9.2 The condition that makes it well-defined: termination
+### 9.2 Bound the work of building a specialization
 
-The rule recurses through `G(aⱼ, Aⱼ)`. For a recursive family some `Aⱼ` *is*
-the family, and the expansion does not terminate.
+Use the atomic membership for regular data fields at the next constructor
+layer. A recursive tail `t : I k` contributes `M(t,k)`; a field of type
+`J (I k)` needs membership of that whole field type. The generic inverse
+remains available for a later use. Keep its own antecedent atomic.
 
-Today this cannot happen, but only structurally, and by accident of the two
-shapes' side conditions: `CSubset` requires the carrier not to reach the
-inductive (`carrier_reaches_inductive`), and `CEnum` has no informative fields
-to recurse on at all. **There is no expansion-depth guard anywhere in the
-plugin** -- the only budget is `opt_whnf_budget = 64`, which bounds head
-normalization when exposing a scrutinee's inductive type and is unrelated
-(verified by grep over `coq_transl.ml` and `coq_transl_opts.ml`). Generalizing
-the rule therefore *requires* introducing one, and the right one is structural
-rather than a fuel counter:
+Carry an active-family check and a size budget through payload translation,
+nested guards and any generated side axioms. Even a proof-only constructor
+`roll : (exists _ : I, True) → I` re-enters the guard for `I` by translating
+the existential. The current carrier reachability check misses that path.
+An acyclic chain of records with two fields of the preceding type can also
+double the output at each layer. The WHNF budget limits reduction during
+matching and cannot bound the size of a formula.
 
-> At a field whose type reaches `I` through any constructor telescope, stop and
-> emit `$HasType(aⱼ, I(…))` instead of expanding.
+Choose the fallback before emitting declaration axioms, constructor terms or
+match equations for the selected problem. For a tagged family, including a
+cyclic `CEnum`, keep the constructor tags. At re-entry or budget exhaustion
+use the existing atomic membership of the field's full type. Constructor
+typing must produce that atom and the shared guarded inverse must consume
+it. In the `roll` example its existential payload then refers back to the
+same membership atom. Incomplete constructor information permits ordinary
+membership but cannot justify an exhaustive inverse.
 
-`carrier_reaches_inductive` already computes exactly this predicate, already
-transitively through the inductive dependency graph, already with a visited set
-so that ordinary recursive types such as `nat` terminate rather than being
-mistaken for a cycle. It needs no change, only a second caller.
+For a subset candidate, check before erasing its constructor that the required
+carrier guard and payloads can be emitted coherently within the expansion
+bounds, including paths through proof quantifiers and nested types. If that
+check fails or is inconclusive, use ordinary constructors and membership
+consistently throughout the selected problem for that affected family.
+Use that decision for constructor applications (including partial ones),
+typing, matches and structural axioms. After choosing carrier erasure, a
+per-occurrence budget cutoff must never switch a value back to a boxed
+representation. Optional specialization can always be declined independently.
 
-The consequence is worth stating plainly, because it bounds what
-"specification extraction" can mean here: the expansion is **one constructor
-layer deep**. You obtain the head constructor's specification and index
-constraints, not the whole structure's invariant. For propositional payloads
-this is almost always the whole story, since a payload's type rarely recurses
-into the family; for informative fields it is the correct fixpoint rather than
-a restriction -- deeper structure remains reachable, one layer at a time,
-through (d).
+### 9.3 Placement in the emitted problem
 
-### 9.3 What is probably not needed: selectors
+For regular `Set`/`Type` families, start with §5(d) once per selected problem
+and an atomic guard at each occurrence. Preserve the separate representation
+rules for existing enums and subsets that pass the pre-emission check (§9.2). Collect candidate
+specializations across the selected problem before emitting extra formulas.
 
-An earlier version of this proposal assumed the general case needs projection
-symbols `π_cⁱ` with defining equations `π_cⁱ(c(x̄)) = xᵢ`, on the grounds that
-only a quantifier-free guard is usable in both polarities. That is the
-SMT-datatype and F* projector encoding, and it would make `CSubset` literally
-the identity-projection case -- elegant, but it introduces new symbols with
-bridge axioms, against the shallow-translation policy.
+| Candidate after index matching | Emission |
+|---|---|
+| Generic shape, many viable branches, or little simplification | Use the generic inverse and atomic guards. |
+| Asserted local inhabitant yielding a small consequence | Keep its typing and attach the consequence once. A bounded local constructor case is also a candidate when a small surviving case has a visible field use in the goal, as described below. |
+| Several occurrences benefit from the same reduced index pattern | Emit at most one guarded rule for the pattern. Each occurrence keeps its membership atom. |
+| Every constructor provably clashes | The specialized consequence is false under the relevant membership and outer typing premises. |
 
-On reflection it is probably unnecessary, for a reason that also sharpens what
-the feature is:
+For the local witness optimization, require **both** a small surviving case
+under the §9.4 cost estimate and a goal term that visibly reads fields of
+this inhabitant. Source projections on `h` and a match on `h` that uses a
+data field are examples. A mention of the same record type, or projections
+of a different value, does not qualify. In `R(left(h),right(h))`, first
+try to state the constructor payload using those existing projections. Check
+that each projection computes to the corresponding field on every viable
+branch, preserving all field dependencies and branch premises. If that form
+is unavailable and both admission conditions hold, expose the correlated
+tuple once. Uses visible only through an unapplied lemma rely on shared
+inversion. The visibility check concerns local witness expansion; a cheap
+witness-free index consequence has its own admission path.
 
-**Specification extraction is a positive-position phenomenon.** A guard in
-negative position (`∀x. G(x,A) → φ(x)`, the shape of every premise about a
-bound variable) is an *obligation*: to use the premise you must prove
-membership, and the specification is what you must supply, not what you
-receive. That direction is already served by axiom (a). A guard in positive
-position -- an asserted `$_typeof_` axiom, which is how hypotheses and
-constants arrive -- is where a specification is *received*, and there the
-existential Skolemizes to constants (or, under enclosing universals, to
-functions of those universals, which is still no worse than (d)).
+For example, if only one constructor can produce `I (S k)`, the shared
+specialization can be
 
-So selectors buy only term sharing: one selector symbol where clausification
-would otherwise mint several Skolem symbols. That is a clause-shape
-optimization to be justified by measurement, not a prerequisite. Stage 3 at
-most; possibly never.
+    ∀ k w. Nat(k) ∧ M(w,S(k)) → E_succ(w,k).
 
-### 9.4 Cost
+Here `E_succ` stands for the actual surviving branch printed on the
+right-hand side. Neither it nor `M` asks for a new symbol. Two inhabitants
+at `S k`, or inhabitants at `S k₁` and `S k₂`, can use this one rule.
+Match again with symbolic `k` to justify the whole pattern. A branch
+eliminated only at `S 0` could survive at `S k`.
 
-The expanded guard is `n` constructors wide, each carrying its informative
-fields' guards, its payloads and its index equations. Inlined at every
-occurrence, this is a clause-size multiplier, and clause size is the currency
-in which recent regressions were paid (`notes/gaps.md` §7 records the
-refinement-expansion stdlib episode, 693→729 KB, tipping threshold-noisy
-cells). Two mitigations are available and should be part of the first
-implementation rather than a follow-up:
+Deduplicate rules within the selected problem, up to renaming of bound
+variables. Sharing requires agreement on the family, retained parameter and
+index patterns, erasure/arity, and all outer guards and residual constraints.
+Close every free variable with its necessary premises. A fact depending on a
+particular local hypothesis stays in that scope. If generalization cannot be
+justified, use the generic inverse. Once a shared specialization covers the
+uses, omit its per-inhabitant copies. Memoizing an OCaml syntax tree alone
+would still print and clausify each copy. Keep the number and aggregate size
+of extra rules bounded per problem. When many distinct index terms give
+little reduction, fall back to the single generic axiom. If several local
+typings justify the identical closed consequence `P(i)`, emit it once and
+retain a sufficient source justification for reconstruction (§10.2).
 
-  * expand only where there is something to extract -- at least one
-    propositional field, or at least one residual index equation. A family with
-    neither has an expansion that says no more than `$HasType` plus the
-    inversion axiom already do, and should keep the atom.
-  * once a family is expanded at every occurrence, its declaration-level (b)
-    and (d) become largely redundant; `skip_refinement_decl_axioms` generalizes
-    to it. This is `notes/indexed_families.md`'s Phase D, and it is what keeps
-    the net clause-size change from being a pure addition. Measure before
-    enabling: (d) is still needed for occurrences the expansion declines
-    (§9.2's recursive stop, and partial applications).
+### 9.4 ATP cost and polarity
 
-A third mitigation, index unification, removes disjuncts and quantifiers
-outright and is independent of the other two; §9.5.
+For a closed, asserted inhabitant, existential fields at the outer level can
+Skolemize to constants. The same fields under the generic inverse can become
+Skolem functions of universally bound arguments. A small local case can thus
+pay for itself. A function result under `∀u` can still require witnesses
+depending on `u`, and a quantified proof payload can introduce functions of
+its own. A disjunction leaves alternatives for the solver to resolve.
+
+For a negative guard in a lemma, `∀w. (∃x. w=c(x) ∧ P(x)) → Q(w)` can
+clausify as a rule about `Q(c(x))` without introducing a witness. A
+conjecture is negated before refutation, which reverses its outer polarity.
+Keep membership usable in both roles. An implication `M ⇒ C` licenses a
+consequence for a known member. Replacing a guard throughout a problem
+requires equivalence under its typing premises.
+
+In a controlled Vampire clausification probe with eight constructors and
+sixteen asserted inhabitants, shared inversion produced **40 clauses and
+eight Skolem symbols**. Per-occurrence inversion produced **384 clauses and
+128 Skolem symbols**, even with the generic rule omitted from that variant.
+On a real two-field record, exposing a single small correlated pair let CVC4
+prove a goal where shared inversion alone exhausted its run. These observations
+motivate measuring both placements. E and Vampire work with the resulting
+clauses and equalities. SMT backends receive quantified uninterpreted functions
+and predicates, with no built-in dependent datatype semantics. An existing
+family membership atom can provide a focused instantiation pattern. Price a
+candidate by surviving branches, binder dependencies, estimated literals and
+repeated uses. Also charge for the generic rule whenever other guards still
+need it. [Probe formulas and solver results](reviews/spec-extraction-adversarial-review.md)
+
+A finite rule can still generate an unbounded sequence of matching terms in
+a solver. For example, inversion on a list value produces a membership for
+a fresh tail, which may trigger inversion again. For the first evaluation,
+admit an **extra shared recursive rule** only when each recursive membership
+it can produce visibly decreases on an index. Use a fixed index position
+along the recursive path and require a proper syntactic subterm after
+checked substitution and bounded reduction, as in `M(t,k)` from
+`M(w,S(k))`. For mutually recursive families this requires a consistent
+decreasing measure across the cycle. If an emitted recursive membership is
+unindexed, opaque or otherwise lacks that check, use generic inversion.
+A terminal specialization with no recursive membership cannot retrigger
+itself through a tail. This is an admission heuristic for extra rules; the
+generic inverse and other quantified axioms can still generate terms.
+
+Compare the generic-only and specialized runs on the same recursive problems,
+including an unindexed family and vectors with ground and symbolic lengths.
+Record timeout changes and, where each backend exposes them, generated term
+depth and quantifier instantiations or saturation inferences. Keep input
+budget and search cost as separate measurements.
 
 ### 9.5 Index unification at occurrences
 
@@ -453,110 +488,80 @@ occurrence's actual indices `ū`:
     branch when `u_r` and `t_rᶜ` have distinct constructor heads somewhere
     along a spine of equal heads.
 
-Both are fragments of one procedure: first-order unification of the equations
-`{ u_r ≐ t_rᶜ : r informative }`. The unknowns are `c`'s informative fields;
-the occurrence side `ū` contains none of them, since it is rigid in the
-caller's context. The rules, applied to a selected equation `u ≐ t`:
+Use a one-sided matcher. Its unknowns are fresh constructor fields, and the
+occurrence indices are rigid terms in the caller's context. Return either
+`Clash` or a pair `(σ, residual equations)`. One constructor can solve
+`n := k` from `S n = S k` and still require `f(k) = j` at a later index.
 
-  * **delete** -- `u` and `t` syntactically equal: drop the equation.
-  * **solve** -- `t` is an unknown `aⱼ` not yet solved: record `aⱼ := u` and
-    substitute it into the remaining equations, the field types and the
-    payloads. `u` contains no unknowns, so there is no occurs check. This is
-    today's fording rule, unchanged.
-  * **decompose** -- both sides have the same constructor head `d`: replace the
-    equation by one equation per argument position of `d` that survives
-    erasure and is not a parameter of `d`'s inductive. These are exactly the
-    positions axiom (b) relates.
-  * **clash** -- distinct constructor heads: the constructor `c` cannot produce
-    a value of `I p̄ ū`.
-  * **stuck** -- anything else (a variable or a non-constructor head on the
-    occurrence side, against a pattern that is not an unknown): keep `u = t`,
-    under the substitution so far, as a residual index equation.
+* Delete a syntactic identity. Solve a bare unknown by substitution throughout
+  the telescope, payloads, constructor spine and all equations, including
+  earlier residuals. Retain the instantiated field guard unless it follows
+  from available premises.
+* Decompose equal, saturated translated constructor heads at their injective
+  payload positions. Retained parameters must coincide after substitution and
+  bounded reduction, or be equal by explicit FOL equalities available in this
+  scope. For example, injectivity of `d` gives `x=y` from
+  `d(A,x)=d(B,y)`. With an independent premise `A=B`, congruence gives
+  the reverse direction, so the matcher can keep `x=y` in place of the
+  constructor equality. Record which equalities justified that step. An
+  asserted hypothesis can justify a local consequence; an equation in one
+  constructor disjunct is available only in that disjunct and must survive
+  as a conjunct unless independently discharged. A shared rule using `A=B`
+  must carry it as a premise or establish it from the rule's own premises.
+  Exclude the equation being removed from the justification. If parameter
+  agreement remains unresolved, retain the original equation under the
+  substitution found so far.
+* Drop a branch only for a certified clash of disjoint translated constructors.
+  Proof terms and collapsed constructors cannot serve as rigid heads. Use
+  budgeted head normalization on both sides. Preserve stuck equations for the
+  ATP when the head, erasure or telescope is uncertain.
 
-A field that occurs twice in `t̄ᶜ` is solved at its first occurrence; the
-second then yields an equation between two occurrence-side terms, which the
-same rules delete, prune or keep. The occurrence side is head-normalized with
-`budgeted_whnf` (`coq_erasure.ml:287`), as `rigid_clash` does today. A head the
-budget does not expose is not a constructor, so the equation is stuck, which
-is always the safe outcome.
+Apply matching at the level where the result will be shared. Formal indices
+can already eliminate `∃n. i=n ∧ …` once in the declaration inverse for
+`packet`. At the symbolic pattern `S k`, matching can remove a zero branch
+and solve a predecessor once for every covered occurrence. Ground instances such as
+`Fin.t 0` justify further pruning at their own scope. An empty set of viable
+branches is useful information even when it leaves no index equations.
 
-**Every rule must be an equivalence in the junk model, not an implication.**
-A guard occurs in both polarities (§9.3), so a rule that merely weakened it
-would make a premise-position guard, and hence the axiom containing it, too
-strong. Delete and solve are equivalences outright, because they substitute
-an equal term. Clash holds by discrimination (c), and decompose by injectivity
-(b), restricted to the positions (b) states: parameters and proof positions
-are never decomposed. A collapsed `CSubset` constructor has no symbol left in
-the output and so is not a rigid head; it neither clashes nor decomposes. This
-is the soundness condition. It also keeps the rules aligned with axioms (b)
-and (c), which a prover would otherwise use to derive the same consequences
-at search time.
+Initially cache only declaration analysis whose validity is independent of the
+actual indices and local equality hypotheses. Retain the existing classifier's
+parameter and typing-context distinctions. Give its templates fresh binders
+when instantiating them. For each occurrence run the matcher on its actual
+indices and its available equalities. Do not cache substitutions, clashes or
+residuals in the classifier: `I 0` and `I (S k)` can have the same classifier
+key and different viable branches. §9.3 deduplicates fully derived rules only
+after all equality premises and local dependencies are known. Profile
+repeated matching separately before considering a match-result cache.
 
-**Guard side** (§9.1, and today's `CEnum`/`CSubset` expansion). For each
-constructor:
-
-  * *clash* drops the disjunct. `guard_leaf` (`coq_transl.ml:2411`) prunes
-    nothing today. An `ev 3` hypothesis expanded under §9.1 would keep
-    disjuncts with `3 = 0` and `3 = S (S n)` conjuncts, for the prover to
-    refute with (c) and (b) at every use.
-  * *solve* removes the field's existential and substitutes `u` for it. With
-    occurrence index `S k` against pattern `S n`, decompose and solve give
-    `n := k`, where today the guard keeps `∃n. S k = S n ∧ …`.
-  * *stuck* equations are the residual index equations, as now.
-
-Unification therefore shrinks exactly the clauses §9.4 prices, most strongly
-at the ground and constructor-headed indices that are common in hypotheses.
-It adds no symbol and no axiom.
-
-**Case side.** Clash is today's branch pruning. A clash found only after a
-solve -- a non-linear pattern, or a solved field occurring in a later index --
-extends it. Solutions beyond today's bare-variable fording need *not* be
-applied to branch equations. A branch equation quantified over a field is
-valid for junk too (§7), and strictly more general than its instance at the
-solution. Instantiating is required only where the field leaves the
-constructor term, i.e. for `CSubset` carrier collapse, and there fording
-already applies.
-
-**Declaration side.** With formal indices every equation is stuck or a
-bare-variable solve against a formal. Today (d) leaves even the latter as
-`∃aⱼ. … ∧ i_r = aⱼ` (the `tagged` example of §5). Adopting the solve there is
-an equivalent simplification, to be measured like any other clause-shape
-change. Whether or not it is adopted, (d) should compute its informative mask
-through the same procedure, which closes §10.3.
-
-**Implementation.** One function in `Coq_erasure` returning
-`Solved σ | Clash | Stuck of residual equations`, called by the
-classification, by `guard_leaf`, by `prepare_case_branch`/`branch_clashes`
-and by `mk_inversion_conjs`. `ford_indices` and `rigid_clash` become its
-special cases. The guard and case paths must agree on solved positions, the
-hazard `ford_indices`' doc comment describes; with one implementation this
-holds structurally.
+The case path and the guard path should share telescope and substitution
+machinery. Case-side pruning decides whether to emit a particular match
+equation. Rewriting a guard used in both polarities must preserve its meaning.
+Keep those proof obligations explicit at the call sites. The declaration mask
+also needs the compatibility check in §10.3.
 
 ### 9.6 Rejected alternatives
 
-Encodings that would generalize further, each recorded with the reason it
-breaks the shallow-translation policy (`notes/dependent_types.md` §4,
-principle 4; `notes/extraction/sections/shallow.tex`, S2-S4), so that they are
-not proposed again:
+The policy in §§9.1–9.4 uses the membership representation and constructor
+symbols already emitted by the plugin. The following alternatives would add
+structure to the ATP problem.
 
-  * **A named inhabitation predicate per family**, `T_I(p̄, ī, x)`, defined by
-    introduction and complete-inversion axioms, with per-occurrence inlining
-    kept as an optional heuristic. This is the `HasType`-plus-unfolding
-    encoding: the specification would sit behind an instantiation step at
-    every use. §9.1 states the same content at the occurrence.
+  * **An additional inhabitation predicate per family.** Sharing requires
+    only the current membership in the antecedent of the inverse. Another
+    predicate equivalent to it would add a bridge and another instantiation.
+
   * **Accessor symbols for forced fields** (Brady-style forcing with
     `n := pred(ī)`). This adds new symbols with defining equations the prover
-    must rewrite with, i.e. the selector encoding of §9.3. §9.5 recovers the
+    must rewrite with. §9.5 recovers the
     constructor-headed case with no new symbols. When the index is a variable,
     the field simply stays existential.
   * **Uniform constructor arity with `$Proof` placeholders**, to make
     informativeness masks independent of parameter instantiation. This
-    contradicts S4 (proofs never become terms) and the pruning golden test
+    contradicts the shallow translation's proof-erasure requirement (S4) and the pruning golden test
     (`check-extraction-transl.sh:132`). The mask disagreement it would address
-    is §10.3, whose local fix is simpler.
+    is §10.3, which requires a representation-compatibility check.
   * **Type-level functions as predicate definitions** (`T_F(c(…), x) ↔
     G(x, branch type)`). This makes each type-level function an inhabitation
-    predicate with unfolding axioms, the same objection as the first bullet.
+    predicate with unfolding axioms.
     Type-level computation stays with translation-time head normalization
     under `opt_whnf_budget`.
 
@@ -564,22 +569,42 @@ not proposed again:
 
 ### 10.1 Positive-position domain closure
 
-`notes/indexed_families.md` §2.3 already flags this and it becomes
-load-bearing under §9.1, since the disjunction would appear at far more
-occurrences. The disjunction asserts exhaustiveness *relative to the guard*.
-Unguarded, that is domain closure -- Meng-Paulson's cardinality bomb, false in
-the junk model. The expansion is per-occurrence and always sits at a guard
-position, so this holds by construction; but it is the invariant the
-consistency canaries must pin, and it should be stated as a model obligation
-in the soundness paper before the option goes default-on.
+The implication from membership to the complete constructor disjunction is
+relative to the parameter and index guards of §5(d). A global `∀w. E(w,i)`
+would impose domain closure on unrelated junk. Each specialized rule must
+retain the premises needed to derive it. A ground fact may use the typing of
+its actual local inhabitant. A filtered constructor list cannot justify
+exhaustiveness. Keep the constructor typing and structural axioms that serve
+atomic guards, recursive cutoffs and ordinary constructor equalities.
+In particular, witnesses for the fields of each inhabitant do not establish
+injectivity between two constructor terms.
 
 ### 10.2 Reconstruction
 
-Every occurrence expanded is an occurrence whose ATP proof mentions
-constructors and payloads rather than an opaque typing atom. `sauto`-based
-reconstruction handles this for `CSubset`/`CEnum` today; whether it does for
-wide multi-constructor disjunctions is unmeasured and is the usual silent
-killer. The eval harness measures end-to-end, which is the right metric.
+Associate each emitted axiom name with its source justification in the
+selected problem. A local consequence records the originating inhabitant,
+any local equality hypotheses used by matching, and the family whose
+constructors justify the result. For a deduplicated closed fact, retain one
+complete in-scope justification. A shared universally quantified rule
+records its source family and premises; the concrete inhabitant for an
+application comes from the membership evidence actually used in the proof.
+
+After parsing the ATP core, recover these owners before hypothesis clearing.
+A used `$_typeof_h` counts as use of the local `h`, including on the
+generic-only path. Seed the existing local dependency closure with the
+recovered inhabitants and equalities as well as the dependencies already
+reported by the ATP. Supply the source family as an inversion hint when
+recovering a constructor consequence. Carry this information with the
+problem and its proof-core mapping, including evaluation replay, without
+adding predicates or terms to the FOL.
+
+Require the `packet` goal to reconstruct with the default
+`Set Hammer ClearUnused` from both the baseline core and the local core
+containing only `$_typeof_h` and the conjecture. The review reproduced
+failure with clearing and success when `h` was retained. Also replay a
+deduplicated fact with two possible owners and a specialization requiring a
+local equality. Check that one sufficient justification survives clearing
+and unrelated locals can still be cleared. [Reconstruction probe](reviews/spec-extraction-adversarial-review.md)
 
 ### 10.3 Defect: two implementations of "informative index position"
 
@@ -597,15 +622,16 @@ inputs:
     variables), from a context holding only the parameter formals. Used by
     axiom (d).
 
-For a parameter-dependent index type these can disagree: axiom (d) quantifies
-over parameters that a given occurrence may instantiate with a `Prop`. This is
-exactly the "guard and case must ford the same positions" hazard that
-`ford_indices`'s own doc comment warns about, extended to the third consumer,
-where nothing currently enforces agreement. It matters more under §9.1, since
-guard and inversion would then overlap on most families rather than a handful.
-Whether they diverge on real code is unverified; `check_prop`'s incompleteness
-means it cannot be settled by reading. Fix: have `mk_inversion_conjs` call
-`informative_index_mask`.
+For a parameter-dependent index type, using the same function on the two
+inputs can legitimately give different answers. In the review's
+`indexed (A : Set) : A → Set` probe, the declaration used `mk(A,x)`, the
+data occurrence used `mk(nat,0)`, and the proof occurrence used `mk(True)`.
+A specialized rule must match the representation at every occurrence it
+covers. Exercise mixed instantiations in the same dump and keep rules with
+different erased spines separate. Include a matcher test with the same index terms in
+two scopes, only one of which supplies the parameter equality. Check that
+the unconditional output retains the residual equation and that every
+generalized rewrite carries its justification.
 
 ### 10.4 Defect: stale premise in `notes/gaps.md` §7
 
@@ -622,68 +648,61 @@ restated on that half alone.
 
 ## 11. Staging
 
-  * **Stage 1 -- non-recursive families, all constructor counts.** Drop
-    `classify_leaf`'s filter (`coq_transl.ml:2495`) and apply §9.1 to any
-    saturated occurrence whose informative fields do not reach the family and
-    which has at least one propositional field or residual index equation.
-    Reuses `carrier_reaches_inductive`, `ford_indices`,
-    `informative_index_mask` and the existing `prepare_telescope`/
-    `index_equations` machinery unchanged. This closes the "why only one
-    constructor, why only one carrier" question: multi-constructor records,
-    `Compare`-style types, indexed enums carrying data.
-  * **Stage 2 -- recursive families.** One-layer expansion with the §9.2 stop
-    rule.
-  * **Stage 3 -- selectors.** Only if measurement shows Skolem-symbol
-    proliferation is costing more than the sharing would save. §9.3 expects it
-    will not.
-  * **Independent of Stages 1-3 -- index unification (§9.5).** First as a
-    behaviour-preserving refactor: `ford_indices` and `rigid_clash` re-expressed
-    through the one procedure, and `mk_inversion_conjs` reading its mask (§10.3).
-    The golden assertions must be unchanged, and that is the check. Then guard-side
-    clash and solve on today's `CEnum`/`CSubset` guards, measurable before
-    Stage 1, and carried into Stages 1-2 as part of the expansion.
+1. **Shared inversion and matching.** Use the existing §5(d) as baseline.
+   Screen fording in the shared inverse separately from occurrence-specific
+   matching. Check solved-plus-stuck results, dependent field guards, mixed
+   proof/data arities and incomplete telescopes. Bound re-entry before
+   expanding any new family. Test the inhabited cyclic enum at different OCaml
+   stack limits and require bounded output with the same shape. Test an unsafe
+   subset candidate in one problem containing construction, a partial
+   application and a match. All three must agree on its ordinary constructor.
+2. **Small local consequences.** Compare shared inversion, local index
+   facts and small field-dependent cases on the `packet` and two-projection
+   examples. For local witness expansion require visible field use on the
+   same inhabitant (§9.3). Include controls where the goal uses no fields
+   or reads from a different inhabitant. Retain the source evidence needed
+   for reconstruction.
+3. **Shared index specializations.** Collect repeated reduced patterns within
+   one problem and emit at most one guarded consequence per admissible pattern
+   (§9.3). Compare this with the generic rule alone. Admit a specialization
+   only when the simplification warrants the extra quantified formula. Use
+   atomic tails and the decreasing-index condition of §9.4 for extra shared
+   recursive rules.
 
-Per the standing methodology: a compile-time `opt_*` flag wired into
-`eval/rebuild-config.sh`, its own leave-one-out screening axis, golden
-assertions in `tests/plugin/check-extraction-transl.sh` for the new guard
-shape, and a `check-consistency.sh` canary extension over dumps exercising it
--- the invariant to pin being §10.1.
+Add translation-shape assertions to `check-extraction-transl.sh` for a regular
+family with two distinct inhabitants of one fiber, then sixteen inhabitants of
+a wide family. As inhabitants are added, count one generic inverse and their
+membership facts. For a repeated profitable `S k` pattern, count one
+specialized rule and zero copies of its branch body in the individual typing
+axioms. Verify that two distinct inhabitants may carry different fields and
+that a single inhabitant's two projections satisfy the constructor's joint
+payload. Require the default-clearing core replays of §10.2. Include an
+opaque membership consumer, an impossible fiber and a junk-model consistency
+canary with an unrelated inhabitant.
+
+Defer the four-prover evaluation until the upstream E status-filter fix is
+available in the Hammer revision under test. E 3.5.11 prints
+`% SZS status Theorem`; the affected filter accepts `# SZS` and drops that
+success before reconstruction. After taking the fix, confirm a known theorem
+through Hammer with only E enabled and the initial tactic shortcut disabled.
+Require the E success to be recognized and the proof to reconstruct before
+starting the four-prover comparison on the uniform setup.
+[CoqHammer issue #238](https://github.com/lukaszcz/coqhammer/issues/238)
+
+Screen each placement separately via `eval/rebuild-config.sh` on identical
+premises, budgets and prover versions. Record translation time, FOF size, clausified literals
+and clauses, fresh symbols and arities, prover-specific gains and losses, and
+common goals reconstructed by any prover. Use the repeated-occurrence fixtures
+to distinguish fixed rule cost from growth per inhabitant.
 
 ## 12. Verification status
 
-§§1-7 were read out of the sources named in the dateline; every file and line
-reference in them was checked against the code while writing. Specific
-behaviours confirmed by reading: proof-argument pruning in spines and in
-`type_to_guard`; the constructor `Defhash` shape and the resulting single
-typing axiom; the proof-irrelevance marker in injectivity; the propositional
-conjuncts in inversion; the absence of any expansion-depth guard (§9.2). Two
-behaviours were confirmed indirectly through the golden assertions in
-`tests/plugin/check-extraction-transl.sh` rather than by inspecting output.
-
-Nothing was verified empirically: no build was run, no problem was translated,
-no TPTP dump was inspected for this note. The clause-size argument in §9.4 is
-carried over from `notes/gaps.md`, not measured here. §10.3's divergence is
-argued from the code and not exhibited on an actual declaration. The claim in
-§9.3 that selectors are unnecessary is an argument about polarity, not a
-measurement, and is the part of this note most likely to be wrong.
-
-*2026-11-20.* The one empirical check so far is `Hammer_transl` on three small
-declarations: `tagged`, `vec`, and a single-constructor type with two `nat`
-fields and an `n < m` proof field. It confirmed the shape of axiom (d) now
-given in §5. Data fields carry their guards, proof fields their propositions,
-and solvable fields stay quantified with an index equation. That corrected the
-earlier statement of (d), which listed neither the field guards nor the
-unforded quantification.
-
-Caveat on provenance: the plugin that ran was the one installed in the default
-opam switch on 2026-08-08, i.e. from the #231 merge (`6029473`), not from
-`rocq-9.2` HEAD. The code that produces (d) is textually identical between the
-two: `mk_inversion_conjs`/`mk_inversion`/`mk_prop_inversion`,
-`add_inversion_axioms0`, `add_inversion_axioms`, and `convert`'s `Quant` case,
-diffed `6029473..27b80e8`. The `bool` field's expanded guard comes from
-`guard_leaf`, which #234 did change, so that detail of the `tagged` output
-should be re-checked on HEAD.
-
-§9.5's claims -- that `guard_leaf` prunes no clashing disjunct, and the
-model-equivalence of its rules -- are argued from the code and from (b)/(c),
-not exhibited.
+The initial source reading covered the paths identified in §§1–7. The earlier
+`Hammer_transl` check of `tagged`, `vec` and a two-field record used the
+installed `6029473` plugin. The review at `27b80e8` checked the current
+`tagged` behavior, dumped the regular `packet` and two-field record examples,
+and measured hand-specialized copies of the same problems. The 40/384 clause
+comparison in §9.4 is a synthetic clausification measurement. It does not
+estimate corpus-wide success. Shared rules specialized at repeated index
+patterns and the chosen admission conditions still need implementation and
+evaluation. Numerical size thresholds and end-to-end impact remain open in §11. [Methods, raw formula shapes and results](reviews/spec-extraction-adversarial-review.md)
