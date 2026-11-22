@@ -19,7 +19,13 @@ the review of the implementation plan: rules are justified from the
 declaration and not from the premises of one problem (§10.1), constructor
 result indices are read by one reader (§§9.7, 10.4), first-order constructor
 typing is a default (§9.1), local facts do not depend on premise selection
-(§9.3), and every bound is local (§9.5). §§8–11 specify what to add
+(§9.3), and every bound is local (§9.5). Revised again the same day after the
+second review of the plan: every constant is typed in applied form and guard
+dropping is a selectable heuristic whose default the evaluation decides
+(§9.1), a rule is an instance of the translated inverse and is specialized
+after translation (§§9.4, 9.7), expanded types get a membership bridge
+(§10.9), and local facts are scoped to hypotheses of the context (§9.3).
+§§8–11 specify what to add
 to the emitted ATP problem and to reconstruction. §12 gives the scope of the
 measurements.*
 [First review](reviews/spec-extraction-adversarial-review.md) ·
@@ -34,27 +40,33 @@ measurements.*
    hypothesis whose typing axiom the ATP proof used, run the `dep: on`
    tactics second when the proof inverts an indexed data family, and accept
    `ContradictoryAxioms` as a found proof (§§10.2–10.3).
-3. Drop from every elimination rule the parameter and index guards that its
-   membership or predicate atom covers. Those guards are the measured
-   bottleneck. This is a heuristic with one known inconsistency. State each
-   data constructor's typing in direct first-order form as well; that is
-   sound and discharges the guards that remain (§9.1).
+3. State the type of every constant in applied first-order form as well:
+   constructors, type formers and functions. That is sound and discharges a
+   guard in one step. Dropping the covered guards of an elimination rule is
+   a heuristic with a known inconsistency. It stays behind a switch and
+   becomes the default only if it beats the sound configuration (§9.1).
 4. For each family, indexed predicates included, emit rules specialized to
    the index patterns of its own constructors. They are a function of the
    declaration alone, and they introduce no new predicate or selector (§9.2).
-5. For each goal hypothesis in a reduced fiber, also state its constructor
-   form as a ground fact, iterated along a constructor-headed index. Emit it
-   next to the pattern rules, not instead of them, and whether or not premise
-   selection picked the family (§9.3).
-6. A rule preserves the constructor's erased representation. One reader
+5. For each hypothesis of the goal context in a reduced fiber, also state
+   its constructor form as a ground fact, iterated along a
+   constructor-headed index. Emit it next to the pattern rules, not instead
+   of them, and whether or not premise selection picked the family. A
+   hypothesis still inside the conclusion is served by the pattern rules
+   (§9.3).
+6. A rule preserves the constructor's erased representation because it is
+   an instance of the translated inverse: parameters are instantiated before
+   translation, and index solutions are substituted after it. One reader
    exposes the constructor heads of a result index and keeps every stuck
    term over the function the declaration names. Bound expansion through
    proof payloads as well as data fields, with bounds local to a declaration
    or a hypothesis (§§9.4–9.5, 9.7, 10.4).
 7. A rule is emitted because it translates a fact provable from the
    declaration, not because the premises of one problem derive it (§10.1).
-8. Compare each addition against the guard-free generic inverse with
-   constructor typing, not against today's output. Measure problem size, ATP
+8. Give each enum, subset or empty type that occurs as a term a membership
+   bridge. Without it no polymorphic lemma applies at such a type (§10.9).
+9. Compare each addition against the sound configuration, applied typing
+   with the bridge, not against today's output. Measure problem size, ATP
    success and reconstruction (§§11–12).
 
 ---
@@ -203,7 +215,10 @@ so `Nat(S n)` follows from `Nat(n)` in five inferences, through an arrow
 axiom that unifies with every arrow-typed constant. A dependent constructor
 such as `vcons` gets a lifted type symbol of its own, `$_type_N$t(vcons)`,
 with its own unfolding axiom. One 1024-premise dump had 94 `$_arrow_*`
-axioms and 515 `$adef_*` axioms. §9.1 is about this cost.
+axioms and 515 `$adef_*` axioms. A function and a type former are typed the
+same way: `Nat.add` has `$_arrow$t(nat, $_arrow(nat,nat), add)` and `vec` has
+`$_arrow$t(Type, $_arrow(nat,Type), vec)`, so `Nat(n + m)` and
+`Type(vec A m)` cost what `Nat(S n)` costs. §9.1 is about this cost.
 
 **(b) Injectivity**, one per constructor (`add_injection_axioms`, `:3225`):
 
@@ -305,6 +320,12 @@ among fields. For declaration-independent collapse,
 typing has its own path. The carrier check covers only part of the recursion
 involved in expanding a guard (§9.5).
 
+The expansions say nothing about the atom `$HasType(w, ⟦T⟧)` at an expanded
+type `T`. No guard produces that atom there. A polymorphic guard
+`$HasType(a, A)` instantiated at `A := bool` does, and then nothing
+discharges it: the typing axiom of `true` is the tautology
+`true = true ∨ true = false` (§10.9).
+
 ## 7. What is emitted for a match
 
 On the ordinary data-returning split-equation path, a `match` is lifted to
@@ -381,37 +402,96 @@ goals that need inversion (§12 gives the limits of that evidence).
 
 **What this note adds.** Each row is a change against `27b80e8`. A "cell"
 is one prover on one goal at 1024 premises; the data-family suite has 24
-cells and the `ev` suite 12. Rows are separate variants of the baseline
+cells and the `ev` suite 12. The six `vec` probes of the second plan review
+have 6 cells each: E and Vampire, three rounds. Rows are separate variants of the baseline
 unless they say otherwise.
 
 | § | Addition | Measured effect |
 |---|---|---|
 | 10.2 | Keep the hypothesis whose typing axiom the proof used; run `dep: on` second for indexed data families | The three clearing failures close with `hauto inv:` once the hypothesis is kept. Checked by direct tactic calls, not yet through `hammer`. |
 | 10.3 | Accept `ContradictoryAxioms` | Once a specialized rule is present, Vampire reports it on both impossible-fiber goals in most runs. Those runs count as failures today. |
-| 9.1 | Elimination rules without covered guards | Generic inverse alone: 1 → 10 of 24 and 0 → 5 of 12. |
-| 9.1 | First-order typing of each data constructor | With it, guarded pattern rules reach the counts of the guard-free ones: 17 of 24 and 11 of 12. |
+| 9.1 | First-order typing of every constant: constructors, type formers, functions | With constructor typing, guarded pattern rules reach the counts of the guard-free ones: 17 of 24 and 11 of 12. With type formers and functions typed too, a fully guarded configuration solves all 36 cells of the six `vec` probes; two of them stay at 0 with constructor typing and guard dropping. |
+| 9.1 | Elimination rules without covered guards, a heuristic behind a switch | Generic inverse alone: 1 → 10 of 24 and 0 → 5 of 12, measured without applied typing. No cell gained over the fully guarded configuration on the six probes. |
 | 9.2 | Rules for the index patterns of the family's own constructors, predicates included | Guard-free: 17 of 24 and 11 of 12. Guarded: 15 and 8, with nothing proved at index depth 2. |
 | 9.3 | Constructor form of a goal hypothesis as a ground fact | 17 of 24 alone, 20 together with pattern rules. At depth 2, one layer proves nothing and three layers serve all four provers. |
 | 9.7, 10.4 | Index terms read by one reader: heads exposed, stuck terms as written | Probe over `fam (g x y)`: 0 of 4 as emitted, Vampire and CVC4 once the equation names `g`. A prototype of the reader names the source function in twelve fixtures and changes no existing test output. |
+| 10.9 | Membership bridge for enum, subset and empty types | From a polymorphic axiom, `b : bool ⊢ Q bool b` goes from 0 to 6 of 6 cells. |
 | 9.5 | Bounds on expansion | None. They protect output size and termination. |
 
 §11 orders the work. The first two rows need no change to the translation.
 
 ## 9. Elimination rules
 
-### 9.1 Covered guards are dropped
+### 9.1 Guards: applied typing, and dropping what is covered
 
 From here on the family is written inside the atom: `M(w, I p̄ ī)` stands for
 `$HasType(w, I(p̄,ī))`.
 
-Every elimination rule has a *family atom* in its antecedent: the membership
-`M(w, I p̄ ī)` of a data family, or the atom `I(p̄,ī)` of a predicate. In the
-intended model of `notes/type_guards.md` §3.1 that atom is false whenever a
-parameter or index is not of the type its position forces. The same holds
-hereditarily for the variables of a constructor-headed index pattern:
-`M(w, vec A (S k))` forces `S k : nat`, which forces `k : nat`. The antecedent
-guards on those variables are therefore *covered* in the sense of Tier A
-(§3.3 there, whose worked example is the inversion of `le`). Drop them.
+Every elimination rule carries guards on its parameters and indices, and
+those guards are the measured bottleneck. Under `opt_type_lifting` the fact
+`Nat(S n)` takes five inferences from `Nat(n)` (§5(a)). The generic inverse
+applied to `v : vec A (S n)` needs it before it yields anything, and a
+guarded pattern rule applied at `vec A 2` needs `Nat(S O)` again. There are
+two remedies. The first is sound and is the default. The second is a
+heuristic.
+
+**First-order typing of every constant.** The applied form of a constant's
+type,
+
+    ∀ x̄.  ⋀ⱼ G(xⱼ,Aⱼ) → ⋀ⱼ ⟨Aⱼ⟩ → G(c x̄, B),
+
+is the type translated directly, so it needs no argument. For a data
+constructor it is the introduction rule of §5(a) in direct form:
+
+    ∀ p̄ inf₀(c).  ⋀ⱼ G(aⱼ,Aⱼ) → ⋀ⱼ ⟨Aⱼ⟩ → M(c(p̄, inf₀(c)), I(p̄, ⟦t̄ᶜ⟧)).
+
+`add_typing_axiom` already emits this form for types with erasable content
+(`coq_transl.ml:3082`). Emit it by default for every constant whose type is
+a product and whose target is not a proposition, in the constant's own
+bundle and under its existing axiom name, next to the lifted membership.
+The lifted membership stays: a premise quantifying over a function is still
+instantiated through it. Three kinds of constant matter.
+
+* *Constructors.* `∀x. Nat(x) → Nat(S x)`. With it, guarded pattern rules
+  reach the counts of the guard-free ones (last row of the second table
+  below).
+* *Type formers.* `∀A n. Type(A) → Nat(n) → Type(vec A n)`. A rule over a
+  polymorphic family keeps `Type(A)`, and at `A := vec B m` or
+  `A := list nat` that guard takes the same five inferences through the
+  lifted typing of the type former.
+* *Functions.* `∀x y. Nat(x) → Nat(y) → Nat(x + y)`, and the membership of
+  `vapp u v` in `vec A (n + m)`, which every lemma and every rule about that
+  value needs first.
+
+A constant whose target is `Prop` gets no applied form: `Prop(ev n)`
+discharges nothing. The cost is at most one formula per constant with a
+lifted typing: 163–198 among 2,759–4,034 formulas in seven 1024-premise
+dumps. With atomic argument guards it is one Horn clause.
+
+Measured in the second review of the plan, on six `vec` probes at 1024
+premises, cells solved of 6:
+
+| Variant | `vec A (S n)` | `vec A 2` | `vec nat 2` | `vec A (S n + m)` | `vec (vec A m) (S n)` | `vec (list nat) (S n)` |
+|---|---|---|---|---|---|---|
+| Baseline | 0 | 0 | 0 | 0 | 0 | 0 |
+| Constructor typing, `Nat(i)` dropped from the inverse | 3 | 3 | 3 | 0 | 0 | 0 |
+| The same with pattern rules that keep `Type(A)` | 6 | 6 | 6 | 6 | 3 | 0 |
+| The same with `vec` and `list` typed in applied form | 6 | 6 | 6 | – | 6 | 6 |
+| No guard dropped: applied typing and guarded pattern rules | 6 | 6 | 6 | 6 | 6 | 6 |
+
+On a seventh probe, `vlen (vapp u v) = n + m` from a lemma about `vlen`,
+the applied typing of `add`, `vapp` and `vlen` alone takes Vampire from 0 of
+3 rounds to 3 of 3.
+
+**Dropping covered guards.** Every elimination rule has a *family atom* in
+its antecedent: the membership `M(w, I p̄ ī)` of a data family, or the atom
+`I(p̄,ī)` of a predicate. In the intended model of `notes/type_guards.md`
+§3.1 that atom is false whenever a parameter or index is not of the type its
+position forces. The same holds hereditarily for the variables of a
+constructor-headed index pattern: `M(w, vec A (S k))` forces `S k : nat`,
+which forces `k : nat`. The antecedent guards on those variables are
+therefore *covered* in the sense of Tier A (§3.3 there, whose worked example
+is the inversion of `le`). With guard dropping on, they are removed.
 
     ∀ p̄ ī w.  M(w, I(p̄,ī))  →  ⋁_c ∃ inf₀(c). …        [data family]
     ∀ p̄ ī.    I(p̄,ī)        →  ⋁_c ∃ inf₀(c). …        [predicate]
@@ -421,11 +501,14 @@ of §9.2. A local fact (§9.3) has no antecedent.
 
 * **What may be dropped.** An antecedent guard on a variable that occurs in
   the family atom, at a position reached through inductive type formers and
-  constructors only, and whose forced type is a sort, a variable or a rigid
-  application (the v1 restriction of `type_guards.md` §5.2). A guard that
-  this test does not certify stays. Examples that stay: a variable occurring
-  only under a defined function that may reduce, and an index whose formal
-  type is a product.
+  constructors only, and whose own type, after bounded head reduction, is a
+  visible, fully applied data inductive with every constructor available
+  and a regular representation at these parameters. A transparent alias of
+  such a type qualifies. A guard that this test does not certify stays.
+  Examples that stay: a variable occurring only under a defined function
+  that may reduce; an index whose formal type is a product; a variable whose
+  type is an opaque constant, an abstract module field or a type variable;
+  and a type parameter, whose guard is `Type(A)`.
 * **What is kept.** Every guard in the consequent: the field guards under
   the existentials, and the guard of a solved field at its solution (§9.4).
   They are facts, and the prover uses them to discharge the guards of other
@@ -438,10 +521,8 @@ of §9.2. A local fact (§9.3) has no antecedent.
   guard follows from it by constructor typing, and it is the compound form
   that the table below shows proving nothing at depth 2.
 
-**Why.** Under `opt_type_lifting` the fact `Nat(S n)` takes five inferences
-from `Nat(n)` (§5(a)). The generic inverse applied to `v : vec A (S n)`
-needs it before it yields anything, and a guarded pattern rule applied at
-`vec A 2` needs `Nat(S O)` again. Measured at 1024 premises:
+**What guard dropping measured.** Before type formers and functions were
+typed in applied form, at 1024 premises:
 
 | Variant | Data families (24) | `ev` (12) |
 |---|---|---|
@@ -459,38 +540,32 @@ goals the guarded rule gets 0 of 4 cells (`vec A 2`) and 1 of 4
 a guarded pattern rule is a consequence of it. The guard-free rule is not
 derivable from the guarded one in FOL. The claim that it has the same truth
 value in the intended model (`type_guards.md` §3.3, safety proposition) does
-not hold in general. A selected equality between functions, proved by
-functional and propositional extensionality, together with ordinary
-unguarded lambda lifting makes a predicate true of every FOL value. The
-guard-free inverse then collapses the domain, and a problem that had a
-two-element countermodel is refuted (`evidence/semantics` of the
-implementation plan). Guard dropping is therefore a deliberate heuristic.
-It is on by default behind a switch, the limitation is documented, and the
-switch is the opt-out for a user who meets ATP successes that do not
-reconstruct. Write it into `add_inversion_axioms`, replacing the guarded
-inverse in place: an appended guard-free copy doubles the non-Horn clauses
-and the Skolem witnesses (`evidence/clauses`).
+not hold in general. Two counterexamples are known.
 
-**First-order constructor typing.** The applied form of a constructor's
-type,
+* A selected equality between functions, proved by functional and
+  propositional extensionality, together with ordinary unguarded lambda
+  lifting makes a predicate true of every FOL value. The guard-free inverse
+  then collapses the domain, and a problem that had a two-element
+  countermodel is refuted (`evidence/semantics` of the implementation
+  plan).
+* On a sealed primitive record Rocq proves such an equality by conversion
+  alone, and the lifted lambda loses every occurrence of its input through
+  proof erasure (`evidence/erased-eta`). The restriction to visible data
+  carriers above answers this one. The first remains.
 
-    ∀ p̄ inf₀(c).  ⋀ⱼ G(aⱼ,Aⱼ) → ⋀ⱼ ⟨Aⱼ⟩ → M(c(p̄, inf₀(c)), I(p̄, ⟦t̄ᶜ⟧)),
+Guard dropping is therefore a deliberate heuristic. It is implemented behind
+a switch, the limitation is documented, and the switch is the opt-out for a
+user who meets ATP successes that do not reconstruct.
 
-is the constructor's type translated directly, so it needs no argument.
-`add_typing_axiom` already emits this applied form for types with erasable
-content (`coq_transl.ml:3077`). The last row of the table shows that with
-it, guarded rules reach the counts of the guard-free ones on these probes.
-Emit it by default for every data constructor, in the constructor's own
-bundle and under its existing axiom name, next to the lifted membership.
-It was first kept only as a control, for two reasons that do not hold up.
-It covers constructor-headed index terms only: at `vec A (n + m)` the guard
-`Nat(n + m)` still needs the lifted typing of `+`. That is why guard
-dropping stays as well; it is no reason to leave the constructor-headed
-case to a heuristic. And it adds one Horn clause per selected constructor.
-That clause replaces a five-inference derivation for every guarded
-premise, not only for inversions, and it gives a data family its
-introduction rule in direct form. It has its own switch, and §11 measures
-it on problems without indexed families too.
+**It is not the default by decision.** Guard dropping was kept next to
+constructor typing because `Nat(n + m)` still needs the lifted typing of
+`+`. Applied typing of functions removes that reason, and on the six probes
+the fully guarded configuration loses no cell to any guard-dropping
+variant. Guard dropping becomes the default only if it shows stable gains
+over the sound configuration in the evaluation of §11. Write it into
+`add_inversion_axioms`, replacing the guarded inverse in place: an appended
+guard-free copy doubles the non-Horn clauses and the Skolem witnesses
+(`evidence/clauses`).
 
 ### 9.2 Pattern rules from the declaration's index cover
 
@@ -534,6 +609,22 @@ where `inf(c)` are the fields that matching left unsolved and `branch_c` is
 built as in §9.4. A leaf with no survivor gives the negated family atom,
 `∀ p̄ k̄ w. ¬M(w, I(p̄,π̄))` or `∀ p̄ k̄. ¬I(p̄,π̄)`.
 
+A rule is assembled from the translated inverse (§9.4). Nothing is
+translated for it but the constructor terms of its pattern and the guards of
+its variables, so it adds no lifted symbol and no side axiom.
+
+**Guards.** The formulas here and the examples below are written in the
+guard-dropped form. In the sound configuration a rule also carries the
+guards of its quantified variables at their own types,
+
+    ∀A k w.  Type(A) → Nat(k) → M(w, vec A (S k))  →  ∃x u. …
+
+and a consequent guard that repeats an antecedent guard is dropped. A type
+parameter keeps `Type(A)` under either policy (§9.1). With every constant
+typed in applied form the fully guarded rules solve all six probes of §9.1,
+including `u : vec A (S n + m)`, which no variant without pattern rules
+solves.
+
 Omit a leaf's rule in four cases.
 
 * It simplifies nothing: against the generic inverse at the same pattern,
@@ -541,8 +632,8 @@ Omit a leaf's rule in four cases.
 * It says nothing: one survivor whose branch has no conjunct left. `ev(O)`
   is the example. A data family always keeps the constructor equation.
 * It can retrigger itself: a survivor's branch contains a family atom of
-  `I`, or of a family mutually recursive with it, whose index at the split
-  position is not a proper subterm of the leaf's pattern (§9.6).
+  `I`, or of a family mutually recursive with it, whose index tuple is not
+  strictly smaller than the leaf's in the measure of §9.6.
 * It exceeds a size bound of §9.5.
 
 Each rule is sound on its own, so omitting some leaves is safe.
@@ -608,12 +699,17 @@ against the actual indices `ū` (§9.7), with the asserted equalities of the
 context available. Emit a local fact when
 
 1. at most two constructors survive, and
-2. the fiber is reduced: at least one constructor clashed, or `I` has a
-   single constructor.
+2. the fiber is reduced: at least one constructor clashed, `I` has a single
+   constructor, or matching the actual indices solved a field or discharged
+   a nontrivial residual index equation.
 
-The shape of the goal is not consulted. Condition 2 excludes `n : nat` and
+Decide condition 2 against the generic branches at the same indices, before
+the root simplification of §9.2, and ignore syntactic identities. The shape
+of the goal is not consulted. Condition 2 excludes `n : nat` and
 `l : list A`, where the fact would be a ground instance of the generic
-inverse with nothing removed.
+inverse with nothing removed. It admits `h : fin (S n)`, where both
+constructors survive and each solves its predecessor field: that
+disjunction is the fact one measured success used.
 
 **The fact.** A separate axiom in `h`'s own bundle, closed and
 unconditional under every guard policy, with `h` in place of the subject:
@@ -624,17 +720,17 @@ For a predicate hypothesis there is no subject and no constructor equation.
 With no survivor the fact is `$false`. The existentials are outermost, so
 the fields Skolemize to constants (§9.6).
 
-Independently of conditions 1 and 2, a conjunct that mentions no unsolved
+Where a full fact is not admitted, a conjunct that mentions no unsolved
 field and appears in every surviving branch may be asserted on its own. It
-needs no witness, so a fiber with many survivors can still yield a fact.
-With a single survivor the full fact already contains it, as it contains
-`P(i)` for `packet`.
+needs no witness, so a fiber with many survivors can still yield a fact. Do
+not emit both: the full fact already contains such a conjunct, as it
+contains `P(i)` for `packet`.
 
 **Chains.** Suppose exactly one constructor survives and a field `u`,
-informative or propositional, has type `I p̄ ū′` in the same family, where
-each index in `ū′` is a subterm of the corresponding index in `ū` and at
-least one is a proper subterm. Then expand `u` in place, under the same
-existentials. Repeat while that holds, up to the layer bound of §9.5. A
+informative or propositional, has type `I p̄ ū′` in the same family at the
+same parameters, and `ū′` is strictly smaller than `ū` in the measure of
+§9.6. Then expand `u` in place, under the same existentials, by matching the
+same translated inverse at `ū′` (§9.4); nothing is translated again. Repeat while that holds, up to the layer bound of §9.5. A
 layer with two survivors ends the chain as a disjunction whose fields are
 not expanded. Every unexpanded field keeps its family atom. Each layer
 consumes a constructor of an index term that is in the input, so the fact is
@@ -676,6 +772,16 @@ own declaration is not among the premises. It is then the only place where
 the specification of that hypothesis reaches the prover. A proof that uses
 it uses `h` (§10.2).
 
+**Scope: hypotheses of the context.** `hammer` translates the conclusion as
+it stands. A hypothesis the user has not introduced is a binder or a premise
+of the conjecture. It gets no local fact, and the pattern rules serve it:
+the negated conjecture asserts it of Skolem constants, and one resolution
+step with a rule gives the specialized form. Translating the goal as
+`intros` would leave it was considered and rejected (§9.8). The evaluation
+hook runs directly after `Proof.`, and every measurement of this section
+was taken after `intros`, so local facts are evaluated on goals the harness
+introduces first (§11).
+
 **Not admitted.** A typing under quantifiers, such as a function result,
 gets no local fact; the pattern rules serve it. A hypothesis of an enum,
 subset or empty type needs none, because its typing axiom is already the
@@ -684,26 +790,72 @@ version.
 
 ### 9.4 Building a branch
 
-A rule or fact is built per surviving constructor `c` from the matcher's
-result `(σ, residual equations)`. `σ` contains the solved fields and the
-proof erasures. Bind the unsolved informative fields in telescope order. The
-branch is the conjunction of
+A rule or a fact is an instance of the generic inverse: the inverse at
+particular index terms, simplified in first-order logic. It is built from
+the translated inverse, not translated again from a substituted telescope.
 
-* the equality of the subject with the translated **full** constructor spine
-  under `σ` (data families only),
+**The template.** Translate each constructor's telescope once, at the
+family's parameters, into a branch: the guard of each informative field, the
+proposition of each proof field, the index patterns (§9.7) and, for a data
+family, the full constructor spine. These are the pieces `mk_inversion`
+builds today, kept apart instead of joined. The generic inverse is assembled
+from the branches, and so is every rule and every fact. At a declaration
+the parameters are the formals, and the template is cached with the
+declaration's axioms. At a hypothesis they are its actual parameters, and
+the template is translated in the hypothesis's bundle.
+
+**Two substitutions, kept apart.**
+
+* *Parameters are instantiated before translation.* A telescope at the
+  formal parameters, or at the actual parameters of a hypothesis, is a
+  well-typed Rocq telescope. The ordinary translator reads its proof masks,
+  classes and guards from it.
+* *Index solutions are applied after translation.* Solving a field from an
+  index equation is `∃y.(y = t ∧ F(y)) ↔ F(t)` on the translated branch. It
+  holds for every first-order term `t` and needs no typing of `t` at the
+  field's type. A source term is never rewritten with an index solution.
+
+The second point is what a dependent field needs. Take
+`mkJ : ∀ n (x : B (f n)), R (f n) x → J (f n) x` at `h : J k y`. The first
+index leaves `k = f n`, and the second solves `x := y`. In the source that
+gives `R (f n) y`, which Rocq rejects because `y : B k`. On the translated
+branch
+
+    ∃n x. Nat(n) ∧ G(x, B(f n)) ∧ R(f n, x) ∧ k = f n ∧ y = x
+
+the one-point rule gives `∃n. Nat(n) ∧ G(y, B(f n)) ∧ R(f n, y) ∧ k = f n`,
+and Rocq proves `J k y → (∃n, k = f n) ∧ R k y` by a dependent match, with
+no axiom. No conversion test is needed, and the plugin has none.
+
+**A branch** is built per surviving constructor `c` from the matcher's
+result `(σ, residual equations)`. Apply `σ` to the translated branch by
+first-order substitution. Bind the unsolved informative fields in telescope
+order. The branch is the conjunction of
+
+* the equality of the subject with the **full** constructor spine under `σ`
+  (data families only),
 * the guard of each informative field at its instantiated, possibly
   dependent type, including a solved field at its solution,
-* each translated proof payload under the same substitution and binders, and
+* each proof payload under the same substitution and binders, and
 * the residual index equations.
 
 Existentially close each branch and disjoin the branches.
 
+Each step is a first-order consequence of the generic inverse together with
+typing, injectivity and disjointness of the index constructors compared:
+instantiate the inverse at the target; replace the guard of a
+constructor-headed target by the guards of its variables; replace
+`d(q̄,s̄) = d(q̄,t̄)` by the pairwise equations; replace `d(…) = d′(…)` by
+false; apply the one-point rule; hoist a common conjunct. A rule therefore
+has the basis of the inverse it specializes (§10.1), and its spines, masks
+and lifted symbols are the ones the template's translation produced.
+
 Three points carry over from the first review. A solved field stays in its
 slot of the constructor term: for `h : packet i` the term is `pack(i,x,y)`,
 never a binary `pack(x,y)`. The guard of a solved field is retained, because
-a bare FOL subterm carries no sort certificate; with the antecedent guards
-gone (§9.1) it appears in the consequent, as `Nat(k)` does in the rules of
-§9.2. And the witnesses are shared within a branch: in §8, the guard for `y`
+a bare FOL subterm carries no sort certificate; where the antecedent guards
+are dropped (§9.1) it appears in the consequent, as `Nat(k)` does in the
+rules of §9.2. And the witnesses are shared within a branch: in §8, the guard for `y`
 depends on `x`, and the index, constructor and `P(x,y)` must all refer to
 the same pair. Separate claims that some pair satisfies `P` and some pair
 constructs `h` would lose the correlation needed to prove
@@ -712,6 +864,12 @@ constructs `h` would lose the correlation needed to prove
 A conjunct that mentions only indices and parameters needs no witness. With
 a single surviving branch it clausifies to a clause of its own, as `P(i)`
 does for `packet`.
+
+**What this gives up.** A field type is translated once, at the telescope's
+own variables. If it would compute further at a solved index, as `T n` at
+`n := S k`, the rule keeps `G(b, T (S k))` as a membership atom and leaves
+the step to the equations of `T`. That is a weaker guard, never a wrong
+one.
 
 ### 9.5 Bounds
 
@@ -726,9 +884,11 @@ on the corpus (§11).
 | Work on one family's cover | 16,384 visited term nodes | Protects translation time. |
 | Survivors in a local fact | 2 | Every measured fact had one or two branches. |
 | Layers in a local chain | 8 | A layer adds three unit clauses. |
-| Work and size of one local fact | 4,096 nodes each | A chain is linear in an index term of the input. |
+| Work and size of one local fact | 4,096 nodes each | A chain is linear in an index term of the input. These limits protect translation time. |
+| Estimated clauses of one local fact, chain included | 4 × the estimate for the generic inverse at the same hypothesis, at most 256 | A fact simplifies that instance, so its allowance is relative to it. |
 | Exposure of one index pattern | 256 nodes | A closed `Nat.pow 2 9` index otherwise becomes a 512-successor numeral (§10.4). |
 | Symbols in one expanded guard, nested payloads included | twice the largest expansion among the existing fixtures | Start from `tests/plugin/EXPECTED-extraction.md`. |
+| Clause factor of expanded guards in one axiom's binder prefix | 8 | `Ascii` has eight `bool` fields: one typing axiom, 256 instances (§10.9). |
 
 **Every bound is local** to a declaration, a hypothesis or a pattern. Total
 output is then linear in the selected families and the hypotheses, and no
@@ -783,6 +943,18 @@ choosing carrier erasure, a per-occurrence budget cutoff must never switch a
 value back to a boxed representation. A pattern rule or a local fact can
 always be declined independently.
 
+**Clause factor.** The symbol budget misses the cost that matters to a
+prover. Expanded enum guards in the leading binder prefix of one axiom
+multiply its clauses: one copy of the body per combination of alternatives.
+This covers the argument guards of an applied typing and the outer binders
+of a lemma. When the product of the alternative counts in one prefix
+exceeds the bound, state those guards by the membership atom, whose meaning
+the bridge of §10.9 supplies. The axiom is then one clause with one literal
+per argument. This chooses a formula for a guard, not a representation:
+terms, matches and the type's class are unchanged, and the choice is a
+function of the axiom alone. The conjecture is exempt, because after
+negation its binder guards are asserted.
+
 ### 9.6 ATP cost and polarity
 
 **Measured sizes.** Clausified with E (`--cnf --no-preprocessing`) for
@@ -824,11 +996,14 @@ fresh tail, which may trigger inversion again. The generic inverse of an
 unindexed recursive family is already such a source, and it stays. A pattern
 rule must not add another: it is emitted only when each recursive family
 atom it can produce decreases on an index, as `M(u, vec A k)` from
-`M(w, vec A (S k))` does (§9.2). Use a fixed index position along the
-recursive path and require a proper syntactic subterm after checked
-substitution and bounded reduction. For mutually recursive families this
-requires a consistent decreasing measure across the cycle. A rule with no
-recursive atom cannot retrigger itself.
+`M(w, vec A (S k))` does (§9.2). Use one measure on every
+recursive edge of a mutual block: the total tree size of the retained index
+tuple, with variables at size one, must strictly decrease, and no variable
+may occur more often. A fixed index position is not enough. The premises
+and conclusions `Side x (S (S y)) → Up (S x) y` and
+`Up (S (S x)) y → Side x (S y)` each decrease at their own split position,
+and the two specialized inverses together grow both indices without bound.
+A rule with no recursive atom cannot retrigger itself.
 
 Compare the runs with and without the new rules on the same recursive
 problems: an unindexed family, vectors with ground and symbolic lengths, and
@@ -848,18 +1023,30 @@ actual indices `ū`:
     branch when `u_r` and `t_rᶜ` have distinct constructor heads somewhere
     along a spine of equal heads.
 
-Use a one-sided matcher. Its unknowns are fresh constructor fields, and the
-other side consists of rigid terms in the caller's context. Return either
-`Clash` or a pair `(σ, residual equations)`. One constructor can solve
-`n := k` from `S n = S k` and still require `f(k) = j` at a later index.
+Use a one-sided matcher over **patterns**. A pattern is read once from a
+typed term, after its heads are exposed as described below. It is a variable
+that may be solved or split; a saturated constructor of a data inductive
+with its translated parameters and the patterns of its informative fields;
+or any other term, translated and compared by identity only. A
+constructor's result indices are read in its telescope, a cover node's
+index tuple in the node's context, a hypothesis's actual indices in the goal
+context. Which arguments are parameters, fields or proofs is recorded when
+the pattern is read. It is never recomputed from a first-order term or from
+a substituted one.
 
-* Delete a syntactic identity. Solve a bare unknown by substitution
-  throughout the telescope, payloads, constructor spine and all equations,
-  including earlier residuals. Retain the instantiated field guard (§9.4).
-* Decompose equal, saturated translated constructor heads at their injective
-  payload positions. Retained parameters must coincide after substitution
-  and bounded reduction, or be equal by explicit FOL equalities available in
-  this scope. For example, injectivity of `d` gives `x=y` from
+The matcher's unknowns are fresh constructor fields, and the other side
+consists of rigid patterns in the caller's context. Return either `Clash`
+or a pair `(σ, residual equations)`. One constructor can solve `n := k` from
+`S n = S k` and still require `f(k) = j` at a later index.
+
+* Delete a syntactic identity. Solve a bare unknown, with no type test, and
+  substitute it in the translated branch (§9.4): guards, payloads,
+  constructor spine and all equations, including earlier residuals. Retain
+  the instantiated field guard.
+* Decompose equal, saturated constructor heads at their informative,
+  non-parameter positions. Retained parameters must be syntactically equal
+  as translated, or equal by explicit FOL equalities available in this
+  scope. For example, injectivity of `d` gives `x=y` from
   `d(A,x)=d(B,y)`. With an independent premise `A=B`, congruence gives the
   reverse direction, so the matcher can keep `x=y` in place of the
   constructor equality. Record which equalities justified that step. An
@@ -867,15 +1054,18 @@ other side consists of rigid terms in the caller's context. Return either
   constructor disjunct is available only in that disjunct and must survive
   as a conjunct unless independently discharged. Exclude the equation being
   removed from the justification. If parameter agreement remains unresolved,
-  retain the original equation under the substitution found so far.
+  retain the original equation under the substitution found so far. A step
+  at a field whose type depends on an earlier field, as at the second
+  component of `existT`, rests on `eq_rect_eq` in Rocq; record that it was
+  taken (§10.1).
 * Drop a branch only for a certified clash of disjoint translated
   constructors. Proof terms and collapsed constructors cannot serve as rigid
-  heads. Use budgeted head normalization on both sides. Preserve stuck
-  equations for the ATP when the head, erasure or telescope is uncertain.
-  The certificate is read from the index type's declaration: constructors
-  of one data inductive, saturated, not collapsed, with a determined proof
-  mask. Whether that type's discrimination axiom is among the premises is
-  not part of it (§10.1).
+  heads: such a term is read as an opaque pattern and can only leave a
+  residual equation. Preserve stuck equations for the ATP when the head,
+  erasure or telescope is uncertain. The certificate is read from the index
+  type's declaration: constructors of one data inductive, saturated, not
+  collapsed, with a determined proof mask. Whether that type's
+  discrimination axiom is among the premises is not part of it (§10.1).
 * Apply the viability test even when matching removes the last residual
   equation. An empty set of surviving branches is information: it is the
   negated-atom rule of §9.2 and the `$false` fact of §9.3.
@@ -889,10 +1079,14 @@ stuck gives `i = g(x,y)` over the named function, `S n + m` gives
 Today a transparent recursive function is emitted over a fresh symbol
 instead (§10.4). A residual equation is only usable by the ATP if it
 mentions the symbol that occurrences and lemmas mention. One reader does
-this for every consumer of result indices: the inversions, the
-classification and fording, the guard equations of enums and subsets, the
-case path, and the constructor's own axiom. Occurrence indices elsewhere
-stay as their source has them.
+this for every consumer of result indices: the inverse template, the
+classification and fording, the guard equations of enums and subsets, and
+the case path. The constructor's own statement keeps the index as written.
+A goal `Good (1 + k)` matches `good : ∀ k, Good (1 + k)` directly, and the
+exposed form `Good (S k)` would need the equations of `+` to reach it; a
+three-record slice with the exposed conclusion had a countermodel. The two
+readings share every function symbol, so those equations connect them.
+Occurrence indices elsewhere stay as their source has them.
 
 **Where it runs.**
 
@@ -908,15 +1102,16 @@ A guard of a regular family elsewhere, for example in the domain of a
 quantified lemma, keeps its membership atom and is not matched. The ATP
 applies the rules to it.
 
-Cache declaration analysis, the cover included, with the declaration. Its
+Cache declaration analysis, the template and the cover included, with the
+declaration. Its
 validity is independent of actual indices and local equalities. Retain the
 existing classifier's parameter and typing-context distinctions, and give
 its templates fresh binders when instantiating them. Do not cache a
 hypothesis's substitutions, clashes or residuals in the classifier: `I 0`
 and `I (S k)` can have the same classifier key and different survivors.
 
-The case path and the rule path should share telescope and substitution
-machinery. Case-side pruning decides whether to emit a particular match
+The case path and the rule path read result indices through the same
+reader. Case-side pruning decides whether to emit a particular match
 equation. A rule or fact asserts an implication from the family atom and
 must be justified as one. Keep those proof obligations explicit at the call
 sites. The declaration mask also needs the compatibility check in §10.5.
@@ -927,8 +1122,8 @@ The policy in §§9.1–9.7 uses the membership representation and constructor
 symbols already emitted by the plugin. The first four alternatives would add
 structure to the ATP problem. The next four were in the previous revision of
 this note and are withdrawn. The ninth was considered for the second
-revision. The last four were considered in the review of the implementation
-plan.
+revision. The next four were considered in the review of the implementation
+plan, and the last five in its second review.
 
   * **An additional inhabitation predicate per family.** Sharing requires
     only the current membership in the antecedent of the inverse. Another
@@ -985,6 +1180,31 @@ plan.
   * **First-order constructor typing only as an evaluation control.** It is
     sound, costs one Horn clause per selected constructor and serves every
     guarded premise (§9.1).
+  * **Typing in applied form for constructors only.** It leaves `Type(A)`
+    at a compound type parameter and `Nat(n + m)` on the lifted route. Two
+    of six probes stayed at 0 with it, and all six are solved once type
+    formers and functions are typed the same way (§9.1).
+  * **Guard dropping as the default without a comparison.** Its gains were
+    measured before applied typing existed, and no gain over the fully
+    guarded configuration remains on the probes. The evaluation decides
+    (§§9.1, 11).
+  * **Substituting index solutions into the source telescope.** A solved
+    field can have a type that is equal to the target's only through an
+    earlier index equation, so the substituted telescope can be ill typed.
+    Guarding the step needs a conversion test the plugin does not have, and
+    its fallback keeps a witness that the one-point rule removes.
+    Substituting in the translated branch needs neither (§9.4).
+  * **Translating the goal as `intros` would leave it**, so that local facts
+    see a hypothesis that is still in the conclusion. It adds no logical
+    content: the negated conjecture already asserts that hypothesis of
+    Skolem constants, and a pattern rule reaches it in one step. It would
+    move hypotheses from the conjecture to axioms in every problem with a
+    binder prefix and introduce owner names that are not in the real
+    context. A user who wants the facts runs `intros`, and the evaluation
+    does the same in the harness (§§9.3, 11).
+  * **Adding a local fact as an antecedent of the conjecture.** The fact
+    then has no name, so the hint for its family cannot be read from a
+    core. Dropped with the previous alternative.
 
 ## 10. Obligations and open items
 
@@ -1020,10 +1240,17 @@ emits for every value it covers (§§9.7, 10.5).
 
 | Formula | Justification |
 |---|---|
-| Guarded generic inverse, first-order constructor typing | The declaration, translated. Emitted today, or the direct form of what is. |
-| Guarded pattern rule | The declaration: inversion at the pattern, with disjointness and injectivity of the index constructors. |
+| Guarded generic inverse, first-order typing of a constant | The declaration, translated. Emitted today, or the direct form of what is. |
+| Guarded pattern rule | The declaration: inversion at the pattern. In first-order terms, a consequence of the generic inverse with typing, disjointness and injectivity of the index constructors (§9.4). |
 | Local fact | The goal context: inversion on the hypothesis. A step justified by a local equality depends on that equality. |
+| Membership bridge | Both sides state that a value inhabits one type, at the representation in use (§10.9). |
 | Guard-free generic inverse and pattern rule | A heuristic. Not derivable from the guarded form, and inconsistent with a selected extensional function equality (§9.1). |
+
+"Provable in Rocq" includes `Eqdep.Eq_rect_eq.eq_rect_eq` in one case:
+injectivity of a constructor at a field whose type depends on an earlier
+field. The `$_inj_` axioms already state that injectivity, and a rule may
+use it for an index constructor. The matcher records when it does (§9.7),
+so that reconstruction expects the axiom (§10.2).
 
 Because rules other than the guard-free ones no longer need a derivation
 from the problem, the consistency lists of §11 also run with guard dropping
@@ -1084,7 +1311,10 @@ When the inversion hints include an indexed data family, that is, an
 inductive outside `Prop` with at least one index, run the `dep: on` batch
 second. The first batch is unchanged. The delay before `dep: on` starts is
 then at most one `ReconstrLimit` (5 s by default). A predicate needs no
-routing: all three `ev` goals reconstruct with plain `hauto … inv: ev`. The
+routing: all three `ev` goals reconstruct with plain `hauto … inv: ev`. One
+case is evaluated with the reordering: a family of any sort with an index
+type whose constructor has a field depending on an earlier field, because a
+rule for it may rest on dependent injectivity (§10.1). The
 implementation plan evaluates the reordering as an experiment and adopts it
 only if no stable axiom-free proof is traded for one that uses the axiom
 below.
@@ -1177,8 +1407,8 @@ and only the result application is evaluated.
 **The fix is one reader** for the patterns, used in the three places that
 read them: the two inversions (`coq_transl.ml:758`, `:793`) and
 `constructor_index_data` (`coq_erasure.ml:155`), which serves fording,
-classification and the case path. The constructor's own axiom is translated
-from the same reading.
+classification and the case path. The constructor's own axiom keeps the
+index as written (§9.7).
 
 1. Refresh the binders of the declared type once and peel its product
    telescope without evaluating it.
@@ -1236,7 +1466,9 @@ hypothesis. Exercise mixed instantiations in the same dump. Include a
 matcher test with the same index terms in two scopes, only one of which
 supplies the parameter equality. Check that the unconditional output retains
 the residual equation and that every step justified by an equality records
-it.
+it. A local fact translates the inverse at its hypothesis's own parameters
+(§9.4), so one translation supplies the mask it uses and the two readings
+cannot disagree for it.
 
 ### 10.6 Defect: stale premise in `notes/gaps.md` §7
 
@@ -1269,6 +1501,50 @@ of disjoint translated constructors. The cover never splits on a
 sort-typed index position. Such families get the generic inverse and no
 more.
 
+### 10.9 Defect: expanded types have no membership
+
+Independent of this proposal. A guard at an enum, a subset or an empty type
+is stated by its expansion (§6), and no formula relates the expansion to the
+atom `$HasType(x, ⟦T⟧)`. No guard produces that atom at such a type. The
+prover does: it instantiates a polymorphic guard `$HasType(a, A)` at
+`A := bool`, and a typing with a type variable does the same. The typing
+axiom of `true` is the tautology `true = true ∨ true = false`, and
+`$_inversion_bool` has that expansion on both sides.
+
+From `q_all : ∀ (A : Type) (a : A), Q A a` the provers prove `Q nat 0`. None
+proves `Q bool true`, `b : bool ⊢ Q bool b` or the instance at
+`{n : nat | n = 0}`, at 16 or at 1024 premises, and Vampire reports a
+countermodel for the second. A polymorphic lemma is therefore unusable at an
+expanded type, and so is the applied typing of `cons` at `list bool`.
+
+**The fix is a membership bridge.** When `convert` translates, in term
+position, a saturated application of an inductive that the classifier
+reports as `CEnum`, `CSubset` or `CEmpty` at these parameters, a bare
+constant such as `bool` included, emit once per translated type term
+
+    ∀ fv x.  $HasType(x, ⟦T⟧)  ↔  G(x, T),
+
+with `G` the guard of §6 and `fv` the free variables of the occurrence.
+
+* It is an equivalence, as the unfolding of a transparent leaf type already
+  is (`add_type_unfolding_axiom`): both sides say that `x` inhabits `T` at
+  the representation in use, and there is no domain to be empty. For `bool`
+  it is two unit clauses and one clause with two positive literals.
+* It is shared like a lifted type, so one instance has one axiom, and the
+  axiom travels with every declaration that mentions the instance. It is a
+  function of the type term and the declarations.
+* A type that occurs in guard position only needs none: no atom about it
+  can arise.
+* Guards stay expanded. The one exception bounds clauses (§9.5):
+  `Ascii : bool → … → bool → ascii` is one typing axiom and 256 instances,
+  which E clausifies to 69 clauses over fresh definitions, and with the
+  atom it is one clause.
+
+Measured with a hand-written bridge for `bool`: `b : bool ⊢ Q bool b` goes
+from 0 to 6 of 6 cells. `Q (list bool) (b :: l)` needs the bridge and the
+applied typing of `cons` and `list` together: 0 with either alone, 6 with
+both.
+
 ## 11. Staging
 
 The order follows measured value per unit of work. Stages 0 and 1 leave the
@@ -1280,17 +1556,21 @@ translation unchanged.
    `hammer` to confirm.
 1. **Prover status.** Accept `ContradictoryAxioms` (§10.3). Assert it end to
    end on `x : fin 0 ⊢ False` with only Vampire enabled.
-2. **Guards.** The guard-free generic inverse and first-order constructor
-   typing, each behind its own switch and both on by default (§9.1).
-   Evaluate each alone and both together on the corpus. Every later stage
-   is compared against the two together, and reported against constructor
-   typing alone, not against today's baseline.
-3. **Index terms.** The reader of §10.4, behind its own switch and on by
-   default, starting from the prototype. Fixtures: the twelve of the
-   prototype, with an assertion on the symbol in each index equation. Then
-   implement the matcher (§9.7) and screen it at the root: solved-plus-stuck
-   results, dependent field guards, mixed proof/data arities and incomplete
-   telescopes.
+2. **Typing, membership and guards.** First-order typing of every constant
+   and the membership bridge (§§9.1, 10.9), each behind its own switch and
+   both on by default. The guard-free generic inverse behind a third
+   switch, off until the evaluation below decides. Evaluate each alone and
+   together on the corpus. Every later stage is compared against the sound
+   configuration, applied typing with the bridge, not against today's
+   baseline.
+3. **Index terms and the template.** The reader of §10.4, behind its own
+   switch and on by default, starting from the prototype. Fixtures: the
+   twelve of the prototype, with an assertion on the symbol in each index
+   equation. Then the template of §9.4: assemble the generic inverse from it
+   and require today's output on every existing fixture before the old
+   construction is removed. Then the matcher on patterns (§9.7), screened at
+   the root: solved-plus-stuck results, dependent field guards, mixed
+   proof/data arities and incomplete telescopes.
 4. **Pattern rules for predicates** (§9.2). No subject, no spine, no mask
    question and no reconstruction cost.
 5. **Pattern rules and local facts for data families** (§§9.2–9.3), emitted
@@ -1302,15 +1582,21 @@ output with the same shape. Test an unsafe subset candidate in one problem
 containing construction, a partial application and a match. All three must
 agree on its ordinary constructor.
 
-**A census comes with stage 4.** The cover computation classifies every
-inductive it sees. Log, per corpus, how many predicates and how many data
-families have at least one non-root leaf, with leaf and survivor counts. The
+**A census comes first, and again with stage 4.** All gain evidence so far
+is synthetic, so count the population before building for it. From the
+declarations and the hooked goals alone, per corpus: inductives with an
+informative index position; those with a constructor-headed result index;
+goals with a hypothesis in such a family, in the context or still in the
+conclusion; type parameters instantiated with a compound type; expanded
+types in term position. These counts settle how far stages 4 and 5 go. The
+cover computation then classifies every inductive it sees. Log, per corpus,
+how many predicates and how many data families have at least one non-root
+leaf, with leaf and survivor counts. The
 second review expects predicates with constructor-headed patterns (typing
 and evaluation judgments, `le`, `Forall2`, permutations) to outnumber
-indexed data families, and did not count them. The order above does not
-wait for that count. Predicates come first because they are the simpler
-case and reconstruct without `dep: on`; the census says how much stages 4
-and 5 are each worth.
+indexed data families, and did not count them. Predicates come first
+because they are the simpler case and reconstruct without `dep: on`; the
+census says how much stages 4 and 5 are each worth.
 
 **Translation-shape assertions** for `check-extraction-transl.sh`:
 
@@ -1323,21 +1609,33 @@ and 5 are each worth.
   whether or not its family is.
 * `vec`, `fin`, `ev`, `le` and a two-index predicate: the rules of §9.2, and
   no rule for an omitted leaf.
-* No antecedent guard on a covered variable; the solved field's guard in the
+* Applied typing: both conjuncts of the typing axiom for a constructor, a
+  type former and a function; none for a predicate; no second copy where a
+  type has erasable content.
+* One membership bridge for two occurrences of one expanded type instance,
+  and none for a type that occurs in guard position only.
+* The generic inverse assembled from the template is today's formula. A
+  pattern rule adds no lifted symbol and no side axiom to its family's
+  bundle. A solved dependent field leaves no witness.
+* In the sound configuration, every antecedent guard on the rule's own
+  variables and `Type(A)` on a type parameter. With guard dropping on, no
+  antecedent guard on a covered variable; the solved field's guard in the
   consequent; an uncovered guard retained, on the rule's own variable.
 * Local facts for: a canonical-form goal, fields read in a hypothesis,
   projections in the goal, a closed depth-2 index, a dependent pair, an
   impossible fiber, a stuck residual equation, and a hypothesis needing a
-  local equality. Controls with no fact: `n : nat`, `l : list A`.
+  local equality. Controls with no fact: `n : nat`, `l : list A`, and a
+  hypothesis left in the conclusion.
 * Two distinct inhabitants may carry different fields. A single inhabitant's
   two projections satisfy the constructor's joint payload.
 * An opaque membership consumer, and a junk-model consistency canary that
   pairs an impossible fiber with an unrelated inhabitant.
 
 **Evaluation.** Screen each switch separately via `eval/rebuild-config.sh`
-on identical premises, budgets and prover versions: baseline; first-order
-constructor typing; guard-free generic inverse; pattern rules, guarded and
-guard-free; local facts; rules and facts together. Record translation time,
+on identical premises, budgets and prover versions: baseline; the membership
+bridge; applied typing with the bridge, which is the sound configuration;
+the guard-free generic inverse with and without applied typing; pattern
+rules; local facts; rules and facts together. Record translation time,
 FOF size, clausified literals and clauses, fresh symbols and arities,
 prover-specific gains and losses, the prover status, and common goals
 reconstructed by any prover. Report reconstruction separately for goals
@@ -1355,7 +1653,20 @@ moves some proofs across the time limit. Problems whose bytes are identical
 in both arms are ties without a run. Report the affected goals, those with
 at least one differing problem, next to the whole list; a change confined
 to indexed families is otherwise lost in noise. Run the consistency lists
-also with guard dropping off and every other rule on (§10.1).
+also with guard dropping off and every other rule on (§10.1), and with the
+membership bridge as the only change.
+
+Guard dropping is decided by the same rule. It becomes the default only if
+the sound configuration with it has stable gains over the sound
+configuration without it. Otherwise it stays a selectable option and the
+release carries no heuristic guard policy.
+
+Local facts read hypotheses of the context, and the hook runs directly
+after `Proof.` (§9.3). Judge them, and the reconstruction changes of stage
+0, in a mode of the hook that runs `intros` first and rolls the proof state
+back afterwards, with both arms introduced. Every other comparison keeps
+the unintroduced goals. Run the consistency lists unintroduced only: an
+introduced lemma with contradictory premises is refuted legitimately.
 
 Defer the four-prover evaluation until the upstream E status-filter fix is
 available in the Hammer revision under test. E 3.5.11 prints
@@ -1388,7 +1699,8 @@ observations of §10.3 and the probe of §10.4.
 [Tables, probe definitions and hand-written rules](reviews/spec-extraction-adversarial-review-2.md)
 
 **Measured for this revision**, same setup and probe files: guarded pattern
-rules with `∀x. Nat(x) → Nat(S x)` added (§9.1, last table row); the
+rules with `∀x. Nat(x) → Nat(S x)` added (§9.1, last row of the second
+table); the
 three-layer local fact on the depth-2 `vec` goal and the one-layer fact on
 `ev (S⁴ n)` (§9.3); the axiom names in Vampire's and E's
 `ContradictoryAxioms` output (§10.3).
@@ -1402,6 +1714,17 @@ indices, and a prototype of the reader of §10.4 on twelve fixtures and on
 the existing test suites. The files are under `.agent-files/evidence` of
 the `spec-extraction` worktree.
 
+**Second plan review**, 2026-11-22, with the plugin built from `8a8ec1a`,
+E 3.5.11 and Vampire 5.0.1, 10 s, three rounds, 1024 premises unless stated.
+Hand-edited dumps of seven `vec` goals: the first table of §9.1 and the
+function-typing probe (`evidence/applied-typing`). An artificial polymorphic
+axiom at `nat`, `bool`, a subset and lists, with a hand-written bridge, and
+the clause count of the typing axiom of `Ascii`: §10.9
+(`evidence/expanded-membership`). A reading of how `hammer` and the hook
+obtain the goal, with four dumps: the scope of §9.3
+(`evidence/goal-intro`). The lemma for the dependent field of §9.4 is in
+`SpecRules.v` of the plan.
+
 **Limits.** The goals are synthetic and chosen to need inversion, so the
 counts say nothing about corpus rates. Every cell is a single run with a
 10 s limit and eight jobs in parallel, and cells near the limit are
@@ -1414,9 +1737,15 @@ the shapes of §9. None of this note is implemented. In particular:
 * the reader of §10.4 exists as a prototype patch only: shape evidence on
   hand-written fixtures, no prover run, no count of families with computed
   indices in a corpus;
-* the argument of §9.1 for guard-free rules is refuted in one setting, a
-  selected extensional function equality; how often that setting occurs was
-  not measured;
+* the argument of §9.1 for guard-free rules is refuted in two settings, a
+  selected extensional function equality and a conversion-proved equality
+  on a sealed primitive record; how often either occurs was not measured;
+* applied typing of type formers and functions and the membership bridge
+  were measured as hand edits for the constants of fourteen problems; their
+  effect on unrelated problems, and how often a compound type parameter or
+  an expanded type in term position occurs in a corpus, is not known;
+* the template, the patterns and substitution after translation are a
+  design: nothing was run but the Rocq lemma for the dependent field;
 * the reconstruction expectation of stage 0 comes from direct tactic calls;
 * acceptance of `ContradictoryAxioms` was read from the code and the prover
   output, with no implementation to run;
