@@ -25,6 +25,8 @@ dropping is a selectable heuristic whose default the evaluation decides
 (§9.1), a rule is an instance of the translated inverse and is specialized
 after translation (§§9.4, 9.7), expanded types get a membership bridge
 (§10.9), and local facts are scoped to hypotheses of the context (§9.3).
+Revised once more that day: the guard of a type parameter is dropped from
+elimination rules by default (§§9.1, 10.10).
 §§8–11 specify what to add
 to the emitted ATP problem and to reconstruction. §12 gives the scope of the
 measurements.*
@@ -42,9 +44,11 @@ measurements.*
    `ContradictoryAxioms` as a found proof (§§10.2–10.3).
 3. State the type of every constant in applied first-order form as well:
    constructors, type formers and functions. That is sound and discharges a
-   guard in one step. Dropping the covered guards of an elimination rule is
-   a heuristic with a known inconsistency. It stays behind a switch and
-   becomes the default only if it beats the sound configuration (§9.1).
+   guard in one step. Drop `Type(A)` from the elimination rules of a
+   polymorphic family by default: a heuristic with no known counterexample.
+   Dropping the covered data guards of an elimination rule is a heuristic
+   with a known inconsistency. It stays behind a switch and becomes the
+   default only if it beats the default without it (§9.1).
 4. For each family, indexed predicates included, emit rules specialized to
    the index patterns of its own constructors. They are a function of the
    declaration alone, and they introduce no new predicate or selector (§9.2).
@@ -65,9 +69,9 @@ measurements.*
    declaration, not because the premises of one problem derive it (§10.1).
 8. Give each enum, subset or empty type that occurs as a term a membership
    bridge. Without it no polymorphic lemma applies at such a type (§10.9).
-9. Compare each addition against the sound configuration, applied typing
-   with the bridge, not against today's output. Measure problem size, ATP
-   success and reconstruction (§§11–12).
+9. Compare each addition against the configuration without it, starting
+   from applied typing with the bridge, not against today's output. Measure
+   problem size, ATP success and reconstruction (§§11–12).
 
 ---
 
@@ -411,7 +415,8 @@ unless they say otherwise.
 | 10.2 | Keep the hypothesis whose typing axiom the proof used; run `dep: on` second for indexed data families | The three clearing failures close with `hauto inv:` once the hypothesis is kept. Checked by direct tactic calls, not yet through `hammer`. |
 | 10.3 | Accept `ContradictoryAxioms` | Once a specialized rule is present, Vampire reports it on both impossible-fiber goals in most runs. Those runs count as failures today. |
 | 9.1 | First-order typing of every constant: constructors, type formers, functions | With constructor typing, guarded pattern rules reach the counts of the guard-free ones: 17 of 24 and 11 of 12. With type formers and functions typed too, a fully guarded configuration solves all 36 cells of the six `vec` probes; two of them stay at 0 with constructor typing and guard dropping. |
-| 9.1 | Elimination rules without covered guards, a heuristic behind a switch | Generic inverse alone: 1 → 10 of 24 and 0 → 5 of 12, measured without applied typing. No cell gained over the fully guarded configuration on the six probes. |
+| 9.1 | Elimination rules without `Type(A)`, a heuristic that is on by default | With `Nat` guards kept, the two probes at a compound type parameter are solved without typing the type formers: 0 → 3 of 6 cells, and 6 with pattern rules. No cell gained once the type formers are typed. |
+| 9.1 | Elimination rules without covered data guards, a heuristic behind a switch | Generic inverse alone: 1 → 10 of 24 and 0 → 5 of 12, measured without applied typing. No cell gained over the fully guarded configuration on the six probes. |
 | 9.2 | Rules for the index patterns of the family's own constructors, predicates included | Guard-free: 17 of 24 and 11 of 12. Guarded: 15 and 8, with nothing proved at index depth 2. |
 | 9.3 | Constructor form of a goal hypothesis as a ground fact | 17 of 24 alone, 20 together with pattern rules. At depth 2, one layer proves nothing and three layers serve all four provers. |
 | 9.7, 10.4 | Index terms read by one reader: heads exposed, stuck terms as written | Probe over `fam (g x y)`: 0 of 4 as emitted, Vampire and CVC4 once the equation names `g`. A prototype of the reader names the source function in twelve fixtures and changes no existing test output. |
@@ -455,10 +460,11 @@ instantiated through it. Three kinds of constant matter.
 * *Constructors.* `∀x. Nat(x) → Nat(S x)`. With it, guarded pattern rules
   reach the counts of the guard-free ones (last row of the second table
   below).
-* *Type formers.* `∀A n. Type(A) → Nat(n) → Type(vec A n)`. A rule over a
-  polymorphic family keeps `Type(A)`, and at `A := vec B m` or
-  `A := list nat` that guard takes the same five inferences through the
-  lifted typing of the type former.
+* *Type formers.* `∀A n. Type(A) → Nat(n) → Type(vec A n)`. Every
+  polymorphic lemma carries `Type(A)`, and so does a rule over a polymorphic
+  family whose guard is kept. At `A := vec B m` or `A := list nat` that
+  guard takes the same five inferences through the lifted typing of the
+  type former.
 * *Functions.* `∀x y. Nat(x) → Nat(y) → Nat(x + y)`, and the membership of
   `vapp u v` in `vec A (n + m)`, which every lemma and every rule about that
   value needs first.
@@ -483,8 +489,55 @@ On a seventh probe, `vlen (vapp u v) = n + m` from a lemma about `vlen`,
 the applied typing of `add`, `vapp` and `vlen` alone takes Vampire from 0 of
 3 rounds to 3 of 3.
 
-**Dropping covered guards.** Every elimination rule has a *family atom* in
-its antecedent: the membership `M(w, I p̄ ī)` of a data family, or the atom
+**The guard of a type parameter is dropped by default.** An elimination
+rule over a polymorphic family omits `Type(A)` when `A` is an argument of
+its family atom:
+
+    ∀A n w.  Nat(n) → M(w, vec A n)  →  ⋁_c ∃ inf₀(c). …
+
+Only the rule's own outer guard goes. `Type(B)` on a type-valued field in
+the consequent stays. So does `Type(A)` in every other formula: lemmas,
+constructor statements and applied typing. A parameter of sort `Prop` and a
+parameter of product type keep their guards.
+
+This is a heuristic: the rule without `Type(A)` does not follow from the
+rule with it. It is the lower-risk kind. For a data family the antecedent is
+itself a typing atom, and every formula that concludes a typing atom keeps
+its guards. For a predicate family the guards of the arguments at `A` stay.
+No counterexample is known. At a polymorphic predicate used at the sealed
+record of the second counterexample below, dropping `Type(A)` keeps the
+countermodel (`evidence/sort-guard`).
+
+Measured on the same probes with `Nat` guards kept, cells solved of 6:
+
+| Variant | `vec A (S n)` | `vec A 2` | `vec nat 2` | `vec (vec A m) (S n)` | `vec (list nat) (S n)` |
+|---|---|---|---|---|---|
+| Constructor typing, every guard kept | 3 | 3 | 3 | 0 | 0 |
+| The same with `Type(A)` dropped | 3 | 3 | 3 | 3 | 3 |
+| Type formers typed too, every guard kept | 3 | 3 | 3 | 3 | 2 |
+| Pattern rules, type formers typed, every guard kept | 6 | 6 | 6 | 6 | 6 |
+| Pattern rules without `Type(A)`, type formers not typed | 6 | 6 | 6 | 6 | 6 |
+
+The 2 is E giving up under load: nine further rounds at lower load gave 9
+of 9 in each variant of that goal. Dropping `Type(A)` and typing the type
+formers are independent ways past a compound type parameter, and neither
+adds a cell to the other. The guard is dropped by decision, not on a
+measured gain, and the evaluation of §11 compares the default with and
+without it.
+
+The known cost is at a proposition used as type parameter. `Type(P)` is not
+derivable for a proposition, so a guarded rule never fires there. Without
+the guard it does, and it names the constructor with every field of type
+`A` in place. The translator erases a closed proof from such a slot and
+keeps one named by a hypothesis (§10.10). At an erased slot the rule's
+conclusion does not meet the facts about the value. No refutation was
+found.
+
+Below, *guard dropping* means the dropping of data guards.
+
+**Dropping covered data guards.** Every elimination rule has a *family
+atom* in its antecedent: the membership `M(w, I p̄ ī)` of a data family, or
+the atom
 `I(p̄,ī)` of a predicate. In the intended model of `notes/type_guards.md`
 §3.1 that atom is false whenever a parameter or index is not of the type its
 position forces. The same holds hereditarily for the variables of a
@@ -506,9 +559,10 @@ of §9.2. A local fact (§9.3) has no antecedent.
   and a regular representation at these parameters. A transparent alias of
   such a type qualifies. A guard that this test does not certify stays.
   Examples that stay: a variable occurring only under a defined function
-  that may reduce; an index whose formal type is a product; a variable whose
-  type is an opaque constant, an abstract module field or a type variable;
-  and a type parameter, whose guard is `Type(A)`.
+  that may reduce; an index whose formal type is a product; and a variable
+  whose type is an opaque constant, an abstract module field or a type
+  variable. A type parameter is not decided here: its `Type(A)` is dropped
+  by default (above).
 * **What is kept.** Every guard in the consequent: the field guards under
   the existentials, and the guard of a solved field at its solution (§9.4).
   They are facts, and the prover uses them to discharge the guards of other
@@ -550,8 +604,12 @@ not hold in general. Two counterexamples are known.
   plan).
 * On a sealed primitive record Rocq proves such an equality by conversion
   alone, and the lifted lambda loses every occurrence of its input through
-  proof erasure (`evidence/erased-eta`). The restriction to visible data
-  carriers above answers this one. The first remains.
+  proof erasure (`evidence/erased-eta`). The same happens at a polymorphic
+  predicate used at the sealed record, once the guard of its index at the
+  type variable is dropped. Nothing in that declaration mentions the sealed
+  type, so a type variable counts as opaque (`evidence/sort-guard`). The
+  restriction to visible data carriers above answers this one. The first
+  remains.
 
 Guard dropping is therefore a deliberate heuristic. It is implemented behind
 a switch, the limitation is documented, and the switch is the opt-out for a
@@ -562,7 +620,7 @@ constructor typing because `Nat(n + m)` still needs the lifted typing of
 `+`. Applied typing of functions removes that reason, and on the six probes
 the fully guarded configuration loses no cell to any guard-dropping
 variant. Guard dropping becomes the default only if it shows stable gains
-over the sound configuration in the evaluation of §11. Write it into
+over the default without it in the evaluation of §11. Write it into
 `add_inversion_axioms`, replacing the guarded inverse in place: an appended
 guard-free copy doubles the non-Horn clauses and the Skolem witnesses
 (`evidence/clauses`).
@@ -614,16 +672,17 @@ translated for it but the constructor terms of its pattern and the guards of
 its variables, so it adds no lifted symbol and no side axiom.
 
 **Guards.** The formulas here and the examples below are written in the
-guard-dropped form. In the sound configuration a rule also carries the
-guards of its quantified variables at their own types,
+guard-dropped form. By default a rule also carries the guards of its
+quantified data variables at their own types,
 
-    ∀A k w.  Type(A) → Nat(k) → M(w, vec A (S k))  →  ∃x u. …
+    ∀A k w.  Nat(k) → M(w, vec A (S k))  →  ∃x u. …
 
-and a consequent guard that repeats an antecedent guard is dropped. A type
-parameter keeps `Type(A)` under either policy (§9.1). With every constant
-typed in applied form the fully guarded rules solve all six probes of §9.1,
-including `u : vec A (S n + m)`, which no variant without pattern rules
-solves.
+and a consequent guard that repeats an antecedent guard is dropped.
+`Type(A)` stands in front only when the dropping of type-parameter guards
+is switched off (§9.1). With every constant typed in applied form the fully
+guarded rules solve all six probes of §9.1, including
+`u : vec A (S n + m)`, which no variant without pattern rules solves. The
+rules without `Type(A)` solve the same cells.
 
 Omit a leaf's rule in four cases.
 
@@ -1184,10 +1243,14 @@ plan, and the last five in its second review.
     at a compound type parameter and `Nat(n + m)` on the lifted route. Two
     of six probes stayed at 0 with it, and all six are solved once type
     formers and functions are typed the same way (§9.1).
-  * **Guard dropping as the default without a comparison.** Its gains were
-    measured before applied typing existed, and no gain over the fully
-    guarded configuration remains on the probes. The evaluation decides
-    (§§9.1, 11).
+  * **Dropping data guards as the default without a comparison.** It has a
+    known inconsistency, its gains were measured before applied typing
+    existed, and no gain over the fully guarded configuration remains on
+    the probes. The evaluation decides (§§9.1, 11).
+  * **Keeping `Type(A)` on elimination rules.** The one argument found for
+    it is the mismatch at a proposition parameter, which is narrow and not
+    known to break anything. On the probes the guard matters only where
+    the type formers are not typed in applied form (§§9.1, 10.10).
   * **Substituting index solutions into the source telescope.** A solved
     field can have a type that is equal to the target's only through an
     earlier index equation, so the substituted telescope can be ill typed.
@@ -1253,9 +1316,9 @@ use it for an index constructor. The matcher records when it does (§9.7),
 so that reconstruction expects the axiom (§10.2).
 
 Because rules other than the guard-free ones no longer need a derivation
-from the problem, the consistency lists of §11 also run with guard dropping
-off and every other rule on. A refutation there cannot be blamed on the
-heuristic.
+from the problem, the consistency lists of §11 also run with no guard
+dropped and every other rule on. A refutation there cannot be blamed on
+either heuristic.
 
 The negated-atom rule of an empty fiber is false of no inhabitant, because
 the fiber has none. A problem containing both the rule and an inhabitant of
@@ -1545,6 +1608,33 @@ from 0 to 6 of 6 cells. `Q (list bool) (b :: l)` needs the bridge and the
 applied typing of `cons` and `list` together: 0 with either alone, 6 with
 both.
 
+### 10.10 Defect: two renderings of a proof in a parameter-typed slot
+
+Independent of this proposal. A constructor field of type `A`, with
+`A : Type` a parameter, holds a proof when `A` is instantiated with a
+proposition. The translation at `8a8ec1a` writes such a value in two ways
+(`evidence/sort-guard`):
+
+| Source | Translated value |
+|---|---|
+| `vcons nat 0 a (vnil nat)` | `vcons(nat, 0, a, vnil(nat))`: four arguments |
+| `vcons (a = a) 0 eq_refl (vnil (a = a))` | `vcons(P, 0, vnil(P'))`: three arguments, the closed proof erased |
+| `vcons P n p w` with `p : P` a hypothesis | `vcons(P, n, p, w)`: four arguments, the slot kept |
+| `cons eq_refl nil : list (a = a)` | `cons(P, nil(P'))`: two arguments |
+
+The declaration's axioms are stated on the full-arity symbol, so the
+inverse, injectivity and discrimination say nothing of the erased form. In
+the dump each occurrence of `a = a` in term position is also its own
+constant, defined only by its truth value.
+
+While rules kept `Type(A)` they could not see this: `Type(P)` is not
+derivable for a proposition, so no rule fired at such an instance. With the
+guard dropped (§9.1) the generic inverse and the pattern rules fire there
+and name the full-arity constructor. That agrees with the kept form and is
+disconnected from the erased one. No refutation was found. A uniform
+rendering is a change to erasure at an instantiated parameter and is
+outside this note. Pin the two forms in a test so that a change is seen.
+
 ## 11. Staging
 
 The order follows measured value per unit of work. Stages 0 and 1 leave the
@@ -1558,11 +1648,11 @@ translation unchanged.
    end on `x : fin 0 ⊢ False` with only Vampire enabled.
 2. **Typing, membership and guards.** First-order typing of every constant
    and the membership bridge (§§9.1, 10.9), each behind its own switch and
-   both on by default. The guard-free generic inverse behind a third
-   switch, off until the evaluation below decides. Evaluate each alone and
-   together on the corpus. Every later stage is compared against the sound
-   configuration, applied typing with the bridge, not against today's
-   baseline.
+   both on by default. Dropping `Type(A)` from elimination rules behind a
+   third switch, on by default too. Dropping data guards behind a fourth,
+   off until the evaluation below decides. Evaluate each alone and together
+   on the corpus. Every later stage is compared against the resulting
+   default, not against today's baseline.
 3. **Index terms and the template.** The reader of §10.4, behind its own
    switch and on by default, starting from the prototype. Fixtures: the
    twelve of the prototype, with an assertion on the symbol in each index
@@ -1617,10 +1707,17 @@ census says how much stages 4 and 5 are each worth.
 * The generic inverse assembled from the template is today's formula. A
   pattern rule adds no lifted symbol and no side axiom to its family's
   bundle. A solved dependent field leaves no witness.
-* In the sound configuration, every antecedent guard on the rule's own
-  variables and `Type(A)` on a type parameter. With guard dropping on, no
-  antecedent guard on a covered variable; the solved field's guard in the
-  consequent; an uncovered guard retained, on the rule's own variable.
+* With no guard dropped, every antecedent guard on the rule's own variables
+  and `Type(A)` on a type parameter. By default, no `Type(A)` on a type
+  parameter of an elimination rule, and `Type(A)` unchanged in the typing
+  axiom of a constructor and in a polymorphic lemma; `Type(B)` kept on a
+  type-valued field, `Prop(P)` on a proposition parameter and the guard of
+  a parameter of product type. With guard dropping on, no antecedent guard
+  on a covered variable; the solved field's guard in the consequent; an
+  uncovered guard retained, on the rule's own variable, including the guard
+  of an index at a type variable.
+* The two renderings of a proof in a slot typed by a type parameter
+  (§10.10).
 * Local facts for: a canonical-form goal, fields read in a hypothesis,
   projections in the goal, a closed depth-2 index, a dependent pair, an
   impossible fiber, a stuck residual equation, and a hypothesis needing a
@@ -1634,8 +1731,10 @@ census says how much stages 4 and 5 are each worth.
 **Evaluation.** Screen each switch separately via `eval/rebuild-config.sh`
 on identical premises, budgets and prover versions: baseline; the membership
 bridge; applied typing with the bridge, which is the sound configuration;
-the guard-free generic inverse with and without applied typing; pattern
-rules; local facts; rules and facts together. Record translation time,
+that configuration without `Type(A)` on elimination rules, which is the
+default; data guards dropped as well, with and without applied typing;
+pattern rules; local facts; rules and facts together. Record translation
+time,
 FOF size, clausified literals and clauses, fresh symbols and arities,
 prover-specific gains and losses, the prover status, and common goals
 reconstructed by any prover. Report reconstruction separately for goals
@@ -1653,13 +1752,20 @@ moves some proofs across the time limit. Problems whose bytes are identical
 in both arms are ties without a run. Report the affected goals, those with
 at least one differing problem, next to the whole list; a change confined
 to indexed families is otherwise lost in noise. Run the consistency lists
-also with guard dropping off and every other rule on (§10.1), and with the
-membership bridge as the only change.
+also with no guard dropped and every other rule on (§10.1), with `Type(A)`
+dropped as the only heuristic, and with the membership bridge as the only
+change.
+
+The dropping of `Type(A)` is the default by decision, and the same rule
+checks it against the sound configuration. If its stable losses exceed its
+stable gains, or a stable loss comes from the mismatch at a proposition
+parameter (§10.10), it is switched off. Report the goals with a compound
+type parameter and those with a proposition as type parameter separately.
 
 Guard dropping is decided by the same rule. It becomes the default only if
-the sound configuration with it has stable gains over the sound
-configuration without it. Otherwise it stays a selectable option and the
-release carries no heuristic guard policy.
+the default with it has stable gains over the default without it.
+Otherwise it stays a selectable option, and the dropping of `Type(A)` is
+the only heuristic guard policy the release carries.
 
 Local facts read hypotheses of the context, and the hook runs directly
 after `Proof.` (§9.3). Judge them, and the reconstruction changes of stage
@@ -1725,6 +1831,14 @@ obtain the goal, with four dumps: the scope of §9.3
 (`evidence/goal-intro`). The lemma for the dependent field of §9.4 is in
 `SpecRules.v` of the plan.
 
+**After the second plan review**, same day and setup. The seven `vec` dumps
+again with `Type(A)` dropped and `Nat` guards kept: the second table of
+§9.1. The sealed-record counterexample restated for a polymorphic
+predicate, with each outer guard of its inverse dropped in turn, and the
+same eta equality at `=` with nothing edited, which stays satisfiable. Four
+dumps of a constructor at a data and at a proposition parameter: §10.10
+(`evidence/sort-guard`).
+
 **Limits.** The goals are synthetic and chosen to need inversion, so the
 counts say nothing about corpus rates. Every cell is a single run with a
 10 s limit and eight jobs in parallel, and cells near the limit are
@@ -1740,6 +1854,11 @@ the shapes of §9. None of this note is implemented. In particular:
 * the argument of §9.1 for guard-free rules is refuted in two settings, a
   selected extensional function equality and a conversion-proved equality
   on a sealed primitive record; how often either occurs was not measured;
+* the dropping of `Type(A)` is a decision and not a measured gain: on the
+  probes it adds no cell to applied typing. No polymorphic predicate with
+  an index at its type variable was measured, so the cost of the guards
+  kept there is unknown, and so is the rate of propositions as type
+  parameters;
 * applied typing of type formers and functions and the membership bridge
   were measured as hand edits for the constants of fourteen problems; their
   effect on unrelated problems, and how often a compound type parameter or
