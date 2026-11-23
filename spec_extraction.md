@@ -421,7 +421,7 @@ unless they say otherwise.
 | 10.2 | Keep the hypothesis whose typing axiom the proof used; run `dep: on` second for indexed data families | The three clearing failures close with `hauto inv:` once the hypothesis is kept. Checked by direct tactic calls, not yet through `hammer`. |
 | 10.3 | Accept `ContradictoryAxioms` | Once a specialized rule is present, Vampire reports it on both impossible-fiber goals in most runs. Those runs count as failures today. |
 | 9.1 | First-order typing of every constant: constructors, type formers, functions | With constructor typing, guarded pattern rules reach the counts of the guard-free ones: 17 of 24 and 11 of 12. With type formers and functions typed too, a fully guarded configuration solves all 36 cells of the six `vec` probes; two of them stay at 0 with constructor typing and guard dropping. |
-| 9.1 | Elimination rules without outer typing guards, a heuristic that is on by default | On 308 real goals, by a scripted edit of the dumps: 74 → 81 proved at 1024 premises, with 7 stable gains and no loss; 97 → 99 at 128, with 4 gains and 2 losses; no premise set refuted. On synthetic one-step goals, before applied typing: generic inverse alone 1 → 10 of 24 and 0 → 5 of 12. With applied typing the guarded and the guard-free variants solve the same probe cells, which shows nothing about cost at corpus size. |
+| 9.1 | Elimination rules without outer typing guards, a heuristic that is on by default | On 308 real goals, by a scripted edit of the dumps: 74 → 81 proved at 1024 premises, with 7 stable gains and no loss; 97 → 99 at 128, with 4 gains and 2 losses; no premise set refuted. By kind of guard, on those goals and 307 from `MSets` and `FSets`: the gains come from the guards at inductive data types (8 goals), on sorts (2 goals) and from expanded guards (1 goal); the guards at product types, type variables and other named types show no gain, and keeping any kind gains at most two goals by search effects. On synthetic one-step goals, before applied typing: generic inverse alone 1 → 10 of 24 and 0 → 5 of 12. With applied typing the guarded and the guard-free variants solve the same probe cells, which shows nothing about cost at corpus size. |
 | 9.2 | Rules for the index patterns of the family's own constructors, predicates included | Guard-free: 17 of 24 and 11 of 12. Guarded: 15 and 8, with nothing proved at index depth 2. |
 | 9.3 | Constructor form of a goal hypothesis as a ground fact | 17 of 24 alone, 20 together with pattern rules. At depth 2, one layer proves nothing and three layers serve all four provers. |
 | 9.7, 10.4 | Index terms read by one reader: heads exposed, stuck terms as written | Probe over `fam (g x y)`: 0 of 4 as emitted, Vampire and CVC4 once the equation names `g`. A prototype of the reader names the source function in twelve fixtures and changes no existing test output. |
@@ -542,6 +542,38 @@ inversion axiom, so they are search perturbation. Problems proved in both
 arms are not proved faster. Without its conjecture no problem is refuted,
 in 616 runs. This is a hand edit of today's translation, without applied
 typing and without reconstruction.
+
+**By kind of guard** (`evidence/guard-kinds`). The outer guards are of six
+kinds: on a sort (`Type(A)`), at a product type, at a type variable
+(`t(x, A)`), at an inductive data type, at another named type (a section
+variable, a module field, a defined type), and the expansion of a guard at
+an enum or subset type. The same 308 goals and 307 more from the functor
+bodies of `MSets` and `FSets` were run with every guard removed, with one
+kind kept at a time, with the data guards alone removed, and with the
+guards reordered, which changes no meaning. A goal counts when it is proved
+in four of four rounds in one arm and never in the other. Over two samples
+and two premise counts:
+
+* *Three kinds earn their omission*, each by proofs through an inverse that
+  lost a guard of the kind. Data: eight inversion lemmas. Sort: two goals of
+  `FSets`, at both premise counts, where an inverse is used at a compound
+  type, `list (X.t * elt)` and `sumor {x | …} (Empty s)`; removing the data
+  guards alone proves neither. Expanded: one goal, through a predicate on
+  three values of `comparison`.
+* *Three kinds show no gain*: product types, type variables and other named
+  types, which together are more than half of the outer guards at 1024
+  premises. For other named types nothing differs at all, also where the
+  guards are at module fields. For these three the omission rests on the
+  requirement above and not on a measured gain.
+* *What keeping a guard gains is a search effect.* A rule without a guard
+  implies the rule with it, so a goal proved only with a guard kept has the
+  same proof without it and was lost in the search. There are zero to two such
+  goals per kind, and reordering the guards produces one as well. Two of
+  them follow their kind across the arms, one at type variables and one at
+  an expanded guard; the rest do not.
+* *No speed-up.* A problem proved with and without the guards takes the
+  same CPU time, within 3% in seven of eight cells. The omission shows in
+  which goals are proved, not in how fast.
 
 On synthetic one-step goals at 1024 premises, before type formers and
 functions were typed in applied form:
@@ -1758,6 +1790,18 @@ as well, and report separately the goals with a compound type parameter, a
 polymorphic predicate over a type variable, or a proposition as type
 parameter.
 
+Each kind of outer guard (§9.1) is measured on its own: for each of the six
+kinds an arm with that kind alone kept, and a null arm with the guards of
+each rule in reverse order. The null arm says what the guarded arm says, so
+its stable differences are what an edit of that size does to the provers
+with no change of meaning. A guard makes nothing provable. A goal proved
+only with a kind kept is therefore a search effect. It counts for the kind
+when it follows the kind: proved in every arm that holds those guards, the
+null arm included, and in none that lacks them. A kind comes back only if
+the goals that follow it outnumber the goals gained by omitting it, on the
+tuning list and again on the held-out list, or on an inconsistency of the
+sort named above.
+
 Local facts read hypotheses of the context, and the hook runs directly
 after `Proof.` (§9.3). Judge them, and the reconstruction changes of stage
 0, in a mode of the hook that runs `intros` first and rolls the proof state
@@ -1827,7 +1871,11 @@ goals: 308 goals sampled from five directories of the standard library,
 translated by the hook with its own premise selection, at 128 and 1024
 premises, as dumped and with every outer typing guard removed from the
 inversion axioms by a script; E and Vampire, 10 s; and the premises alone,
-without the conjecture, for refutations (`evidence/real-goals`). On
+without the conjecture, for refutations (`evidence/real-goals`). By kind
+of guard: those goals and 307 sampled from `MSets` and `FSets`, each
+problem with every outer guard removed, with one of six kinds kept, with
+the data guards alone removed, and with the guards reordered; four rounds
+for every difference (`evidence/guard-kinds`). On
 synthetic goals: the seven `vec` dumps again with `Type(A)` dropped and
 `Nat` guards kept; the sealed-record counterexample restated for a
 polymorphic predicate, with each outer guard of its inverse dropped in
